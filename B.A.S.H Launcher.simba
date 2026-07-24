@@ -16,22 +16,13 @@ const
 
   BASH_LOGO_NAME  = 'bash-logo.bmp';
 
-  GITHUB_SRLT_OWNER    = 'Torwent';
-  GITHUB_SRLT_REPO     = 'SRL-T';
-  GITHUB_WASPLIB_OWNER = 'Torwent';
-  GITHUB_WASPLIB_REPO  = 'WaspLib';
   GITHUB_SRLB_OWNER    = 'BigWaspBackup';
   GITHUB_SRLB_REPO     = 'SRL-B';
   GITHUB_BASHLIB_OWNER = 'BigWaspBackup';
   GITHUB_BASHLIB_REPO  = 'BashLib';
 
-  SRLT_INSTALL_DIR     = 'SRL-T';
-  WASPLIB_INSTALL_DIR  = 'WaspLib';
   SRLB_INSTALL_DIR     = 'SRL-B';
   BASHLIB_INSTALL_DIR  = 'BashLib';
-
-  DEFAULT_ASSETS_URL =
-    'https://raw.githubusercontent.com/4T0M5PL1TT3R/wasp-assets/refs/heads/main/';
 
   BASH_SCRIPTS_REPO   = 'BigAussie/BigAussie-Simba-Scripts';
   BASH_SCRIPTS_BRANCH = 'main';
@@ -650,9 +641,7 @@ begin
   Result += "function GetInstallDir(pkg: String): String;" + LineEnding;
   Result += "begin" + LineEnding;
   Result += "  case LowerCase(pkg) of" + LineEnding;
-  Result += "    'srl-t', 'srlt', 'srl': Result := 'SRL-T';" + LineEnding;
-  Result += "    'wasplib', 'wl': Result := 'WaspLib';" + LineEnding;
-  Result += "    'srl-b', 'srlb': Result := 'SRL-B';" + LineEnding;
+  Result += "    'srl-b', 'srlb', 'srl': Result := 'SRL-B';" + LineEnding;
   Result += "    'bashlib', 'bl': Result := 'BashLib';" + LineEnding;
   Result += "    else Result := pkg;" + LineEnding;
   Result += "  end;" + LineEnding;
@@ -701,187 +690,11 @@ begin
   Result += "    DeleteFile({$MACRO CURRENT_DIRECTORY} + 'mover-' + LowerCase(pkg) + '.done');" + LineEnding + LineEnding;
   Result += "  AddOnTerminate(@Free);" + LineEnding + LineEnding;
   Result += "  case LowerCase(pkg) of" + LineEnding;
-  Result += "    'srl-t', 'srlt', 'srl', 'srl-b', 'srlb': UnlockPlugins();" + LineEnding;
+  Result += "    'srl-b', 'srlb', 'srl': UnlockPlugins();" + LineEnding;
   Result += "  end;" + LineEnding + LineEnding;
   Result += "  WriteLn('[AsyncMover]: Moving ', pkg, ' files, this will take a while.');" + LineEnding;
   Result += "  MoveFiles(GetProcessParameter('origin'), pkg);" + LineEnding;
   Result += "end;" + LineEnding;
-end;
-
-function TWaspAsync.GetServerContent(): String;
-begin
-  Result += '//Credits: Slacky' + LineEnding;
-  Result += 'function String.After(SubStr: String; p: Int32): String; constref;' + LineEnding;
-  Result += 'begin' + LineEnding;
-  Result += '  Inc(p, Length(SubStr));' + LineEnding;
-  Result += '  Result := Copy(Self, p, Length(Self) - p + 1);' + LineEnding;
-  Result += 'end;' + LineEnding + LineEnding;
-  Result += 'type' + LineEnding;
-  Result += '  TSimbaServerClient = record' + LineEnding;
-  Result += '    ID: Int32;' + LineEnding;
-  Result += '    IP, Port: String;' + LineEnding;
-  Result += '    IsSetup: Boolean;' + LineEnding;
-  Result += '  end;' + LineEnding + LineEnding;
-  Result += '  TSimbaServer = record' + LineEnding;
-  Result += '    ID: Int32;' + LineEnding;
-  Result += '    IP, Port: String;' + LineEnding;
-  Result += '    Client: TSimbaServerClient;' + LineEnding;
-  Result += '  end;' + LineEnding + LineEnding;
-  Result += 'procedure TSimbaServerClient.CloseAndFree();' + LineEnding;
-  Result += 'begin' + LineEnding;
-  Result += '  if not Self.IsSetup then Exit;' + LineEnding;
-  Result += '  CloseSocket(Self.ID);' + LineEnding;
-  Result += '  FreeSocket(Self.ID);' + LineEnding;
-  Result += '  Self.IsSetup := False;' + LineEnding;
-  Result += 'end;' + LineEnding + LineEnding;
-  Result += 'procedure TSimbaServerClient.WriteString(s: string);' + LineEnding;
-  Result += 'begin' + LineEnding;
-  Result += '  SendSocket(Self.ID, s);' + LineEnding;
-  Result += 'end;' + LineEnding + LineEnding;
-  Result += 'function TSimbaServerClient.SendHTML(content: String): Boolean;' + LineEnding;
-  Result += 'var' + LineEnding;
-  Result += '  headers, html: String;' + LineEnding;
-  Result += 'begin' + LineEnding;
-  Result += '  html :=' + LineEnding;
-  Result += '  ''<!DOCTYPE html>'' + LineEnding +' + LineEnding;
-  Result += '    ''<html>'' + LineEnding +' + LineEnding;
-  Result += '    ''  <head>'' + LineEnding +' + LineEnding;
-  Result += '    ''    <meta charset=''''UTF-8''''>'' + LineEnding +' + LineEnding;
-  Result += '    ''    <link rel=''''icon'''' href=''''https://waspscripts.com/favicon.png''''>'' + LineEnding +' + LineEnding;
-  Result += '    ''    <meta name=''''viewport'''' content=''''width=device-width''''>'' + LineEnding +' + LineEnding;
-  Result += '    ''    <title>B.A.S.H</title>''  + LineEnding +' + LineEnding;
-  Result += '    ''    <meta name=''''description'''' content=''''B.A.S.H Wasp Login page''''>'' + LineEnding +' + LineEnding;
-  Result += '    ''    <style>'' + LineEnding +' + LineEnding;
-  Result += '    ''      body {'' + LineEnding +' + LineEnding;
-  Result += '    ''         background-color: #1A1814;'' + LineEnding +' + LineEnding;
-  Result += '    ''         color: #F2EDE4;'' + LineEnding +' + LineEnding;
-  Result += '    ''         display: flex;'' + LineEnding +' + LineEnding;
-  Result += '    ''         justify-content: center;'' + LineEnding +' + LineEnding;
-  Result += '    ''         height: 100vh;'' + LineEnding +' + LineEnding;
-  Result += '    ''         text-align: center;'' + LineEnding +' + LineEnding;
-  Result += '    ''         flex-direction: column;'' + LineEnding +' + LineEnding;
-  Result += '    ''      }'' + LineEnding +' + LineEnding;
-  Result += '    ''    </style>'' + LineEnding +' + LineEnding + LineEnding;
-  Result += '    ''  </head>'' + LineEnding +' + LineEnding;
-  Result += '    '' <body>'' + LineEnding +' + LineEnding;
-  Result += '        content + LineEnding +' + LineEnding;
-  Result += '    '' </body>'' + LineEnding +' + LineEnding;
-  Result += '  ''</html>'';' + LineEnding + LineEnding;
-  Result += '  headers += ''HTTP/1.1 200 OK'' + #13#10;' + LineEnding;
-  Result += '  headers += ''Content-Type: text/html''+#13#10;' + LineEnding;
-  Result += '  headers += ''Connection: close''+#13#10;' + LineEnding;
-  Result += '  headers += ''Content-Length: '' + IntToStr(Length(html))+#13#10#13#10;' + LineEnding + LineEnding;
-  Result += '  Result := True;' + LineEnding;
-  Result += '  try' + LineEnding;
-  Result += '    Self.WriteString(headers + html);' + LineEnding;
-  Result += '  except' + LineEnding;
-  Result += '    Exit(False);' + LineEnding;
-  Result += '  end;' + LineEnding;
-  Result += 'end;' + LineEnding + LineEnding + LineEnding;
-  Result += 'function TSimbaServerClient.Read(): String; overload;' + LineEnding;
-  Result += 'begin' + LineEnding;
-  Result += '  Result := RecvSocketStr(Self.ID);' + LineEnding;
-  Result += 'end;' + LineEnding + LineEnding + LineEnding;
-  Result += 'procedure TSimbaServer.CloseAndFree();' + LineEnding;
-  Result += 'begin' + LineEnding;
-  Result += '  CloseSocket(Self.ID);' + LineEnding;
-  Result += '  FreeSocket(Self.ID);' + LineEnding;
-  Result += 'end;' + LineEnding + LineEnding;
-  Result += 'function TSimbaServer.AttemptSocketBind(): Boolean;' + LineEnding;
-  Result += 'begin' + LineEnding;
-  Result += '  try BindSocket(Self.ID, Self.IP, Self.Port); except Exit end;' + LineEnding;
-  Result += '  Result := True;' + LineEnding;
-  Result += 'end;' + LineEnding + LineEnding;
-  Result += 'procedure TSimbaServer.Setup();' + LineEnding;
-  Result += 'var' + LineEnding;
-  Result += '  attempt: Int32;' + LineEnding;
-  Result += 'begin' + LineEnding;
-  Result += '  Self.ID   := CreateSocket();' + LineEnding;
-  Result += '  Self.IP   := ''127.0.0.1'';' + LineEnding;
-  Result += '  Self.Port := ''5217'';' + LineEnding + LineEnding;
-  Result += '  for attempt := 0 to 200 do' + LineEnding;
-  Result += '  begin' + LineEnding;
-  Result += '    if Self.AttemptSocketBind() then Break;' + LineEnding;
-  Result += '    Sleep(100);' + LineEnding;
-  Result += '  end;' + LineEnding + LineEnding;
-  Result += '  ListenSocket(Self.ID);' + LineEnding;
-  Result += '  Self.Client.ID := -1;' + LineEnding;
-  Result += 'end;' + LineEnding + LineEnding;
-  Result += 'procedure TSimbaServer.AcceptClient();' + LineEnding;
-  Result += 'begin' + LineEnding;
-  Result += '  Self.Client.IsSetup := True;' + LineEnding;
-  Result += '  Self.Client.ID := AcceptSocket(Self.ID);' + LineEnding;
-  Result += '  SocketInfo(Self.Client.ID, Self.Client.IP, Self.Client.Port);' + LineEnding;
-  Result += 'end;' + LineEnding + LineEnding;
-  Result += 'function TSimbaServer.Listen(): String;' + LineEnding;
-  Result += 'var' + LineEnding;
-  Result += '  tmp, header, path: String;' + LineEnding;
-  Result += '  i: Int32' + LineEnding;
-  Result += 'begin' + LineEnding;
-  Result += '  try SetSocketTimeout(Self.Client.ID, 2000); except Exit; end;' + LineEnding + LineEnding;
-  Result += '  repeat' + LineEnding;
-  Result += '    try' + LineEnding;
-  Result += '      tmp := Self.Client.Read();' + LineEnding;
-  Result += '      header += tmp;' + LineEnding;
-  Result += '    except' + LineEnding;
-  Result += '      Exit;' + LineEnding;
-  Result += '    end;' + LineEnding;
-  Result += '  until tmp = '''';' + LineEnding + LineEnding;
-  Result += '  path := Between(''GET '', '' HTTP/1.1'', header);' + LineEnding + LineEnding;
-  Result += '  i := Pos(''?error='', path);' + LineEnding;
-  Result += '  if i > 0 then' + LineEnding;
-  Result += '    if not client.SendHTML(''<h1>Login failed with error message:</h1><p>'' + path.After(''?error='', i) + ''</p><h2>Close this page and try again.</h2>'') then Exit;' + LineEnding + LineEnding;
-  Result += '  i := Pos(''?code='', path);' + LineEnding;
-  Result += '  if i > 0 then' + LineEnding;
-  Result += '  begin' + LineEnding;
-  Result += '    Result := path.After(''?code='', i);' + LineEnding;
-  Result += '    if not Self.Client.SendHTML(''<h1>You''''ve successfully logged in!</h1><h2>You can now close this page.</h2>'') then Exit;' + LineEnding;
-  Result += '  end;' + LineEnding + LineEnding;
-  Result += '  Self.Client.CloseAndFree();' + LineEnding;
-  Result += 'end;' + LineEnding + LineEnding;
-  Result += 'var' + LineEnding;
-  Result += '  HealthChecker: TTimer;' + LineEnding;
-  Result += '  Timeout: UInt64;' + LineEnding;
-  Result += '  Server: TSimbaServer;' + LineEnding;
-  Result += '  {$IFDEF SIMBAHEADLESS}' + LineEnding;
-  Result += '  LauncherPID: PtrUInt;' + LineEnding;
-  Result += '  {$ENDIF}' + LineEnding;
-  Result += '  Code: String;' + LineEnding + LineEnding;
-  Result += 'procedure HealthCheck(sender: TObject);' + LineEnding;
-  Result += 'begin' + LineEnding;
-  Result += '  if (GetTickCount() <= Timeout) and' + LineEnding;
-  Result += '      {$IFDEF SIMBAHEADLESS} IsProcessRunning(LauncherPID) and {$ENDIF}' + LineEnding;
-  Result += '      not FileExists({$MACRO CURRENT_DIRECTORY} + ''server-stop'') then Exit;' + LineEnding + LineEnding;
-  Result += '  DeleteFile({$MACRO CURRENT_DIRECTORY} + ''server-stop'');' + LineEnding;
-  Result += '  CloseFile(CreateFile({$MACRO CURRENT_DIRECTORY} + ''server-failed.done''));' + LineEnding + LineEnding;
-  Result += '  TTimer(sender).setEnabled(False);' + LineEnding;
-  Result += '  RaiseException(''Server timed out!'');' + LineEnding;
-  Result += 'end;' + LineEnding + LineEnding;
-  Result += 'procedure RunHealthCheck();' + LineEnding;
-  Result += 'begin' + LineEnding;
-  Result += '  HealthChecker.SetOnTimer(@HealthCheck);' + LineEnding;
-  Result += '  HealthChecker.SetEnabled(True);' + LineEnding;
-  Result += 'end;' + LineEnding + LineEnding;
-  Result += 'begin' + LineEnding;
-  Result += '  DeleteFile({$MACRO CURRENT_DIRECTORY} + ''server-stop'');' + LineEnding;
-  Result += '  {$IFDEF SIMBAHEADLESS}' + LineEnding;
-  Result += '  LauncherPID := Variant(GetProcessParameter(''LauncherPID''));' + LineEnding;
-  Result += '  {$ENDIF}' + LineEnding + LineEnding;
-  Result += '  Server.Setup();' + LineEnding;
-  Result += '  AddOnTerminate(@Server.CloseAndFree);' + LineEnding;
-  Result += '  AddOnTerminate(@Server.Client.CloseAndFree);' + LineEnding;
-  Result += '  AddOnTerminate(@HealthChecker.Free);' + LineEnding + LineEnding;
-  Result += '  Timeout := GetTickCount() + 5 * 60 * 1000;' + LineEnding;
-  Result += '  HealthChecker.Init(nil);' + LineEnding + LineEnding;
-  Result += '  HealthChecker.SetInterval(150);' + LineEnding;
-  Result += '  Sync(@RunHealthCheck);' + LineEnding + LineEnding;
-  Result += '  repeat' + LineEnding;
-  Result += '    Server.AcceptClient();' + LineEnding;
-  Result += '    code := Server.Listen();' + LineEnding;
-  Result += '  until code <> '''';' + LineEnding + LineEnding;
-  Result += '  WriteFileContents({$MACRO CURRENT_DIRECTORY} + ''server-success.done'', code, False);' + LineEnding + LineEnding;
-  Result += '  HealthChecker.setEnabled(False);' + LineEnding;
-  Result += 'end;' + LineEnding;
 end;
 
 procedure TWaspAsync.Setup();
@@ -903,7 +716,6 @@ begin
   Self.Write('downloader.simba', Self.GetDownloaderContent());
   Self.Write('unzipper.simba', Self.GetUnzipperContent());
   Self.Write('mover.simba', Self.GetMoverContent());
-  Self.Write('server.simba', Self.GetServerContent());
 end;
 
 var
@@ -1201,20 +1013,14 @@ type
     DownloadPath: String;
     Packages: record
       Current: record
-        SRLT: String;
-        WaspLib: String;
         SRLB: String;
         BashLib: String;
       end;
       Latest: record
-        SRLT: String;
-        WaspLib: String;
         SRLB: String;
         BashLib: String;
       end;
       Release: record
-        SRLT: String;
-        WaspLib: String;
         SRLB: String;
         BashLib: String;
       end;
@@ -1262,26 +1068,6 @@ procedure TGitHubClient.LoadPackageVersions();
 var
   json: TJSONObject;
 begin
-  json := Self.GetLatestPackage(GITHUB_SRLT_OWNER, GITHUB_SRLT_REPO);
-  if json <> nil then
-  begin
-    Self.Packages.Latest.SRLT := json.getString('name').After('v');
-    Self.Packages.Release.SRLT := json.getString('zipball_url');
-    json.Free();
-  end
-  else
-    Self.Packages.Latest.SRLT := 'failed';
-
-  json := Self.GetLatestPackage(GITHUB_WASPLIB_OWNER, GITHUB_WASPLIB_REPO);
-  if json <> nil then
-  begin
-    Self.Packages.Latest.WaspLib := json.getString('name').After('v');
-    Self.Packages.Release.WaspLib := json.getString('zipball_url');
-    json.Free();
-  end
-  else
-    Self.Packages.Latest.WaspLib := 'failed';
-
   json := Self.GetLatestPackage(GITHUB_SRLB_OWNER, GITHUB_SRLB_REPO);
   if json <> nil then
   begin
@@ -1315,8 +1101,6 @@ begin
   Self.RefreshClient(False);
   AddOnTerminate(@Self.Free);
 
-  Self.Packages.Current.SRLT := Self.GetCurrentPackageVersion(SRLT_INSTALL_DIR);
-  Self.Packages.Current.WaspLib := Self.GetCurrentPackageVersion(WASPLIB_INSTALL_DIR);
   Self.Packages.Current.SRLB := Self.GetCurrentPackageVersion(SRLB_INSTALL_DIR);
   Self.Packages.Current.BashLib := Self.GetCurrentPackageVersion(BASHLIB_INSTALL_DIR);
   Self.LoadPackageVersions();
@@ -1328,8 +1112,6 @@ var
   params: TStringArray;
 begin
   case LowerCase(pkg) of
-    'srlt', 'srl-t': url := Self.Packages.Release.SRLT;
-    'wl', 'wasplib': url := Self.Packages.Release.WaspLib;
     'srlb', 'srl-b': url := Self.Packages.Release.SRLB;
     'bl', 'bashlib': url := Self.Packages.Release.BashLib;
     else
@@ -1343,8 +1125,6 @@ end;
 function TGitHubClient.HasDownloadURL(pkg: String): Boolean;
 begin
   case LowerCase(pkg) of
-    'srlt', 'srl-t': Result := Self.Packages.Release.SRLT <> '';
-    'wl', 'wasplib': Result := Self.Packages.Release.WaspLib <> '';
     'srlb', 'srl-b': Result := Self.Packages.Release.SRLB <> '';
     'bl', 'bashlib': Result := Self.Packages.Release.BashLib <> '';
     else Result := False;
@@ -1357,7 +1137,7 @@ var
 type
   EScriptStatus = (OFFICIAL, COMMUNITY);
   EScriptType = (FREE, PREMIUM, PREMIUM_NO_SUB, TESTING, TESTING_NO_SUB, FULL, FULL_NO_SUB);
-  EScriptSource = (BASH, LOCAL, WASP);
+  EScriptSource = (BASH, LOCAL);
 
   TScriptData = record
     ID: String;
@@ -2610,11 +2390,6 @@ begin
   if Self.ActiveSource = EScriptSource.LOCAL then
     Exit(Self.GetLocalScripts());
 
-  if Self.ActiveSource = EScriptSource.WASP then
-  begin
-    Result := [];
-    Exit;
-  end;
   if Self.Loaded then
     Exit(Self.Scripts);
 
@@ -2731,11 +2506,6 @@ begin
   Result := Self.ActiveSource = EScriptSource.LOCAL;
 end;
 
-function TBashScriptClient.IsWaspSource(): Boolean;
-begin
-  Result := Self.ActiveSource = EScriptSource.WASP;
-end;
-
 procedure TBashScriptClient.DownloadScript(script: TScriptData);
 var
   http, code: Int32;
@@ -2844,926 +2614,6 @@ end;
 
 var
   BashScriptClient: TBashScriptClient;
-
-type
-  TRolesData = record
-    Banned: Boolean;
-    Premium: Boolean;
-    VIP: Boolean;
-    Tester: Boolean;
-    Scripter: Boolean;
-    Moderator: Boolean;
-    Administrator: Boolean;
-  end;
-
-  TBundleData = record
-    ID: String;
-    Product: String;
-    Name: String;
-    Owner: String;
-    Scripts: TScriptDataArray;
-  end;
-  TBundleDataArray = array of TBundleData;
-
-  TProductData = record
-    ID: String;
-    Owner: String;
-    Bundle: String;
-    Script: String;
-  end;
-  TProductDataArray = array of TProductData;
-
-  TSubscriptionData = record
-    Product: String;
-    DateStart: String;
-    DateEnd: String;
-  end;
-  TSubscriptionDataArray = array of TSubscriptionData;
-
-  TWaspClient = record(THTTPClient)
-    Schema: String;
-    APIKey: String;
-    DownloadPath: String;
-    AssetsPath: String;
-    PKCEVerifier: String;
-
-    Cache: record
-      User: record
-        AccessToken: String;
-        RefreshToken: String;
-        ID: String;
-        Username: String;
-
-        UserData: TJSONObject;
-        Roles: TRolesData;
-        Subscriptions: TSubscriptionDataArray;
-        FreeAccess: TSubscriptionDataArray;
-        UnsubscribedScripts: TScriptDataArray;
-        SubscribbedProducts: TProductDataArray;
-        FreeAccessProducts: TProductDataArray;
-        SubscribbedScripts: TScriptDataArray;
-        AllUserScripts: TScriptDataArray;
-      end;
-
-      Launcher: TScriptData;
-      Scripts: TScriptDataArray;
-      FreeScripts: TScriptDataArray;
-      PremiumScripts: TScriptDataArray;
-
-      Bundles: TBundleDataArray;
-      Products: TProductDataArray;
-
-      Free: Boolean;
-    end;
-  end;
-
-procedure TWaspClient.FreeUserData();
-begin
-  if Self.Cache.Free then
-    Exit;
-
-  Self.Cache.User := [];
-  Self.Cache.User.Roles := [];
-  Self.Cache.User.SubscribbedProducts := [];
-  Self.Cache.User.FreeAccessProducts := [];
-  Self.Cache.User.SubscribbedScripts := [];
-  Self.Cache.User.AllUserScripts := [];
-
-  Self.Cache.User.UserData.Free();
-  Self.Cache.User.UserData := nil;
-
-  Self.Cache.Free := True;
-end;
-
-procedure TWaspClient.Free(); override;
-begin
-  FreeHTTPClient(Self.Client);
-  Self.FreeUserData();
-end;
-
-procedure TWaspClient.RefreshClient(isSetup: Boolean = True);
-begin
-  if isSetup then
-    FreeHTTPClient(Self.Client);
-  Self.Client := InitializeHTTPClient(True);
-
-  SetHTTPContentType(Self.Client, 'application/json');
-  SetHTTPHeader(Self.Client, 'apikey', Self.APIKey);
-  if Self.Cache.User.AccessToken <> '' then
-    SetHTTPHeader(Self.Client, 'Authorization', 'Bearer ' + Self.Cache.User.AccessToken);
-end;
-
-procedure TWaspClient.SaveRefreshToken();
-begin
-  if Self.Cache.User.RefreshToken <> '' then
-    LauncherConfig.Put('refresh_token', Self.Cache.User.RefreshToken);
-end;
-
-function TWaspClient.Login(grantType: String; payload: TJSONObject): Boolean;
-const
-  ROUTE: String = 'auth/v1/token';
-  QUERY: String = '?grant_type=';
-var
-  response: TJSONObject;
-begin
-  try
-    response.Init(Self.POST(ROUTE + QUERY + grantType, payload, False));
-    if Self.GetHTTPCode() = 200 then
-    begin
-      Self.Cache.User.AccessToken := response.getString('access_token');
-      Self.Cache.User.RefreshToken := response.getString('refresh_token');
-      Self.Cache.User.ID := response.getJSONObject('user').getString('id');
-      Self.Cache.User.Username := response.getJSONObject('user').getJSONObject('user_metadata').getJSONObject('custom_claims').getString('global_name');
-      Self.RefreshClient();
-      Self.SaveRefreshToken();
-      Self.Cache.Free := False;
-
-      Self.GetAllUserScripts();
-      Exit(True);
-    end;
-
-    Self.Cache.User := [];
-    LauncherConfig.Remove('refresh_token');
-    Self.FreeUserData();
-  except
-    WriteLn('Error logging in: ', GetExceptionMessage());
-    if response <> nil then
-      TerminateScript('Response: ' + response.ToString());
-  finally
-    payload.Free();
-    if response <> nil then
-      response.Free();
-  end;
-end;
-
-function TWaspClient.Login(user, password: String): Boolean; overload;
-var
-  payload: TJSONObject;
-begin
-  payload.Init();
-  payload.Put('email', user);
-  payload.Put('password', password);
-  Result := Self.Login('password', payload);
-end;
-
-function TWaspClient.Login(refreshToken: String): Boolean; overload;
-var
-  payload: TJSONObject;
-begin
-  payload.Init();
-  payload.Put('refresh_token', refreshToken);
-  Result := Self.Login('refresh_token', payload);
-end;
-
-function TWaspClient.GeneratePKCEVerifier(challengeLength: Int32 = 56): String;
-const
-  CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
-var
-  i, n: Int32;
-begin
-  n := Length(CHARS);
-  for i := 1 to challengeLength do
-    Result += CHARS[Random(n) + 1];
-end;
-
-function TWaspClient.GeneratePKCEChallenge(verifier: String): String;
-  {$R-}
-  function Hex2Bytes(const hexStr: string): TByteArray;
-  var i: Int32;
-  const
-    lookup: array[48..70] of Byte = [
-      0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
-      0, 0, 0, 0, 0, 0, 0,
-      10, 11, 12, 13, 14, 15
-    ];
-  begin
-    if (Length(hexStr) mod 2 <> 0) then Exit;
-    SetLength(Result, Length(hexStr) div 2);
-
-    for i := 1 to Length(hexStr) with 2 do
-      Result[i shr 1] := (lookup[Byte(hexStr[i])] shl 4) or lookup[Byte(hexStr[i+1])];
-  end;
-
-  function Base64UrlEncode(const data: TByteArray): string;
-  const
-    BASE64URLTable: string = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-  var
-    i, j: Integer;
-    triplet: Cardinal;
-    pad: Integer;
-  begin
-    while i < Length(data) do
-    begin
-      triplet := 0;
-      pad := 0;
-
-      for j := 0 to 2 do
-      begin
-        triplet := triplet shl 8;
-        if (i + j < Length(data)) then
-          triplet := triplet or data[i + j]
-        else
-          Inc(pad);
-      end;
-
-      for j := 0 to 3 - pad do
-        Result += BASE64URLTable[(triplet shr ((3 - j) * 6)) and $3F + 1];
-
-      i := i + 3;
-    end;
-  end;
-  {$R+}
-var
-  bytes: TByteArray;
-begin
-  verifier := Hash(THashType.htSHA256, verifier);
-  bytes := Hex2Bytes(verifier);
-  Result := Base64UrlEncode(bytes);
-end;
-
-procedure TWaspClient.StartOAuth2Login(provider: String = 'discord'; method: String = 's256');
-const
-  ROUTE: String = 'auth/v1/authorize';
-  SERVER_PORT: String = '5217';
-var
-  code, query: String;
-begin
-  Self.PKCEVerifier := Self.GeneratePKCEVerifier();
-
-  case method of
-    'plain': code := Self.PKCEVerifier;
-    's256':  code := GeneratePKCEChallenge(Self.PKCEVerifier);
-    else     RaiseException('Unknown PKCE method: ' + method);
-  end;
-
-  query := '?provider=' + provider;
-  query += '&redirect_to=http%3A%2F%2Flocalhost%3A' + SERVER_PORT + '%2F';
-  query += '&scopes=identify%20email%20guilds%20guilds.members.read';
-  query += '&code_challenge=' + code;
-  query += '&code_challenge_method=' + method;
-  OpenWebPage(Self.Server + ROUTE + query);
-end;
-
-function TWaspClient.FinishOAuth2Login(auth_code: String): Boolean;
-const
-  ROUTE: String = 'auth/v1/token';
-  QUERY: String = '?grant_type=pkce';
-var
-  payload, response: TJSONObject;
-begin
-  payload.Init();
-  payload.Put('auth_code', auth_code);
-  payload.Put('code_verifier', Self.PKCEVerifier);
-  Self.PKCEVerifier := '';
-
-  try
-    response.Init(Self.POST(ROUTE + QUERY, payload, False));
-
-    if Self.GetHTTPCode() = 200 then
-    begin
-      Self.Cache.User.AccessToken := response.getString('access_token');
-      Self.Cache.User.RefreshToken := response.getString('refresh_token');
-      Self.Cache.User.ID := response.getJSONObject('user').getString('id');
-      Self.Cache.User.Username := response.getJSONObject('user').getJSONObject('user_metadata').getJSONObject('custom_claims').getString('global_name');
-      Self.RefreshClient();
-      Self.SaveRefreshToken();
-      Self.Cache.Free := False;
-
-      Self.GetAllUserScripts();
-      Exit(True);
-    end;
-
-    Self.Cache.User := [];
-    LauncherConfig.Remove('refresh_token');
-    Self.FreeUserData();
-  except
-    WriteLn('Error logging in: ', GetExceptionMessage());
-    if response <> nil then
-      TerminateScript('Response: ' + response.ToString());
-  finally
-    payload.Free();
-    if response <> nil then
-      response.Free();
-  end;
-end;
-
-function TWaspClient.Logout(): Boolean;
-const
-  ROUTE: String = 'auth/v1/logout';
-begin
-  try
-    Self.POST(ROUTE, False);
-    Result := Self.GetHTTPCode() = 204;
-    if Result then
-    begin
-      Self.FreeUserData();
-      LauncherConfig.Remove('refresh_token');
-    end;
-  except
-    TerminateScript(GetExceptionMessage());
-  end;
-end;
-
-function TWaspClient.IsLoggedIn(): Boolean;
-begin
-  Result := Self.Cache.User.AccessToken <> '';
-end;
-
-procedure TWaspClient.LoadRefreshToken();
-var
-  token: String;
-begin
-  token := LauncherConfig.GetString('refresh_token');
-  if (token <> '') then
-  begin
-    if Self.Login(token) then
-      DebugLn(Self.Name, 'Previous session refreshed!')
-    else
-      Self.RefreshClient(True);
-  end;
-end;
-
-procedure TWaspClient.SetSchema(schema: String);
-begin
-  if schema = 'public' then
-    schema := '';
-
-  if Self.Schema <> schema then
-    SetHTTPHeader(Self.Client, 'Accept-Profile', schema);
-end;
-
-function TWaspClient.GetRoles(): TRolesData;
-const
-  ROUTE: String = 'rest/v1/roles';
-var
-  query: String = '?select=banned,premium,vip,tester,scripter,moderator,administrator';
-  response: String;
-  tmp: TJSONArray;
-begin
-  if Self.Cache.User.Roles <> [] then
-    Exit(Self.Cache.User.Roles);
-
-  Self.SetSchema('profiles');
-  query += '&id=eq.' + Self.Cache.User.ID + '&limit=1';
-  try
-    response := Self.GET(ROUTE + query, False);
-    if Self.GetHTTPCode() = 200 then
-    begin
-      tmp.Init(response);
-      if tmp.length > 0 then
-      begin
-        Result.Banned := tmp.getJSONObject(0).getString('banned') = 'true';
-        Result.Premium := tmp.getJSONObject(0).getString('premium') = 'true';
-        Result.VIP := tmp.getJSONObject(0).getString('vip') = 'true';
-        Result.Tester := tmp.getJSONObject(0).getString('tester') = 'true';
-        Result.Scripter := tmp.getJSONObject(0).getString('scripter') = 'true';
-        Result.Moderator := tmp.getJSONObject(0).getString('moderator') = 'true';
-        Result.Administrator := tmp.getJSONObject(0).getString('administrator') = 'true';
-        Self.Cache.User.Roles := Result;
-      end;
-      tmp.Free();
-    end;
-  except
-    TerminateScript(GetExceptionMessage());
-  end;
-end;
-
-function TWaspClient.Select(schema, table, query: String; filters: TStringArray = []; orders: TStringArray = []): TJSONArray;
-const
-  ROUTE: String = 'rest/v1/';
-var
-  response: String;
-begin
-  Self.SetSchema(schema);
-
-  if filters <> [] then
-    query += '&' + Implode('&', filters);
-
-  if orders <> [] then
-    query += '&order=' + Implode('&order=', orders);
-
-  try
-    response := Self.GET(ROUTE + table + '?select=' + query, False);
-
-    if Self.GetHTTPCode() = 200 then
-      Result.Init(response);
-  except
-    TerminateScript(GetExceptionMessage());
-  end;
-end;
-
-function TWaspClient.GetSubscriptions(): TSubscriptionDataArray;
-var
-  jsonArray: TJSONArray;
-  i: Int32;
-  sub: TSubscriptionData;
-begin
-  if Self.Cache.User.Subscriptions <> [] then
-    Exit(Self.Cache.User.Subscriptions);
-  jsonArray := Self.Select('profiles', 'subscription', 'product,date_start,date_end', ['id=eq.' + Self.Cache.User.ID]);
-
-  for i := 0 to jsonArray.High() do
-  begin
-    with jsonArray.getJSONObject(i) do
-    begin
-      sub.Product := getString('product');
-      sub.DateStart := getString('date_start');
-      sub.DateEnd := getString('date_end');
-    end;
-
-    Result += sub;
-  end;
-
-  Self.Cache.User.Subscriptions := Result;
-end;
-
-function TWaspClient.GetFreeAccess(): TSubscriptionDataArray;
-var
-  jsonArray: TJSONArray;
-  i: Int32;
-  sub: TSubscriptionData;
-begin
-  if Self.Cache.User.FreeAccess <> [] then
-    Exit(Self.Cache.User.FreeAccess);
-  jsonArray := Self.Select('profiles', 'free_access', 'product,date_start,date_end', ['id=eq.' + Self.Cache.User.ID]);
-
-  for i := 0 to jsonArray.High() do
-  begin
-    with jsonArray.getJSONObject(i) do
-    begin
-      sub.Product := getString('product');
-      sub.DateStart := getString('date_start');
-      sub.DateEnd := getString('date_end');
-    end;
-
-    Result += sub;
-  end;
-
-  Self.Cache.User.FreeAccess := Result;
-end;
-
-function TWaspClient.GetScripts(): TScriptDataArray;
-  function _parseDate(fulldate: String): String;
-  var
-    time: String;
-    yy, mm, dd: String;
-  begin
-    yy := fulldate.Before('-');
-    mm := fulldate.After('-').Before('-');
-    dd := fulldate.After('-').After('-').Before('T');
-    time := fulldate.After('T').Before('.');
-
-    Result := dd + '/' + mm + '/' + yy + ', ' + time;
-  end;
-
-var
-  jsonArray, categories: TJSONArray;
-  i, j: Int32;
-  script: TScriptData;
-begin
-  if Self.Cache.Scripts <> [] then
-    Exit(Self.Cache.Scripts);
-  jsonArray := Self.Select(
-                  'scripts',
-                  'scripts',
-                  'id,product,title,description,content,url,protected!inner(revision,username,revision_date),metadata!inner(status,type)',
-                  ['published=eq.true'],
-                  ['title.asc']
-               );
-
-  for i := 0 to jsonArray.High() do
-  begin
-    with jsonArray.getJSONObject(i) do
-    begin
-      script.ID := getString('id');
-      script.Name := getString('title');
-      script.Description := getString('description');
-      script.Content := getString('content');
-      script.URL := getString('url');
-      script.Revision := getJSONObject('protected').getInt('revision');
-      script.Source := EScriptSource.WASP;
-      script.LocalPath := '';
-      script.Activities := InferScriptActivities(
-        script.Name,
-        script.URL,
-        [],
-        script.Description + ' ' + script.Content
-      );
-
-      script.Content := script.Content.
-                        Replace('{$id}', script.ID).
-                        Replace('{$title}', script.Name).
-                        Replace('{$description}', script.Description).
-                        Replace('{$revision}', ToStr(script.Revision)).
-                        Replace('{$author}', getJSONObject('protected').getString('username')).
-                        Replace('{$revision_date}', _parseDate(getJSONObject('protected').getString('revision_date')).Before(',')).
-                        Replace('{$last_revision_date}', _parseDate(getJSONObject('protected').getString('revision_date')).Before(',')).
-                        Replace('{$last_revision_time}', _parseDate(getJSONObject('protected').getString('revision_date')).After(', ')).
-                        Replace('{$last_revision_full_date}', _parseDate(getJSONObject('protected').getString('revision_date')));
-
-      case getJSONObject('metadata').getString('status') of
-        'official':  script.Status := EScriptStatus.OFFICIAL;
-        'community': script.Status := EScriptStatus.COMMUNITY;
-        else script.Status := EScriptStatus.COMMUNITY;
-      end;
-
-      case getJSONObject('metadata').getString('type') of
-        'free':    script.Typ := EScriptType.FREE;
-        'premium': script.Typ := EScriptType.PREMIUM;
-        else script.Typ := EScriptType.FREE;
-      end;
-    end;
-
-    if script.ID = {$MACRO SCRIPT_ID} then
-      Self.Cache.Launcher := script
-    else
-      Result += script;
-    script := [];
-  end;
-
-  jsonArray.Free();
-
-  Self.Cache.Scripts := Result;
-end;
-
-function TWaspClient.GetFreeScripts(): TScriptDataArray;
-var
-  scripts: TScriptDataArray;
-  i: Int32;
-begin
-  if Self.Cache.FreeScripts <> [] then
-    Exit(Self.Cache.FreeScripts);
-
-  scripts := Self.GetScripts();
-  for i := 0 to High(scripts) do
-    if scripts[i].Typ = EScriptType.FREE then
-      Result += scripts[i];
-
-  Self.Cache.FreeScripts := Result;
-end;
-
-function TWaspClient.GetPremiumScripts(): TScriptDataArray;
-var
-  scripts: TScriptDataArray;
-  i: Int32;
-begin
-  if Self.Cache.PremiumScripts <> [] then
-    Exit(Self.Cache.PremiumScripts);
-
-  scripts := Self.GetScripts();
-  for i := 0 to High(scripts) do
-    if scripts[i].Typ = EScriptType.PREMIUM then
-      Result += scripts[i];
-
-  Self.Cache.PremiumScripts := Result;
-end;
-
-function TWaspClient.GetBundles(): TBundleDataArray;
-var
-  jsonArray, scriptsJSON: TJSONArray;
-  i, j, n: Int32;
-  bundle: TBundleData;
-  scripts: TScriptDataArray;
-begin
-  if Self.Cache.Bundles <> [] then
-    Exit(Self.Cache.Bundles);
-  jsonArray := Self.Select('scripts', 'bundles', 'product,id,name,scripts,user_id');
-
-  scripts := Self.GetPremiumScripts();
-
-  for i := 0 to jsonArray.High() do
-    with jsonArray.getJSONObject(i) do
-    begin
-      bundle.ID := getString('id');
-      bundle.Product := getString('product');
-      bundle.Name := getString('name');
-      bundle.Owner := getString('user_id');
-
-      scriptsJSON := getJSONArray('scripts');
-      for j := 0 to scriptsJSON.High() do
-        for n := 0 to High(scripts) do
-          if scripts[n].ID = scriptsJSON.getString(j) then
-            bundle.Scripts += scripts[n];
-
-      Result += bundle;
-      bundle := [];
-    end;
-
-  jsonArray.Free();
-
-  Self.Cache.Bundles := Result;
-end;
-
-function TWaspClient.GetBundledScripts(id: String): TScriptDataArray;
-var
-  bundles: TBundleDataArray;
-  i: Int32;
-begin
-  bundles := Self.GetBundles();
-
-  for i := 0 to High(bundles) do
-  begin
-    if bundles[i].ID <> id then
-      Continue;
-
-    Exit(bundles[i].Scripts);
-  end;
-end;
-
-function TWaspClient.GetProducts(): TProductDataArray;
-var
-  jsonArray: TJSONArray;
-  product: TProductData;
-  i: Int32;
-begin
-  if Self.Cache.Products <> [] then
-    Exit(Self.Cache.Products);
-  jsonArray := Self.Select('scripts', 'products', 'id,user_id,bundle,script');
-
-  for i := 0 to jsonArray.High() do
-  begin
-    with jsonArray.getJSONObject(i) do
-    begin
-      product.ID := getString('id');
-      product.Owner := getString('user_id');
-      product.Bundle := getString('bundle');
-      product.Script := getString('script');
-    end;
-    Result += product;
-  end;
-  jsonArray.Free();
-
-  Self.Cache.Products := Result;
-end;
-
-procedure TWaspClient.Setup();
-var
-  response: TJSONObject;
-begin
-  Self.Name := 'WaspClient';
-  Self.Server := 'https://api.waspscripts.com/';
-  Self.Client := InitializeHTTPClient(True);
-  try
-    response.Init(Self.GET('', False));
-    Self.Server := response.getString('url');
-    Self.APIKey := response.getString('anon_key');
-  except
-    WriteLn('Failed to connect to https://api.waspscripts.com/ to get the database connection info.');
-    WriteLn('Falling back to previously known good values');
-    Self.Server := 'https://db.waspscripts.com/';
-    Self.APIKey := 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTcxOTQ5MDgwMCwiZXhwIjo0ODc1MTY0NDAwLCJyb2xlIjoiYW5vbiJ9.pKuuhYK-xxOWBHg3mqaxNptyvCpE5n-cjhxN3GQKr2I';
-  finally
-    FreeHTTPClient(Self.Client);
-    response.Free();
-  end;
-
-  if Self.APIKey = '' then
-    TerminateScript();
-
-  if not Self.Server.EndsWith('/') then Self.Server += '/';
-
-  Self.DownloadPath := LAUNCHER_DATA + 'downloads' + DirectorySeparator;
-  Self.AssetsPath := LAUNCHER_DATA + 'assets' + DirectorySeparator;
-
-  if not ForceDirectories(Self.DownloadPath) then
-    TerminateScript('WaspClient can''t create downloads directory.');
-
-  Self.RefreshClient(False);
-  AddOnTerminate(@Self.Free);
-end;
-
-function TWaspClient.GetSubscribbedProducts(): TProductDataArray;
-var
-  subs: TSubscriptionDataArray;
-  products: TProductDataArray;
-  i, j: Int32;
-begin
-  if Self.Cache.User.SubscribbedProducts <> [] then
-    Exit(Self.Cache.User.SubscribbedProducts);
-
-  subs := Self.GetSubscriptions();
-  products := Self.GetProducts();
-
-  for i := 0 to High(subs) do
-    for j := High(products) downto 0 do
-    begin
-      if subs[i].Product <> products[j].ID then
-        Continue;
-      Result += products[j];
-      Delete(products, j, 1);
-      Break;
-    end;
-
-  Self.Cache.User.SubscribbedProducts := Result;
-end;
-
-function TWaspClient.GetFreeAccessProducts(): TProductDataArray;
-var
-  free: TSubscriptionDataArray;
-  products: TProductDataArray;
-  roles: TRolesData;
-  i, j: Int32;
-begin
-  if Self.Cache.User.FreeAccessProducts <> [] then
-    Exit(Self.Cache.User.FreeAccessProducts);
-
-  free := Self.GetFreeAccess();
-  products := Self.GetProducts();
-  roles := Self.GetRoles();
-
-  for i := 0 to High(free) do
-    for j := High(products) downto 0 do
-    begin
-      if free[i].Product <> products[j].ID then
-        Continue;
-      Result += products[j];
-      Delete(products, j, 1);
-      Break;
-    end;
-
-  if roles.Tester or roles.Moderator or roles.Administrator then
-    for i := 0 to High(products) do
-      Result += products[i];
-
-  Self.Cache.User.FreeAccessProducts := Result;
-end;
-
-function TWaspClient.GetAccessScripts(): TScriptDataArray;
-var
-  subs, freeAccess: TProductDataArray;
-  scripts, bundled: TScriptDataArray;
-  i, j: Int32;
-begin
-  if Self.Cache.User.SubscribbedScripts <> [] then
-    Exit(Self.Cache.User.SubscribbedScripts);
-
-  scripts := Self.GetPremiumScripts();
-  subs := Self.GetSubscribbedProducts();
-  freeAccess := Self.GetFreeAccessProducts();
-
-  for i := 0 to High(subs) do
-  begin
-    if subs[i].Script = 'null' then
-    begin
-      bundled := Self.GetBundledScripts(subs[i].Bundle);
-      for j := 0 to High(bundled) do
-        if not Result.Contains(bundled[j].ID) then
-          Result += bundled[j];
-    end;
-
-    for j := 0 to High(scripts) do
-    begin
-      if scripts[j].ID <> subs[i].Script then
-        Continue;
-
-      if not Result.Contains(scripts[j].ID) then
-        Result += scripts[j];
-    end;
-  end;
-
-  for i := 0 to High(freeAccess) do
-  begin
-    if freeAccess[i].Script = 'null' then
-    begin
-      bundled := Self.GetBundledScripts(freeAccess[i].Bundle);
-
-      for j := 0 to High(bundled) do
-        if not Result.Contains(bundled[j].ID) then
-          Result += bundled[j];
-    end;
-
-    for j := 0 to High(scripts) do
-    begin
-      if scripts[j].ID <> freeAccess[i].Script then
-        Continue;
-      if not Result.Contains(scripts[j].ID) then
-        Result += scripts[j];
-    end;
-  end;
-
-  Self.Cache.User.SubscribbedScripts := Result;
-end;
-
-function TWaspClient.GetUnsubscribedScripts(): TScriptDataArray;
-var
-  i, j: Int32;
-  all, subbed: TScriptDataArray;
-begin
-  if Self.Cache.User.UnsubscribedScripts <> [] then
-    Exit(Self.Cache.User.UnsubscribedScripts);
-
-  all := Self.GetPremiumScripts();
-  subbed := Self.GetAccessScripts();
-
-  for i := 0 to High(all) do
-  begin
-    if subbed.Find(all[i].ID) > -1 then
-      continue;
-
-    Result += all[i];
-  end;
-
-  Self.Cache.User.UnsubscribedScripts := Result;
-end;
-
-function TWaspClient.GetAllUserScripts(): TScriptDataArray;
-begin
-  if Self.Cache.User.AllUserScripts <> [] then
-    Exit(Self.Cache.User.AllUserScripts);
-
-  Result := Self.GetPremiumScripts() + Self.GetFreeScripts();
-  Result := Result.Sorted();
-
-  Self.Cache.User.AllUserScripts := Result;
-end;
-
-procedure TWaspClient.ApplyNoSubPremiumType();
-var
-  i: Int32;
-  unSubbed, access: TScriptDataArray;
-begin
-  unSubbed := Self.GetUnsubscribedScripts();
-  access := Self.GetAccessScripts();
-
-  for i := 0 to High(Self.Cache.User.AllUserScripts) do
-  begin
-    if unSubbed.Find(Self.Cache.User.AllUserScripts[i].ID) > -1 then
-    begin
-      Self.Cache.User.AllUserScripts[i].Typ := EScriptType.PREMIUM_NO_SUB;
-    end;
-  end;
-end;
-
-function TWaspClient.Storage(route: String): String;
-var
-  response: String;
-begin
-  try
-    response := Self.GET(route, False);
-    if Self.GetHTTPCode() = 200 then
-      Result := response;
-  except
-    TerminateScript(GetExceptionMessage());
-  end;
-end;
-
-function TWaspClient.Storage(bucket, path: String): String; overload;
-const
-  ROUTE: String = 'storage/v1/object/authenticated/';
-begin
-  Result := Self.Storage(ROUTE + bucket + '/' + path);
-end;
-
-procedure TWaspClient.DownloadScript(name, id: String; revision: Int32);
-const
-  ROUTE: String = 'storage/v1/object/authenticated/scripts/';
-var
-  url, revStr: String;
-begin
-  revStr := PadL(ToStr(revision), 9, '0');
-  url := ROUTE + id + '/' + revStr + '/script.simba';
-
-  DebugLn(Self.Name, 'Downloading ' + name + ' rev. ' + ToStr(revision) + ' this might take a while.');
-  if not Self.GETEx(url, Self.DownloadPath + name + '.simba') then
-    TerminateScript('Something went wrong while trying to download: ' + url);
-end;
-
-function TWaspClient.DownloadScriptEx(id: String; revision: Int32): Boolean;
-const
-  ROUTE: String = 'storage/v1/object/public/scripts/';
-var
-  url, revStr: String;
-begin
-  revStr := PadL(ToStr(revision), 9, '0');
-  url := ROUTE + id + '/' + revStr + '/script.simba';
-
-  DebugLn(Self.Name, 'Downloading ' + id + ' this might take a while.');
-  Result := Self.GETEx(url, Self.DownloadPath + id + '.simba');
-end;
-
-procedure TWaspClient.DownloadImage(id, img: String);
-const
-  ROUTE: String = 'storage/v1/object/authenticated/imgs/scripts/';
-var
-  url: String;
-  path: String;
-begin
-  url := ROUTE + id + '/' + img + '.jpg';
-
-  path := Self.AssetsPath + id + DirectorySeparator;
-  if not ForceDirectories(path) then
-    TerminateScript('Failed to create assets path: ' + id);
-
-  if not Self.GETEx(url, path + img + '.jpg') then
-  begin
-    url := ROUTE + 'default/' + img + '.jpg';
-    if not Self.GETEx(url, path + img + '.jpg') then
-      TerminateScript('Something went wrong while trying to download: ' + url);
-  end;
-end;
-
-var
-  WaspClient: TWaspClient;
 
 {$IFNDEF WS_FORMUTILS_INCLUDED}
 {$DEFINE WS_FORMUTILS_INCLUDED}
@@ -4216,16 +3066,12 @@ type
     ScriptsPath: String;
     WaspScriptsPath: String;
 
-    MonitorSRLT: TMonitor;
-    MonitorWL: TMonitor;
     MonitorSRLB: TMonitor;
     MonitorBashLib: TMonitor;
   end;
 
 var
   WaspUpdater: TWaspUpdater;
-
-procedure MaybeUpdateGameAssetsAfterLibInstall(const libName: String); forward;
 
 procedure TMonitor.NextState(); forward;
 
@@ -4346,35 +3192,6 @@ begin
       Self.StartedAt := 0;
 
       case LowerCase(Self.Package) of
-        'srl-t', 'srlt':
-        begin
-          GitHubClient.Packages.Current.SRLT := GitHubClient.GetCurrentPackageVersion(SRLT_INSTALL_DIR);
-          if GitHubClient.Packages.Current.SRLT = '' then
-            Self.Caption.setCaption('Missing')
-          else
-            Self.Caption.setCaption('v.' + GitHubClient.Packages.Current.SRLT);
-
-          if GitHubClient.Packages.Current.SRLT <> GitHubClient.Packages.Latest.SRLT then
-            Self.Caption.SetFontColor($4C5DE8)
-          else
-            Self.Caption.SetFontColor($3DCF7A);
-          Self.Caption.Repaint();
-        end;
-        'wasplib', 'wl':
-        begin
-          GitHubClient.Packages.Current.WaspLib := GitHubClient.GetCurrentPackageVersion(WASPLIB_INSTALL_DIR);
-          if GitHubClient.Packages.Current.WaspLib = '' then
-            Self.Caption.setCaption('Missing')
-          else
-            Self.Caption.setCaption('v.' + GitHubClient.Packages.Current.WaspLib);
-
-          if GitHubClient.Packages.Current.WaspLib <> GitHubClient.Packages.Latest.WaspLib then
-            Self.Caption.SetFontColor($4C5DE8)
-          else
-            Self.Caption.SetFontColor($3DCF7A);
-          Self.Caption.Repaint();
-          MaybeUpdateGameAssetsAfterLibInstall('WaspLib');
-        end;
         'srl-b', 'srlb':
         begin
           GitHubClient.Packages.Current.SRLB := GitHubClient.GetCurrentPackageVersion(SRLB_INSTALL_DIR);
@@ -4430,8 +3247,6 @@ end;
 procedure TWaspUpdater.Update(pkg: String; caption, button: TComponent);
 begin
   case pkg of
-    'srlt', 'srl-t':    Self.MonitorSRLT.RunMonitor(caption, button);
-    'wasplib', 'wl':    Self.MonitorWL.RunMonitor(caption, button);
     'srlb', 'srl-b':    Self.MonitorSRLB.RunMonitor(caption, button);
     'bashlib', 'bl':    Self.MonitorBashLib.RunMonitor(caption, button);
   end;
@@ -4549,8 +3364,6 @@ end;
 
 procedure TWaspUpdater.Free();
 begin
-  Self.MonitorSRLT.Timer.Free();
-  Self.MonitorWL.Timer.Free();
   Self.MonitorSRLB.Timer.Free();
   Self.MonitorBashLib.Timer.Free();
 end;
@@ -4568,17 +3381,7 @@ begin
   if not ForceDirectories(Self.ScriptsPath) then
     TerminateScript('BashUpdater can''t create scripts directory.');
   if not ForceDirectories(Self.WaspScriptsPath) then
-    TerminateScript('BashUpdater can''t create wasp scripts directory.');
-
-  Self.MonitorSRLT.Package := 'srl-t';
-  Self.MonitorSRLT.Timer.Init(nil);
-  Self.MonitorSRLT.Timer.setName('srlt_update_monitor');
-  Self.MonitorSRLT.Timer.setInterval(200);
-
-  Self.MonitorWL.Package := 'wasplib';
-  Self.MonitorWL.Timer.Init(nil);
-  Self.MonitorWL.Timer.setName('wl_update_monitor');
-  Self.MonitorWL.Timer.setInterval(200);
+    TerminateScript('BashUpdater can''t create local scripts directory.');
 
   Self.MonitorSRLB.Package := 'srl-b';
   Self.MonitorSRLB.Timer.Init(nil);
@@ -4593,109 +3396,6 @@ begin
   AddOnTerminate(@Self.Free);
 end;
 
-type
-  TWaspAssets = record
-    Version: String;
-    Simba2, AssetsScript: String;
-  end;
-
-procedure TWaspAssets.UpdateAssetsScript(constref client: Int32; const path: String);
-const
-  URL: String = 'https://raw.githubusercontent.com/Torwent/wasp-launcher/refs/heads/main/assets-downloader.simba';
-begin
-  if FileExists(path) then
-    if not DeleteFile(path) then
-      RaiseException('Failed to delete old assets script: ' + path);
-
-  try
-    GetHTTPPageEx(client, URL, path);
-  except
-    FreeHTTPClient(client);
-    RaiseException('Failed to download assets script!');
-  end;
-end;
-
-procedure TWaspAssets.Setup();
-var
-  version, url, zipPath, exePath, cwd: String;
-  client: Int32;
-begin
-  version := '96ab06c971';
-  cwd := ScriptPath + 'Simba2' + DirectorySeparator;
-  Self.Simba2 := cwd + 'Simba-Win64_' + version + '.exe';
-
-  client := InitializeHTTPClient(True);
-
-  if not FileExists(Self.Simba2) then
-  begin
-    if not ForceDirectories(cwd) then
-      RaiseException('Failed to create Simba2 directory.');
-
-    zipPath := cwd + 'simba_' + version + '.zip';
-    if FileExists(zipPath) and not DeleteFile(zipPath) then
-      RaiseException('Failed to delete old simba 2.0 zip file from: ' + zipPath);
-
-    exePath := cwd + 'Simba-Win64.exe';
-    if FileExists(exePath) and not DeleteFile(exePath) then
-      RaiseException('Failed to delete old simba 2.0 file: ' + exePath);
-
-    url := 'https://db.waspscripts.dev/storage/v1/object/public/simba/' + version + '/win64.zip';
-    try
-      GetHTTPPageEx(client, url, zipPath);
-    except
-      FreeHTTPClient(client);
-      RaiseException('Failed to download Simba 2.0');
-    end;
-
-    if not UnZipOneFile(zipPath, 'Simba-Win64.exe', cwd) then
-      RaiseException('Failed to unzip: ' + zipPath);
-
-    if not RenameFile(cwd + 'Simba-Win64.exe', Self.Simba2) then
-      RaiseException('Failed to rename: ' + cwd + 'Simba-Win64.exe to: ' + Self.Simba2);
-  end;
-
-  Self.AssetsScript := ScriptPath + 'assets-downloader.simba';
-  Self.UpdateAssetsScript(client, Self.AssetsScript);
-  FreeHTTPClient(client);
-end;
-
-procedure TWaspAssets.Update(const url: String);
-begin
-  RunCommand(Self.Simba2, [
-    '--cwd=' + SIMBA_DATA_DIR,
-    '--url=' + url,
-    '--extractopenssl',
-    '--run', Self.AssetsScript
-  ]);
-
-  MessageDlg(
-    'Assets Downloader',
-    'Downloading assets takes a while and you should wait until it''s done or you risk corrupting files.' +
-    LineEnding +
-    'If something goes wrong clear the assets and cache before trying again please.' + LineEnding +
-    'You should get a message on Simba ouput box when it''s finished downloading them.',
-    TMsgDlgType.mtWarning, [mbOk]
-  );
-end;
-
-var
-  WaspAssets: TWaspAssets;
-
-procedure MaybeUpdateGameAssetsAfterLibInstall(const libName: String);
-begin
-  if MessageDlg(
-    'Game Assets',
-    libName + ' finished installing.' + LineEnding + LineEnding +
-      'Do you want to download/update game assets now?' + LineEnding +
-      '(Maps, sprites, etc. — this can take several minutes.)',
-    TMsgDlgType.mtConfirmation,
-    [mbYes, mbNo]
-  ) <> 6 then // mrYes
-    Exit;
-
-  WaspAssets.Update(DEFAULT_ASSETS_URL);
-end;
-
 {$IFNDEF WS_FORM_INCLUDED}
 {$DEFINE WS_FORM_INCLUDED}
 
@@ -4703,8 +3403,6 @@ type
   TWaspForm = record
     Form: TForm;
     Size: TPoint;
-    ServerListener: TTimer;
-    WaspSkipped: Boolean;
     ActivityFilter: String;
     ActivityCategory: String;
     VisibleScripts: TScriptDataArray;
@@ -4738,8 +3436,6 @@ begin
     ExtractFilePath(ScriptFile) + BASH_ACTIVITY_ICON_DIR + activityId + '.bmp',
     BASH_ASSETS_DIR + 'activities' + DirectorySeparator + activityId + '.bmp',
     IncludePath + BASHLIB_INSTALL_DIR + DirectorySeparator + 'utils' + DirectorySeparator +
-      'assets' + DirectorySeparator + 'activities' + DirectorySeparator + activityId + '.bmp',
-    IncludePath + WASPLIB_INSTALL_DIR + DirectorySeparator + 'utils' + DirectorySeparator +
       'assets' + DirectorySeparator + 'activities' + DirectorySeparator + activityId + '.bmp'
   ];
   for i := 0 to High(candidates) do
@@ -4757,8 +3453,6 @@ begin
     ExtractFilePath(ScriptFile) + 'assets' + DirectorySeparator + BASH_LOGO_NAME,
     BASH_ASSETS_DIR + BASH_LOGO_NAME,
     IncludePath + BASHLIB_INSTALL_DIR + DirectorySeparator + 'utils' + DirectorySeparator +
-      'assets' + DirectorySeparator + BASH_LOGO_NAME,
-    IncludePath + WASPLIB_INSTALL_DIR + DirectorySeparator + 'utils' + DirectorySeparator +
       'assets' + DirectorySeparator + BASH_LOGO_NAME
   ];
   for i := 0 to High(candidates) do
@@ -5022,17 +3716,7 @@ var
 begin
   msPanel := Self.Form.GetChild('main_panel');
 
-  if BashScriptClient.IsWaspSource() then
-  begin
-    if WaspClient.IsLoggedIn() then
-    begin
-      WaspClient.ApplyNoSubPremiumType();
-      scripts := WaspClient.GetAllUserScripts();
-    end
-    else
-      SetLength(scripts, 0);  end
-  else
-    scripts := BashScriptClient.GetScripts();
+  scripts := BashScriptClient.GetScripts();
 
   filter := LowerCase(Trim(Self.ActivityFilter));
   category := LowerCase(Trim(Self.ActivityCategory));
@@ -5052,8 +3736,6 @@ begin
 
   if BashScriptClient.IsLocalSource() then
     lastKey := LauncherConfig.GetString('last_local_script')
-  else if BashScriptClient.IsWaspSource() then
-    lastKey := LauncherConfig.GetString('last_wasp_script')
   else
     lastKey := LauncherConfig.GetString('last_script');
 
@@ -5079,8 +3761,6 @@ begin
     listBox.setItemIndex(0);
     if BashScriptClient.IsLocalSource() then
       LauncherConfig.Remove('last_local_script')
-    else if BashScriptClient.IsWaspSource() then
-      LauncherConfig.Remove('last_wasp_script')
     else
       LauncherConfig.Remove('last_script');
   end
@@ -5135,7 +3815,7 @@ end;
 procedure TWaspForm._OnSourceChange(sender: TObject);
 var
   radio: TRadioButton;
-  bashRadio, localRadio, waspRadio: TRadioButton;
+  bashRadio, localRadio: TRadioButton;
   source: EScriptSource;
   name: String;
 begin
@@ -5155,20 +3835,11 @@ begin
       bashRadio.SetChecked(True);
     source := EScriptSource.BASH;
   end
-  else if name = 'source_wasp_label' then
-  begin
-    waspRadio := Self.Form.GetChild('source_wasp_radio');
-    if waspRadio <> nil then
-      waspRadio.SetChecked(True);
-    source := EScriptSource.WASP;
-  end
   else
   begin
     radio := sender;
     if name = 'source_local_radio' then
       source := EScriptSource.LOCAL
-    else if name = 'source_wasp_radio' then
-      source := EScriptSource.WASP
     else
       source := EScriptSource.BASH;
 
@@ -5181,31 +3852,6 @@ begin
 
   BashScriptClient.SetActiveSource(source);
   Self.PopulateScripts();
-end;
-
-procedure TWaspForm.SetWaspSourceAvailable(loggedIn: Boolean);
-var
-  waspRadio: TRadioButton;
-  waspLabel: TLabel;
-begin
-  waspRadio := Self.Form.GetChild('source_wasp_radio');
-  waspLabel := Self.Form.GetChild('source_wasp_label');
-
-  if waspRadio <> nil then
-  begin
-    waspRadio.setEnabled(loggedIn);
-    waspRadio.setVisible(loggedIn);
-  end;
-
-  if waspLabel <> nil then
-  begin
-    waspLabel.setEnabled(loggedIn);
-    waspLabel.setVisible(loggedIn);
-    if loggedIn then
-      waspLabel.SetFontColor($FFFFFF)
-    else
-      waspLabel.SetFontColor($666666);
-  end;
 end;
 
 procedure TWaspForm._SetDescriptionVisible(visible: Boolean);
@@ -5285,20 +3931,6 @@ begin
     Exit;
   end;
 
-  if BashScriptClient.IsWaspSource() then
-  begin
-    LauncherConfig.Put('last_wasp_script', script.ID);
-    path := WaspUpdater.WaspScriptsPath + script.URL + '.simba';
-    if (not FileExists(path)) then
-      path := WaspUpdater.WaspScriptsPath + script.Name + '.simba';
-    if (path = '') or (not FileExists(path)) then Exit;
-
-    MigrateLegacyLibIncludes(path);
-    SimbaOpenInTab(path);
-    Self.Form.Close();
-    Exit;
-  end;
-
   LauncherConfig.Put('last_script', script.ID);
   scriptFile := WaspUpdater.GetScriptFile(script.ID);
   if (scriptFile.Path = '') or (not FileExists(scriptFile.Path)) then Exit;
@@ -5313,30 +3945,6 @@ var
 begin
   panel := TButton(sender).getOwner();
   Self._OpenScript(panel.GetChild('scripts_listbox'));
-end;
-
-procedure TWaspForm._UpdateSRL();
-var
-  panel: TPanel;
-  caption, button: TComponent;
-begin
-  panel := Self.Form.GetChild('current_version_panel');
-  caption := panel.GetChild('current_srlt_label');
-  panel := panel.GetOwner();
-  button := panel.GetChild('update_srlt_button');
-  WaspUpdater.Update('srlt', caption, button);
-end;
-
-procedure TWaspForm._UpdateWL();
-var
-  panel: TPanel;
-  caption, button: TComponent;
-begin
-  panel := Self.Form.GetChild('current_version_panel');
-  caption := panel.GetChild('current_wl_label');
-  panel := panel.GetOwner();
-  button := panel.GetChild('update_wl_button');
-  WaspUpdater.Update('wasplib', caption, button);
 end;
 
 procedure TWaspForm._UpdateSRLB();
@@ -5363,45 +3971,6 @@ begin
   WaspUpdater.Update('bashlib', caption, button);
 end;
 
-procedure TWaspForm.DownloadWaspScript(script: TScriptData);
-var
-  files: TStringArray;
-  fileName, path: String;
-begin
-  if not ForceDirectories(WaspUpdater.WaspScriptsPath) then
-  begin
-    MessageDlg('B.A.S.H', 'Failed to create wasp scripts folder: ' + WaspUpdater.WaspScriptsPath, TMsgDlgType.mtError, []);
-    Exit;
-  end;
-
-  files := GetFiles(WaspClient.DownloadPath, 'simba');
-  for fileName in files do
-    DeleteFile(WaspClient.DownloadPath + fileName);
-
-  WaspClient.DownloadScript(script.URL, script.ID, script.Revision);
-
-  files := GetFiles(WaspClient.DownloadPath, 'simba');
-  if Length(files) <> 1 then Exit;
-
-  fileName := files[0];
-  path := WaspUpdater.WaspScriptsPath + fileName;
-  if FileExists(path) and not DeleteFile(path) then
-  begin
-    WriteLn('[B.A.S.H] Failed to delete old wasp script: ', fileName);
-    Exit;
-  end;
-
-  if not RenameFile(WaspClient.DownloadPath + fileName, path) then
-  begin
-    DeleteFile(WaspClient.DownloadPath + fileName);
-    WriteLn('[B.A.S.H] Failed to move wasp script: ', fileName);
-    Exit;
-  end;
-
-  WaspUpdater.UpdateScriptFileRevision(WaspUpdater.GetScriptFileEx(path));
-  WriteLn('[B.A.S.H] Wasp script installed: ', path);
-end;
-
 procedure TWaspForm._UpdateScript();
 var
   list: TListBox;
@@ -5416,39 +3985,6 @@ begin
   if (list = nil) or (list.getItemIndex() < 0) then Exit;
 
   if not Self.GetSelectedScript(script) then Exit;
-
-  if BashScriptClient.IsWaspSource() then
-  begin
-    if (script.Typ = EScriptType.PREMIUM_NO_SUB) then
-    begin
-      MessageDlg('B.A.S.H', '"' + script.Name + '" requires an active WaspScripts subscription.', TMsgDlgType.mtWarning, []);
-      Exit;
-    end;
-
-    button := Self.Form.GetChild('update_script_button');
-    oldCaption := '';
-    if button <> nil then
-    begin
-      oldCaption := button.getCaption();
-      button.setEnabled(False);
-      button.setCaption('Downloading...');
-      button.Repaint();
-    end;
-
-    try
-      Self.Updating.Script := True;
-      Self.DownloadWaspScript(script);
-      Self._OnScriptChange(list);
-    finally
-      Self.Updating.Script := False;
-      if (button <> nil) and (oldCaption <> '') and (button.getCaption() = 'Downloading...') then
-      begin
-        button.setCaption(oldCaption);
-        button.setEnabled(True);
-      end;
-    end;
-    Exit;
-  end;
 
   if (script.Typ = EScriptType.PREMIUM_NO_SUB) or (script.Typ = EScriptType.TESTING_NO_SUB) or (script.Typ = EScriptType.FULL_NO_SUB) then
   begin
@@ -5667,90 +4203,6 @@ begin
     Exit;
   end;
 
-  if BashScriptClient.IsWaspSource() or (scriptData.Source = EScriptSource.WASP) then
-  begin
-    Self._SetDescriptionVisible(True);
-    Self._SetDiscordCtaVisible(False);
-
-    localPath := WaspUpdater.WaspScriptsPath + scriptData.URL + '.simba';
-    if not FileExists(localPath) then
-      localPath := WaspUpdater.WaspScriptsPath + scriptData.Name + '.simba';
-
-    scriptFile := WaspUpdater.GetScriptFile(scriptData.ID);
-
-    if panel <> nil then
-    begin
-      text := panel.GetChild('current_script_label');
-      if scriptFile.Revision = 0 then
-        text.setCaption('-')
-      else
-        text.setCaption('rev.' + ToStr(scriptFile.Revision));
-
-      if scriptFile.Revision <> scriptData.Revision then
-        text.SetFontColor($4C5DE8)
-      else
-        text.SetFontColor($3DCF7A);
-
-      text := panel.GetChild('latest_script_label');
-      text.setCaption('rev.' + ToStr(scriptData.Revision));
-      if scriptFile.Revision <> scriptData.Revision then
-        text.SetFontColor($4C5DE8)
-      else
-        text.SetFontColor($3DCF7A);
-    end;
-
-    if update <> nil then
-    begin
-      if scriptData.Typ = EScriptType.PREMIUM_NO_SUB then
-      begin
-        update.setCaption('No Sub');
-        update.setEnabled(False);
-      end
-      else
-      begin
-        update.setEnabled(True);
-        if scriptFile.Revision = 0 then
-          update.setCaption('Install')
-        else if scriptFile.Revision = scriptData.Revision then
-          update.setCaption('Re-install')
-        else
-          update.setCaption('Update');
-      end;
-    end;
-
-    if open <> nil then
-    begin
-      open.setEnabled(FileExists(localPath));
-      open.setCaption('Open script');
-    end;
-
-    panel := main.GetChild('script_panel');
-    text := panel.GetChild('script_name_label');
-    text.setCaption(scriptData.Name);
-
-    text := panel.GetChild('script_category_label');
-    if scriptData.Typ = EScriptType.PREMIUM then
-    begin
-      text.setCaption('Wasp Premium');
-      text.SetFontColor($3DCF7A);
-    end
-    else if scriptData.Typ = EScriptType.PREMIUM_NO_SUB then
-    begin
-      text.setCaption('Wasp Premium - No Sub');
-      text.SetFontColor($3084B8);
-    end
-    else
-    begin
-      text.setCaption('Wasp Free');
-      text.SetFontColor($D4A017);
-    end;
-    text.setLeft(panel.getWidth() - text.GetTrueWidth() - TControl.AdjustToDPI(5));
-
-    memo := panel.GetChild('script_content_memo');
-    memo.setText(scriptData.Description + LineEnding + LineEnding + scriptData.Content);
-    Exit;
-  end;
-
   Self._SetDescriptionVisible(True);
   Self._SetDiscordCtaVisible(scriptData.Typ <> EScriptType.FREE);
 
@@ -5887,25 +4339,9 @@ procedure TWaspForm.SetupVersionsPanel(parent: TPanel; top: Int32);
     Result.setColor($1A1814);
 
     textLabel.Create(Result);
-    textLabel.setName(LowerCase(name) + '_srlt_title_label');
-    textLabel.setCaption(name + ' SRL-T:');
-    textLabel.setLeft(TControl.AdjustToDPI(3));
-    textLabel.SetFontSize(8);
-    textLabel.SetFontColor($A89F90);
-
-    textLabel.Create(Result);
-    textLabel.setName(LowerCase(name) + '_wl_title_label');
-    textLabel.setCaption(name + ' WaspLib:');
-    textLabel.setLeft(TControl.AdjustToDPI(3));
-    textLabel.SetTop(rowH);
-    textLabel.SetFontSize(8);
-    textLabel.SetFontColor($A89F90);
-
-    textLabel.Create(Result);
     textLabel.setName(LowerCase(name) + '_srlb_title_label');
     textLabel.setCaption(name + ' SRL-B:');
     textLabel.setLeft(TControl.AdjustToDPI(3));
-    textLabel.SetTop(rowH * 2);
     textLabel.SetFontSize(8);
     textLabel.SetFontColor($A89F90);
 
@@ -5913,7 +4349,7 @@ procedure TWaspForm.SetupVersionsPanel(parent: TPanel; top: Int32);
     textLabel.setName(LowerCase(name) + '_bashlib_title_label');
     textLabel.setCaption(name + ' BashLib:');
     textLabel.setLeft(TControl.AdjustToDPI(3));
-    textLabel.SetTop(rowH * 3);
+    textLabel.SetTop(rowH);
     textLabel.SetFontSize(8);
     textLabel.SetFontColor($A89F90);
 
@@ -5921,7 +4357,7 @@ procedure TWaspForm.SetupVersionsPanel(parent: TPanel; top: Int32);
     textLabel.setName(LowerCase(name) + '_script_title_label');
     textLabel.setCaption(name + ' Script:');
     textLabel.setLeft(TControl.AdjustToDPI(3));
-    textLabel.SetTop(rowH * 4);
+    textLabel.SetTop(rowH * 2);
     textLabel.SetFontSize(8);
     textLabel.SetFontColor($A89F90);
   end;
@@ -5963,37 +4399,6 @@ procedure TWaspForm.SetupVersionsPanel(parent: TPanel; top: Int32);
     Result.setColor($1A1814);
 
     textLabel.Create(Result);
-    textLabel.setName(name + '_srlt_label');
-    if name = 'current' then
-    begin
-      textLabel.setCaption(VersionCaption(GitHubClient.Packages.Current.SRLT));
-      textLabel.SetFontColor(VersionColor(GitHubClient.Packages.Current.SRLT, GitHubClient.Packages.Latest.SRLT));
-    end
-    else
-    begin
-      textLabel.setCaption(VersionCaption(GitHubClient.Packages.Latest.SRLT));
-      textLabel.SetFontColor($3DCF7A);
-    end;
-    textLabel.setLeft(TControl.AdjustToDPI(3));
-    textLabel.SetFontSize(8);
-
-    textLabel.Create(Result);
-    textLabel.setName(name + '_wl_label');
-    if name = 'current' then
-    begin
-      textLabel.setCaption(VersionCaption(GitHubClient.Packages.Current.WaspLib));
-      textLabel.SetFontColor(VersionColor(GitHubClient.Packages.Current.WaspLib, GitHubClient.Packages.Latest.WaspLib));
-    end
-    else
-    begin
-      textLabel.setCaption(VersionCaption(GitHubClient.Packages.Latest.WaspLib));
-      textLabel.SetFontColor($3DCF7A);
-    end;
-    textLabel.setLeft(TControl.AdjustToDPI(3));
-    textLabel.SetTop(rowH);
-    textLabel.SetFontSize(8);
-
-    textLabel.Create(Result);
     textLabel.setName(name + '_srlb_label');
     if name = 'current' then
     begin
@@ -6006,7 +4411,6 @@ procedure TWaspForm.SetupVersionsPanel(parent: TPanel; top: Int32);
       textLabel.SetFontColor($3DCF7A);
     end;
     textLabel.setLeft(TControl.AdjustToDPI(3));
-    textLabel.SetTop(rowH * 2);
     textLabel.SetFontSize(8);
 
     textLabel.Create(Result);
@@ -6022,13 +4426,13 @@ procedure TWaspForm.SetupVersionsPanel(parent: TPanel; top: Int32);
       textLabel.SetFontColor($3DCF7A);
     end;
     textLabel.setLeft(TControl.AdjustToDPI(3));
-    textLabel.SetTop(rowH * 3);
+    textLabel.SetTop(rowH);
     textLabel.SetFontSize(8);
 
     textLabel.Create(Result);
     textLabel.setName(name + '_script_label');
     textLabel.setLeft(TControl.AdjustToDPI(3));
-    textLabel.SetTop(rowH * 4);
+    textLabel.SetTop(rowH * 2);
     textLabel.SetFontSize(8);
     textLabel.SetFontColor($F2EDE4);
   end;
@@ -6038,8 +4442,6 @@ procedure TWaspForm.SetupVersionsPanel(parent: TPanel; top: Int32);
     procedure TWaspForm._UpdateButton(sender: TObject);
     begin
       case TButton(sender).getName() of
-        'update_srlt_button':    {$IFNDEF DEVELOPER_MODE}Sync(@Self._UpdateSRL){$ENDIF};
-        'update_wl_button':      {$IFNDEF DEVELOPER_MODE}Sync(@Self._UpdateWL){$ENDIF};
         'update_srlb_button':    {$IFNDEF DEVELOPER_MODE}Sync(@Self._UpdateSRLB){$ENDIF};
         'update_bashlib_button': {$IFNDEF DEVELOPER_MODE}Sync(@Self._UpdateBashLib){$ENDIF};
         'update_script_button':  Self._UpdateScript();
@@ -6061,32 +4463,8 @@ procedure TWaspForm.SetupVersionsPanel(parent: TPanel; top: Int32);
     Result.setColor($1A1814);
 
     button.Create(Result);
-    button.setName('update_srlt_button');
-    button.setLeft(TControl.AdjustToDPI(3));
-    button.setHeight(TControl.AdjustToDPI(16));
-    button.setWidth(TControl.AdjustToDPI(70));
-    if GitHubClient.Packages.Current.SRLT <> GitHubClient.Packages.Latest.SRLT then
-      button.setCaption('Update')
-    else
-      button.setCaption('Re-install');
-    button.setOnClick(@Self._UpdateButton);
-
-    button.Create(Result);
-    button.setName('update_wl_button');
-    button.setLeft(TControl.AdjustToDPI(3));
-    button.SetTop(rowH);
-    button.setHeight(TControl.AdjustToDPI(16));
-    button.setWidth(TControl.AdjustToDPI(70));
-    if GitHubClient.Packages.Current.WaspLib <> GitHubClient.Packages.Latest.WaspLib then
-      button.setCaption('Update')
-    else
-      button.setCaption('Re-install');
-    button.setOnClick(@Self._UpdateButton);
-
-    button.Create(Result);
     button.setName('update_srlb_button');
     button.setLeft(TControl.AdjustToDPI(3));
-    button.SetTop(rowH * 2);
     button.setHeight(TControl.AdjustToDPI(16));
     button.setWidth(TControl.AdjustToDPI(70));
     if GitHubClient.Packages.Current.SRLB <> GitHubClient.Packages.Latest.SRLB then
@@ -6098,7 +4476,7 @@ procedure TWaspForm.SetupVersionsPanel(parent: TPanel; top: Int32);
     button.Create(Result);
     button.setName('update_bashlib_button');
     button.setLeft(TControl.AdjustToDPI(3));
-    button.SetTop(rowH * 3);
+    button.SetTop(rowH);
     button.setHeight(TControl.AdjustToDPI(16));
     button.setWidth(TControl.AdjustToDPI(70));
     if GitHubClient.Packages.Current.BashLib <> GitHubClient.Packages.Latest.BashLib then
@@ -6110,7 +4488,7 @@ procedure TWaspForm.SetupVersionsPanel(parent: TPanel; top: Int32);
     button.Create(Result);
     button.setName('update_script_button');
     button.setLeft(TControl.AdjustToDPI(3));
-    button.SetTop(rowH * 4);
+    button.SetTop(rowH * 2);
     button.setHeight(TControl.AdjustToDPI(16));
     button.setWidth(TControl.AdjustToDPI(70));
     button.setCaption('Install');
@@ -6128,7 +4506,7 @@ begin
   panel.setBorderStyle(TFormBorderStyle.bsNone);
   panel.setBevelWidth(0);
   panel.SetTop(top);
-  panel.setHeight(TControl.AdjustToDPI(96));
+  panel.setHeight(TControl.AdjustToDPI(60));
   panel.setColor($1A1814);
 
   tmp := Self._VersionsTitleLabel(panel, 'Current', 0);
@@ -6341,11 +4719,11 @@ procedure TWaspForm.SetupScriptsPanel(parent: TPanel);
 var
   panel, accentBar, sourcePanel, licensePanel, activityPanel, activityCell, categoryPanel: TPanel;
   logo, activityIcon: TImage;
-  branding, subtitle, discordLink, launcherRev, bashLabel, localLabel, waspLabel, licenseStatus, activityCaption: TLabel;
+  branding, subtitle, discordLink, launcherRev, bashLabel, localLabel, licenseStatus, activityCaption: TLabel;
   button, saveBtn, clearBtn, categoryBtn: TButton;
   scriptsList: TLabeledDarkListBox;
   licenseEdit: TLabeledEdit;
-  bashRadio, localRadio, waspRadio: TRadioButton;
+  bashRadio, localRadio: TRadioButton;
   listTop, footerTop, colGap, logoSize, textLeft, headerBottom, radioTop: Int32;
   logoPath, iconPath: String;
   actIds, catIds, catLabels: TStringArray;
@@ -6440,7 +4818,7 @@ begin
   sourcePanel.SetLeft(textLeft);
   sourcePanel.SetTop(discordLink.GetTop() + discordLink.getHeight() + TControl.AdjustToDPI(8));
   sourcePanel.setWidth(TControl.AdjustToDPI(420));
-  sourcePanel.setHeight(TControl.AdjustToDPI(48));
+  sourcePanel.setHeight(TControl.AdjustToDPI(28));
 
   BashScriptClient.SetActiveSource(EScriptSource.BASH);
 
@@ -6479,30 +4857,6 @@ begin
   localLabel.SetTop(radioTop);
   localLabel.SetFontColor($FFFFFF);
   localLabel.setOnClick(@Self._OnSourceChange);
-
-  waspRadio.Create(sourcePanel);
-  waspRadio.setName('source_wasp_radio');
-  waspRadio.setCaption('');
-  waspRadio.SetLeft(0);
-  waspRadio.SetTop(radioTop + TControl.AdjustToDPI(20));
-  waspRadio.setWidth(TControl.AdjustToDPI(18));
-  waspRadio.setOnClick(@Self._OnSourceChange);
-  waspRadio.SetChecked(False);
-  waspRadio.setEnabled(WaspClient.IsLoggedIn());
-  waspRadio.setVisible(WaspClient.IsLoggedIn());
-
-  waspLabel.Create(sourcePanel);
-  waspLabel.setName('source_wasp_label');
-  waspLabel.setCaption('Wasp Scripts');
-  waspLabel.SetLeft(waspRadio.GetLeft() + waspRadio.getWidth() + TControl.AdjustToDPI(4));
-  waspLabel.SetTop(waspRadio.GetTop());
-  if WaspClient.IsLoggedIn() then
-    waspLabel.SetFontColor($FFFFFF)
-  else
-    waspLabel.SetFontColor($666666);
-  waspLabel.setEnabled(WaspClient.IsLoggedIn());
-  waspLabel.setVisible(WaspClient.IsLoggedIn());
-  waspLabel.setOnClick(@Self._OnSourceChange);
 
   headerBottom := Max(logo.GetTop() + logo.getHeight(), sourcePanel.GetTop() + sourcePanel.getHeight());
   listTop := headerBottom + TControl.AdjustToDPI(12);
@@ -6729,335 +5083,6 @@ begin
   launcherRev.setLeft(Self.Size.X div 2 - launcherRev.GetTrueWidth() div 2);
 end;
 
-procedure TWaspForm.HandleWaspLogin(loginPanel: TPanel);
-var
-  msPanel, dPanel: TPanel;
-begin
-  msPanel := Self.Form.GetChild('main_panel');
-  dPanel := Self.Form.GetChild('discord_panel');
-
-  if loginPanel <> nil then loginPanel.Hide();
-  if dPanel <> nil then dPanel.Hide();
-  if msPanel <> nil then msPanel.Show();
-
-  Self.WaspSkipped := False;
-  LauncherConfig.Remove('wasp_skipped');
-
-  Self.SetWaspSourceAvailable(True);
-  Self.PopulateScripts();
-end;
-
-procedure TWaspForm.SetupDiscordPanel(form: TForm);
-  type TWaspForm = TWaspForm;
-  procedure TWaspForm._CancelButton(sender: TObject);
-  var
-    lPanel, dPanel: TPanel;
-  begin
-    LauncherConfig.Put('use_discord', 'false');
-    dPanel := TButton(sender).getOwner();
-    lPanel := Self.Form.GetChild('login_panel');
-    if lPanel <> nil then lPanel.Show();
-    if dPanel <> nil then dPanel.Hide();
-    CloseFile(CreateFile(WaspAsync.Path + 'server-stop'));
-    Self.ServerListener.setEnabled(False);
-  end;
-
-var
-  panel: TPanel;
-  cancel: TButton;
-  caption, info: TLabel;
-  h, w: Int32;
-begin
-  panel.Create(form);
-  panel.setName('discord_panel');
-  panel.setCaption('');
-  panel.setWidth(TControl.AdjustToDPI(600));
-  panel.setHeight(TControl.AdjustToDPI(300));
-
-  h := panel.getHeight() div 2;
-  w := panel.getWidth() div 2;
-
-  panel.SetLeft(Self.Size.X div 2 - w);
-  panel.SetTop(Self.Size.Y div 2 - (panel.getHeight() - (panel.getHeight() div 10)));
-  panel.setBevelWidth(0);
-  panel.setColor($1A1814);
-  panel.Hide();
-
-  caption.Create(panel);
-  caption.SetName('discord_label');
-  caption.SetTop(h);
-  caption.SetFontSize(32);
-  caption.SetFontColor($D4A017);
-  caption.SetCaption('Sign In On Your Browser');
-  caption.SetLeft(w - caption.GetTrueWidth() div 2);
-
-  info.Create(panel);
-  info.SetName('discord_info_label');
-  info.SetTop(h + h div 3);
-  info.SetCaption('This page will refresh once you''re signed in.');
-  info.SetFontColor($A89F90);
-  info.SetLeft(w - info.GetTrueWidth() div 2);
-
-  cancel.Create(panel);
-  cancel.SetName('cancel_button');
-  cancel.SetCaption('Cancel');
-  cancel.setWidth(panel.getWidth() div 3);
-  cancel.SetLeft(w - cancel.getWidth() div 2);
-  cancel.SetTop(info.getTop() + info.getHeight() + TControl.AdjustToDPI(20));
-  cancel.setOnClick(@Self._CancelButton);
-end;
-
-procedure TWaspForm._OnListen(sender: TObject);
-var
-  token: String;
-  lPanel, dPanel: TPanel;
-begin
-  if FileExists(WaspAsync.Path + 'server-failed.done') then
-  begin
-    DeleteFile(WaspAsync.Path + 'server-failed.done');
-    TTimer(sender).setEnabled(False);
-    dPanel := Self.Form.GetChild('discord_panel');
-    lPanel := Self.Form.GetChild('login_panel');
-    if dPanel <> nil then dPanel.Hide();
-    if lPanel <> nil then lPanel.Show();
-    Exit;
-  end;
-
-  if not FileExists(WaspAsync.Path + 'server-success.done') then Exit;
-
-  token := ReadFileContents(WaspAsync.Path + 'server-success.done');
-  DeleteFile(WaspAsync.Path + 'server-success.done');
-  TTimer(sender).setEnabled(False);
-  CloseFile(CreateFile(WaspAsync.Path + 'server-stop'));
-
-  if (token <> '') and WaspClient.FinishOAuth2Login(token) then
-  begin
-    Self.HandleWaspLogin(Self.Form.GetChild('login_panel'));
-    Exit;
-  end;
-end;
-
-procedure TWaspForm.Listen();
-begin
-  Self.ServerListener.setOnTimer(@Self._OnListen);
-  Self.ServerListener.setEnabled(True);
-end;
-
-procedure TWaspForm.SetupLoginPanel(form: TForm);
-  type TWaspForm = TWaspForm;
-
-  procedure TWaspForm._LoginButton(sender: TObject);
-  var
-    loginPanel: TPanel;
-    email, password: TEdit;
-  begin
-    loginPanel := TComponent(sender).getOwner();
-
-    email := loginPanel.GetChild('email_edit');
-    password := loginPanel.GetChild('password_edit');
-
-    if WaspClient.Login(email.getText(), password.getText()) then
-    begin
-      Self.HandleWaspLogin(loginPanel);
-      Exit;
-    end;
-
-    with email.getFont() do
-    begin
-      setColor($4C5DE8);
-      setStyle([]);
-    end;
-
-    with password.getFont() do
-    begin
-      setColor($4C5DE8);
-      setStyle([]);
-    end;
-  end;
-
-  procedure TWaspForm._Validate(edit: TEdit);
-  var
-    panel: TPanel;
-    email, password: TEdit;
-    strMail: String;
-    button: TButton;
-  begin
-    panel := edit.getOwner().getOwner();
-
-    case edit.getName() of
-      'email_edit':
-      begin
-        email := edit;
-        password := panel.GetChild('password_edit');
-      end;
-      'password_edit':
-      begin
-        email := panel.GetChild('email_edit');
-        password := edit;
-      end;
-      else
-        TerminateScript('TWaspForm._Validate(), unknown control.');
-    end;
-
-    with email.getFont() do
-    begin
-      setStyle([fsBold]);
-      setColor($F2EDE4);
-    end;
-
-    with password.getFont() do
-    begin
-      setStyle([fsBold]);
-      setColor($F2EDE4);
-    end;
-
-    strMail := email.getText();
-    button := TButton(panel.GetChild('login_button'));
-    button.setEnabled(strMail.IsEmail() and (password.GetTextLen() > 4));
-
-    if button.IsEnabled() then
-      Self._LoginButton(button);
-  end;
-
-  procedure TWaspForm._OnEmailDone(sender: TObject);
-  var
-    email: TEdit;
-    str: String;
-  begin
-    Self._Validate(sender);
-    email := sender;
-    str := LowerCase(Trim(email.getText()));
-    if str.IsEmail() then
-      LauncherConfig.Put('email', LowerCase(Trim(email.getText())));
-  end;
-
-  procedure TWaspForm._OnEmailChange(sender: TObject);
-  begin
-    Self._OnEmailDone(sender);
-  end;
-
-  procedure TWaspForm._OnPassDone(sender: TObject);
-  begin
-    Self._Validate(sender);
-  end;
-
-  procedure TWaspForm._OnPassChange(sender: TObject);
-  begin
-    Self._OnPassDone(sender);
-  end;
-
-  procedure TWaspForm._DiscordButton(sender: TObject);
-  var
-    lPanel, dPanel: TPanel;
-  begin
-    LauncherConfig.Put('use_discord', 'true');
-    lPanel := TButton(sender).getOwner();
-
-    dPanel := Self.Form.GetChild('discord_panel');
-
-    if dPanel <> nil then dPanel.Show();
-    lPanel.Hide();
-
-    WaspClient.StartOAuth2Login();
-    DeleteFile(WaspAsync.Path + 'server-failed.done');
-    DeleteFile(WaspAsync.Path + 'server-success.done');
-    RunScript(WaspAsync.Path + 'server.simba', ['LauncherPID=' + ToString(GetProcessID())]);
-    Sync(@Self.Listen);
-  end;
-
-  procedure TWaspForm._SkipButton(sender: TObject);
-  var
-    lPanel, msPanel: TPanel;
-  begin
-    lPanel := TButton(sender).getOwner();
-    msPanel := Self.Form.GetChild('main_panel');
-
-    Self.WaspSkipped := True;
-
-    if lPanel <> nil then lPanel.Hide();
-    if msPanel <> nil then msPanel.Show();
-
-    Self.SetWaspSourceAvailable(False);
-    Self.PopulateScripts();
-  end;
-
-var
-  panel: TPanel;
-  mailEdit, passEdit: TLabeledEdit;
-  login, discord, skip: TButton;
-  title: TLabel;
-  email: String;
-begin
-  panel.Create(form);
-  panel.setName('login_panel');
-  panel.setCaption('');
-  panel.setWidth(TControl.AdjustToDPI(300));
-  panel.setHeight(TControl.AdjustToDPI(220));
-  panel.SetLeft(Self.Size.X div 2 - panel.getWidth() div 2);
-  panel.SetTop(Self.Size.Y div 2 - (panel.getHeight() - (panel.getHeight() div 10)));
-  panel.setBevelWidth(0);
-  panel.setColor($1A1814);
-
-  title.Create(panel);
-  title.setName('login_title_label');
-  title.setCaption('WaspScripts Login');
-  title.SetFontSize(14);
-  title.SetFontColor($D4A017);
-  title.SetFontStyle([TFontStyle.fsBold]);
-  title.SetLeft(panel.getWidth() div 2 - title.GetTrueWidth() div 2);
-  title.SetTop(-TControl.AdjustToDPI(30));
-
-  email := LauncherConfig.GetString('email');
-  if email = '' then
-    email := 'email@mail.com';
-
-  mailEdit.Create(panel);
-  mailEdit.SetName('email');
-  mailEdit.SetCaption('Email');
-  mailEdit.Caption.SetFontColor($A89F90);
-  mailEdit.SetWidth(panel.getWidth());
-  mailEdit.SetText(email);
-  mailEdit.SetControlColor($24201C);
-  mailEdit.setControlFontColor($F2EDE4);
-  mailEdit.Edit.setOnEditingDone(@Self._OnEmailDone);
-
-  passEdit.Create(panel);
-  passEdit.SetName('password');
-  passEdit.SetCaption('Password');
-  passEdit.Caption.SetFontColor($A89F90);
-  passEdit.SetTop(TControl.AdjustToDPI(50));
-  passEdit.SetWidth(panel.getWidth());
-  passEdit.SetControlColor($24201C);
-  passEdit.setControlFontColor($F2EDE4);
-  passEdit.setPasswordChar('*');
-  passEdit.Edit.setOnEditingDone(@Self._OnPassDone);
-  passEdit.Edit.setOnChange(@Self._OnPassChange);
-
-  login.Create(panel);
-  login.SetName('login_button');
-  login.SetCaption('Login');
-  login.setWidth(panel.getWidth() div 4);
-  login.SetTop(TControl.AdjustToDPI(110));
-  login.setEnabled(False);
-  login.setOnClick(@Self._LoginButton);
-
-  discord.Create(panel);
-  discord.SetName('discord_button');
-  discord.SetCaption('Discord');
-  discord.setWidth(panel.getWidth() div 4);
-  discord.SetLeft(login.GetLeft() + login.getWidth() + TControl.AdjustToDPI(6));
-  discord.SetTop(login.GetTop());
-  discord.setOnClick(@Self._DiscordButton);
-
-  skip.Create(panel);
-  skip.SetName('skip_button');
-  skip.SetCaption('Skip');
-  skip.setWidth(panel.getWidth() div 4);
-  skip.SetLeft(panel.getWidth() - skip.getWidth());
-  skip.SetTop(login.GetTop());
-  skip.setOnClick(@Self._SkipButton);
-end;
-
 procedure TWaspForm.SetupMainPanel(form: TForm);
 var
   panel: TPanel;
@@ -7076,32 +5101,8 @@ procedure TWaspForm.OnShow(sender: TObject);
 var
   text: TLabel;
   status: TLabel;
-  loginPanel, msPanel: TPanel;
-  loggedIn: Boolean;
 begin
-  if not WaspClient.IsLoggedIn() then
-    WaspClient.LoadRefreshToken();
-
-  loggedIn := WaspClient.IsLoggedIn();
-
-  loginPanel := Self.Form.GetChild('login_panel');
-  msPanel := Self.Form.GetChild('main_panel');
-
-  if loggedIn then
-  begin
-    Self.WaspSkipped := False;
-    if loginPanel <> nil then loginPanel.Hide();
-    if msPanel <> nil then msPanel.Show();
-    Self.SetWaspSourceAvailable(True);
-    Self.PopulateScripts();
-  end
-  else
-  begin
-    Self.WaspSkipped := False;
-    if loginPanel <> nil then loginPanel.Show();
-    if msPanel <> nil then msPanel.Hide();
-    Self.SetWaspSourceAvailable(False);
-  end;
+  Self.PopulateScripts();
 
   text := Self.Form.GetChild('source_bash_label');
   if text <> nil then
@@ -7136,12 +5137,6 @@ end;
 procedure TWaspForm.Setup();
 begin
   Self.Size := [TControl.AdjustToDPI(920), TControl.AdjustToDPI(640)];
-  Self.WaspSkipped := False;
-  LauncherConfig.Remove('wasp_skipped');
-
-  Self.ServerListener.Init(nil);
-  Self.ServerListener.setName('wasp_server_listener');
-  Self.ServerListener.setInterval(200);
 
   Self.Form.Init(nil);
   Self.Form.SetName('bash_form');
@@ -7160,11 +5155,7 @@ begin
     SetColor($F2EDE4);
   end;
 
-  Self.SetupLoginPanel(Self.Form);
-  Self.SetupDiscordPanel(Self.Form);
   Self.SetupMainPanel(Self.Form);
-
-  AddOnTerminate(@Self.ServerListener.Free);
 end;
 
 procedure TWaspForm.Show();
@@ -7622,6 +5613,7 @@ begin
       Exit;
     end;
 
+    // Always write updates to bash-launcher.simba (never wasp-launcher.simba).
     if not WriteBashLauncherFile(dest, body) then
     begin
       WriteLn('[B.A.S.H] Remote write failed. Falling back to local install...');
@@ -7661,10 +5653,8 @@ begin
   LauncherConfig.Setup(AppPath + 'Configs' + DirectorySeparator + 'bash-launcher.json');
   BashScriptClient.Setup();
   BashLicenseClient.Setup();
-  WaspClient.Setup();
   WaspUpdater.Setup();
   GitHubClient.Setup();
-  WaspAssets.Setup();
   CheckBashLauncherUpdate();
   EnsureBashUiAssets();
   WaspForm.Run();
