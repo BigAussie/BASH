@@ -1,5 +1,5 @@
 {$DEFINE SCRIPT_ID := 'bfde3085-80dc-4bd6-870a-8cb3186a938c'}
-{$DEFINE SCRIPT_REVISION := '10'}
+{$DEFINE SCRIPT_REVISION := '11'}
 
 {.$DEFINE DEVELOPER_MODE}
 
@@ -5263,6 +5263,22 @@ begin
   Result := StrToIntDef(revStr, 0);
 end;
 
+function ParseScriptRevisionFromText(content: String): Int32;
+var
+  header, revStr: String;
+begin
+  Result := 0;
+  if content = '' then
+    Exit;
+  header := content;
+  if Length(header) > 8192 then
+    header := Copy(header, 1, 8192);
+  revStr := header.After('SCRIPT_REVISION := ''').Before('''}');
+  if revStr = '' then
+    revStr := header.After('SCRIPT_REVISION := "').Before('"}');
+  Result := StrToIntDef(revStr, 0);
+end;
+
 function IsBashLauncherFile(path: String): Boolean;
 begin
   Result := SameText(ReadScriptIdFromFile(path), {$MACRO SCRIPT_ID});
@@ -5445,9 +5461,12 @@ end;
 function InstallBashLauncherToDefaultPath(): Boolean;
 var
   dest, body: String;
+  selfRev, installedRev, bodyRev: Int32;
 begin
   Result := False;
   dest := BashLauncherPath();
+  selfRev := StrToIntDef({$MACRO SCRIPT_REVISION}, 1);
+  installedRev := ReadScriptRevisionFromFile(dest);
 
   if IsBashLauncherFile(ScriptFile) then
   begin
@@ -5463,18 +5482,18 @@ begin
     end;
   end;
 
-  if DownloadBashLauncherToFile(dest) then
-  begin
-    WriteLn('[B.A.S.H] Installed launcher to ', dest, ' from GitHub');
-    Exit(True);
-  end;
-
   body := DownloadBashLauncherBody();
-  if WriteBashLauncherFile(dest, body) then
+  bodyRev := ParseScriptRevisionFromText(body);
+  if (Length(body) >= 500) and (bodyRev >= Max(selfRev, installedRev)) then
   begin
-    WriteLn('[B.A.S.H] Installed launcher to ', dest);
-    Exit(True);
-  end;
+    if WriteBashLauncherFile(dest, body) then
+    begin
+      WriteLn('[B.A.S.H] Installed launcher to ', dest, ' from remote (rev ', bodyRev, ')');
+      Exit(True);
+    end;
+  end
+  else if (bodyRev > 0) and (bodyRev < selfRev) then
+    WriteLn('[B.A.S.H] Skipping remote install (remote rev ', bodyRev, ' < local ', selfRev, ')');
 end;
 
 procedure EnsureBashLauncherOnDefaultPath();
@@ -5493,7 +5512,10 @@ begin
   begin
     try
       body := ReadFileContents(dest);
-      looksLikeLegacyWasp := body.Contains('BASH_LAUNCHER_FILE') and body.Contains('''wasp-launcher.simba''');
+      looksLikeLegacyWasp :=
+        body.Contains('BASH_LAUNCHER_FILE') and
+        (body.Contains('BASH_LAUNCHER_FILE  = ''wasp-launcher.simba''') or
+         body.Contains('BASH_LAUNCHER_FILE = ''wasp-launcher.simba'''));
     except
     end;
   end;
@@ -5547,8 +5569,8 @@ end;
 
 procedure CheckBashLauncherUpdate();
 var
-  http, code, remoteRev, localRev: Int32;
-  response, body, dest: String;
+  http, code, remoteRev, localRev, apiRev, githubRev: Int32;
+  response, body, githubBody, dest, source: String;
   json: TJSONObject;
 begin
   {$IFDEF DEVELOPER_MODE}
@@ -5561,40 +5583,56 @@ begin
   if IsBashLauncherFile(dest) then
     localRev := Max(localRev, ReadScriptRevisionFromFile(dest));
 
+  apiRev := 0;
+  githubRev := 0;
+  githubBody := '';
+  body := '';
+  source := '';
+
   http := InitializeHTTPClient(True);
   try
     SetHTTPHeader(http, 'User-Agent', 'B.A.S.H-Launcher');
+    try
+      SetSocketTimeout(http, 60000);
+    except
+    end;
+
     SetHTTPHeader(http, 'Accept', 'application/json');
     try
-      SetSocketTimeout(http, 15000);
+      response := GetHTTPPage(http, BASH_PREMIUM_API + '/v1/launcher');
+      code := GetHTTPResponseCode(http);
+      if code = 200 then
+      begin
+        try
+          json.Init(response);
+          try
+            apiRev := json.optInt('revision', 0);
+          finally
+            json.Free();
+          end;
+        except
+          apiRev := 0;
+        end;
+      end;
     except
+      apiRev := 0;
     end;
 
-    response := GetHTTPPage(http, BASH_PREMIUM_API + '/v1/launcher');
-    code := GetHTTPResponseCode(http);
-    if code = 404 then
-    begin
-      EnsureBashLauncherOnDefaultPath();
-      Exit;
-    end;
-    if code <> 200 then
-    begin
-      EnsureBashLauncherOnDefaultPath();
-      Exit;
-    end;
-
+    SetHTTPHeader(http, 'Accept', '*/*');
     try
-      json.Init(response);
+      githubBody := GetHTTPPage(http, BASH_LAUNCHER_GITHUB_RAW);
+      code := GetHTTPResponseCode(http);
+      if (code = 200) and (Length(githubBody) >= 500) then
+        githubRev := ParseScriptRevisionFromText(githubBody)
+      else
+        githubBody := '';
     except
-      EnsureBashLauncherOnDefaultPath();
-      Exit;
+      githubBody := '';
+      githubRev := 0;
     end;
 
-    try
-      remoteRev := json.optInt('revision', 0);
-    finally
-      json.Free();
-    end;
+    remoteRev := Max(apiRev, githubRev);
+    WriteLn('[B.A.S.H] Launcher revs — local ', localRev, ', API ', apiRev, ', GitHub ', githubRev);
 
     if remoteRev <= localRev then
     begin
@@ -5602,18 +5640,45 @@ begin
       Exit;
     end;
 
-    WriteLn('[B.A.S.H] Remote launcher update ', localRev, ' -> ', remoteRev);
-    SetHTTPHeader(http, 'Accept', '*/*');
-    body := GetHTTPPage(http, BASH_PREMIUM_API + '/v1/launcher/download');
-    code := GetHTTPResponseCode(http);
-    if (code <> 200) or (Length(body) < 500) then
+    if githubRev >= apiRev then
     begin
-      WriteLn('[B.A.S.H] Launcher download failed. Falling back to local install...');
+      body := githubBody;
+      source := 'GitHub';
+      remoteRev := githubRev;
+    end
+    else
+    begin
+      body := GetHTTPPage(http, BASH_PREMIUM_API + '/v1/launcher/download');
+      code := GetHTTPResponseCode(http);
+      if (code = 200) and (Length(body) >= 500) then
+      begin
+        source := 'API';
+        remoteRev := apiRev;
+        if ParseScriptRevisionFromText(body) > 0 then
+          remoteRev := Max(remoteRev, ParseScriptRevisionFromText(body));
+      end
+      else if githubBody <> '' then
+      begin
+        body := githubBody;
+        source := 'GitHub (API download failed)';
+        remoteRev := githubRev;
+      end
+      else
+      begin
+        WriteLn('[B.A.S.H] Launcher download failed from API and GitHub.');
+        EnsureBashLauncherOnDefaultPath();
+        Exit;
+      end;
+    end;
+
+    if Length(body) < 500 then
+    begin
+      WriteLn('[B.A.S.H] Launcher download was empty. Falling back to local install...');
       EnsureBashLauncherOnDefaultPath();
       Exit;
     end;
 
-    // Always write updates to bash-launcher.simba (never wasp-launcher.simba).
+    WriteLn('[B.A.S.H] Remote launcher update ', localRev, ' -> ', remoteRev, ' from ', source);
     if not WriteBashLauncherFile(dest, body) then
     begin
       WriteLn('[B.A.S.H] Remote write failed. Falling back to local install...');
