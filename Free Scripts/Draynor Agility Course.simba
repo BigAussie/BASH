@@ -723,32 +723,240 @@ var
   Script: DraynorAgility;
 
 {$IFDEF SCRIPT_GUI}
+const
+  DA_GUI_NAV       = $F0EBE4;
+  DA_GUI_BG        = $FFFFFF;
+  DA_GUI_STATUS    = $F7F4F1;
+  DA_GUI_DIVIDER   = $D4C9BC;
+  DA_GUI_CARD      = $F7F4F1;
+  DA_GUI_ACCENT    = $E0C9AE;
+  DA_GUI_NAV_IDLE  = $E7DED4;
+  DA_GUI_START     = $C9B094;
+  DA_GUI_TEXT      = $1C1C1E;
+  DA_GUI_MUTED     = $6B6B70;
+  DA_GUI_W         = 1120;
+  DA_GUI_H         = 700;
+  DA_GUI_NAV_W     = 190;
+  DA_GUI_STATUS_H  = 56;
+  DA_GUI_BTN_H     = 42;
+  DA_GUI_EDIT_W    = 260;
+  DA_GUI_COL2      = 308;
+  DA_GUI_BOTTOM_INSET = 34;
+
 type
   TConfig = record(TScriptForm)
-    WebhookLabel , DiscordUIDLabel, DiscordUIDInfo: TLabel;
-    WebHookInput, DiscordUIDInput, StopAtLevelInputBox: TLabeledEdit;
-    PingOnDMCheckBox, PingOnInGameChatCheckBox, PingOnTerminatedCheckBox, EnableWebhooksCheckBox, TeleportMouseCheckBox, RuneliteModeCheckBox: TLabeledCheckBox;
-    StopAtLevelLabel, WebhookInfo: TLabel;
+    NavPanel, ContentPanel, StatusPanel, DividerPanel, StatusDivider, StatusPad: TPanel;
+    BrandLabel: TLabel;
+    ScriptNav, AccountsNav, AntibanNav: TImage;
+    StartChip: TImage;
+    ActiveNav: TImage;
+    ScriptSection, AccountsSection, AntibanSection: TPanel;
+
+    TeleportMouseCheckBox, RuneliteModeCheckBox: TLabeledCheckBox;
+    StopAtLevelInputBox: TLabeledEdit;
+
+    EnableWebhooksCheckBox, PingOnTerminatedCheckBox: TLabeledCheckBox;
+    WebHookInput, DiscordUIDInput: TLabeledEdit;
+    WebhookInfo, DiscordUIDInfo: TLabel;
+
+    MaxActionsInput, MaxTimeInput: TLabeledEdit;
+    RemoteInputNote: TLabel;
   end;
 
-procedure TConfig.StartScript(sender: TObject); override; 
+function TConfig.MakePanel(
+  parent: TWinControl;
+  left, top, width, height, color: Int32
+): TPanel;
 begin
-  DiscordUID := Self.DiscordUIDInput.GetText;
-  WEBHOOKURL := Self.WebHookInput.GetText;
-  ENABLEWEBHOOKS := Self.EnableWebhooksCheckBox.IsChecked();
-  PINGONTERMINATED := Self.PingOnTerminatedCheckBox.IsChecked();
-  ENABLEREMOTEINPUT := WLSettings.RemoteInput.Enabled;
-  TELEPORTMOUSE := Self.TeleportMouseCheckBox.IsChecked();
-  RUNELITEMODE := Self.RuneliteModeCheckBox.IsChecked();
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetWidth(TControl.AdjustToDPI(width));
+  Result.SetHeight(TControl.AdjustToDPI(height));
+  Result.SetColor(color);
+  Result.SetBevelOuter(bvNone);
+end;
 
-  WriteINI('Draynor Agility Settings', 'TeleportMouse', BoolToStr(TELEPORTMOUSE, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI('Draynor Agility Settings', 'RuneliteMode', BoolToStr(RUNELITEMODE, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI('Webhook Settings', 'DiscordUID', DiscordUID, 'Configs/BASettings.ini');
-  WriteINI('Webhook Settings', 'WebhookURL', WEBHOOKURL, 'Configs/BASettings.ini');
-  WriteINI('Webhook Settings', 'PingOnTerminated', BoolToStr(PINGONTERMINATED, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI('Webhook Settings', 'EnableWebhooks', BoolToStr(ENABLEWEBHOOKS, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI('WaspLib Settings', 'EnableRemoteInput', BoolToStr(ENABLEREMOTEINPUT, 'true', 'false'), 'Configs/BASettings.ini');
-  inherited;
+procedure TConfig.PaintRoundChip(
+  img: TImage;
+  labelText: String;
+  fill, parentBg: Int32;
+  selected: Boolean = False;
+  centered: Boolean = False
+);
+var
+  bmp: TBitmap;
+  c: TCanvas;
+  w, h, r, tw, th, tx: Int32;
+begin
+  w := img.GetWidth();
+  h := img.GetHeight();
+  if (w <= 0) or (h <= 0) then
+    Exit;
+
+  r := TControl.AdjustToDPI(6);
+  if r * 2 > h then
+    r := h div 2;
+  if r * 2 > w then
+    r := w div 2;
+
+  bmp := img.GetPicture().GetBitmap();
+  bmp.SetWidth(w);
+  bmp.SetHeight(h);
+  c := bmp.GetCanvas();
+
+  c.GetBrush().SetColor(parentBg);
+  c.GetPen().SetColor(parentBg);
+  c.FillRect(0, 0, w, h);
+
+  c.GetBrush().SetColor(fill);
+  c.GetPen().SetColor(fill);
+  c.RoundRect(0, 0, w - 1, h - 1, r * 2, r * 2);
+
+  c.GetBrush().SetColor(fill);
+  c.GetFont().SetColor(DA_GUI_TEXT);
+  c.GetFont().SetSize(11);
+  if selected then
+    c.GetFont().SetStyle([fsBold])
+  else
+    c.GetFont().SetStyle([]);
+
+  tw := c.TextWidth(labelText);
+  th := c.TextHeight(labelText);
+  if centered then
+    tx := (w - tw) div 2
+  else
+    tx := TControl.AdjustToDPI(16);
+  c.TextOut(tx, (h - th) div 2, labelText);
+
+  img.SetHint(labelText);
+  img.SetShowHint(False);
+  img.Invalidate();
+end;
+
+function TConfig.MakeNavItem(
+  parent: TWinControl;
+  labelText: String;
+  left, top: Int32;
+  selected: Boolean = False
+): TImage;
+var
+  fill: Int32;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetWidth(TControl.AdjustToDPI(DA_GUI_NAV_W - 28));
+  Result.SetHeight(TControl.AdjustToDPI(DA_GUI_BTN_H));
+  Result.SetCursor(crHandPoint);
+
+  if selected then
+    fill := DA_GUI_ACCENT
+  else
+    fill := DA_GUI_NAV_IDLE;
+
+  Self.PaintRoundChip(Result, labelText, fill, DA_GUI_NAV, selected);
+end;
+
+function TConfig.MakeLabel(
+  parent: TWinControl;
+  labelText: String;
+  left, top, fontSize, fontColor: Int32;
+  bold: Boolean = False
+): TLabel;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetCaption(labelText);
+  Result.GetFont().SetSize(fontSize);
+  Result.GetFont().SetColor(fontColor);
+  if bold then
+    Result.GetFont().SetStyle([fsBold]);
+end;
+
+procedure TConfig.AddCheck(
+  parent: TWinControl;
+  var box: TLabeledCheckBox;
+  ctrlName, labelText: String;
+  left, top: Int32;
+  checked: Boolean
+);
+begin
+  box.Create(parent);
+  box.SetLeft(TControl.AdjustToDPI(left));
+  box.SetTop(TControl.AdjustToDPI(top));
+  box.SetName(ctrlName);
+  box.SetFontColor(DA_GUI_TEXT);
+  box.SetCaption(labelText);
+  if checked then
+    box.CheckBox.SetChecked(True);
+end;
+
+procedure TConfig.AddEdit(
+  parent: TWinControl;
+  var box: TLabeledEdit;
+  ctrlName, labelText, text: String;
+  left, top, width: Int32
+);
+begin
+  box.Create(parent);
+  box.SetLeft(TControl.AdjustToDPI(left));
+  box.SetTop(TControl.AdjustToDPI(top));
+  box.SetWidth(TControl.AdjustToDPI(width));
+  box.SetName(ctrlName);
+  box.SetCaption(labelText);
+  box.SetText(text);
+  box.SetFontColor(DA_GUI_TEXT);
+end;
+
+procedure TConfig.AddHeader(parent: TPanel; titleText, subtitleText: String);
+var
+  header: TPanel;
+  headerW: Int32;
+begin
+  headerW := parent.GetWidth();
+  if headerW <= 0 then
+    headerW := TControl.AdjustToDPI(DA_GUI_W - DA_GUI_NAV_W - 2);
+
+  header := Self.MakePanel(parent, 0, 0, 1, 88, DA_GUI_CARD);
+  header.SetWidth(headerW);
+  header.SetHeight(TControl.AdjustToDPI(88));
+  Self.MakeLabel(header, titleText, 24, 18, 18, DA_GUI_TEXT, True);
+  Self.MakeLabel(header, subtitleText, 24, 52, 10, DA_GUI_MUTED, False);
+end;
+
+procedure TConfig.StyleNav(selected: TImage);
+begin
+  Self.ActiveNav := selected;
+  Self.PaintRoundChip(Self.ScriptNav, Self.ScriptNav.GetHint(), DA_GUI_NAV_IDLE, DA_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AccountsNav, Self.AccountsNav.GetHint(), DA_GUI_NAV_IDLE, DA_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AntibanNav, Self.AntibanNav.GetHint(), DA_GUI_NAV_IDLE, DA_GUI_NAV, False);
+  Self.PaintRoundChip(selected, selected.GetHint(), DA_GUI_ACCENT, DA_GUI_NAV, True);
+end;
+
+procedure TConfig.ShowSection(section: TPanel; selected: TImage);
+begin
+  Self.ScriptSection.SetVisible(False);
+  Self.AccountsSection.SetVisible(False);
+  Self.AntibanSection.SetVisible(False);
+  section.SetVisible(True);
+  Self.StyleNav(selected);
+end;
+
+procedure TConfig.ShowScript({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.ScriptSection, Self.ScriptNav);
+end;
+
+procedure TConfig.ShowAccounts({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AccountsSection, Self.AccountsNav);
+end;
+
+procedure TConfig.ShowAntiban({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AntibanSection, Self.AntibanNav);
 end;
 
 procedure TConfig.OpenURL(Sender: TObject);
@@ -761,6 +969,7 @@ end;
 
 procedure TConfig.WebhooksCheckboxChanged(Sender: TObject);
 begin
+  if Sender = nil then;
   Self.WebhookInfo.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
   Self.DiscordUIDInfo.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
   Self.DiscordUIDInput.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
@@ -770,153 +979,330 @@ end;
 
 procedure TConfig.RuneliteModeCheckboxChanged(Sender: TObject);
 begin
+  if Sender = nil then;
   if Self.RuneliteModeCheckBox.IsChecked() then
   begin
     if MessageDlg('Confirmation', 'This mode ONLY supports Runelite 32BIT Client. You must have all plugins disabled except for Agility. The plugins colors must be default. Are you sure you want to enable Runelite mode?', mtConfirmation, [mbYes, mbNo]) = mrNo then
-    begin
       Self.RuneliteModeCheckBox.SetChecked(False);
+  end;
+end;
+
+procedure TConfig.StartScript(Sender: TObject); override;
+begin
+  if Sender = nil then;
+
+  DiscordUID := Self.DiscordUIDInput.GetText();
+  WEBHOOKURL := Self.WebHookInput.GetText();
+  ENABLEWEBHOOKS := Self.EnableWebhooksCheckBox.IsChecked();
+  PINGONTERMINATED := Self.PingOnTerminatedCheckBox.IsChecked();
+  TELEPORTMOUSE := Self.TeleportMouseCheckBox.IsChecked();
+  RUNELITEMODE := Self.RuneliteModeCheckBox.IsChecked();
+  STOP_AT_LEVEL := StrToIntDef(Self.StopAtLevelInputBox.GetText(), -1);
+  ENABLEREMOTEINPUT := WLSettings.RemoteInput.Enabled;
+
+  WLSettings.Put('max_actions', StrToIntDef(Self.MaxActionsInput.GetText(), 0));
+  WLSettings.Put('max_time', StrToIntDef(Self.MaxTimeInput.GetText(), 0));
+  WLSettings.SaveConfig();
+
+  WriteINI('Draynor Agility Settings', 'TeleportMouse', BoolToStr(TELEPORTMOUSE, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI('Draynor Agility Settings', 'RuneliteMode', BoolToStr(RUNELITEMODE, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI('Draynor Agility Settings', 'StopAtLevel', IntToStr(STOP_AT_LEVEL), 'Configs/BASettings.ini');
+  WriteINI('Webhook Settings', 'DiscordUID', DiscordUID, 'Configs/BASettings.ini');
+  WriteINI('Webhook Settings', 'WebhookURL', WEBHOOKURL, 'Configs/BASettings.ini');
+  WriteINI('Webhook Settings', 'PingOnTerminated', BoolToStr(PINGONTERMINATED, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI('Webhook Settings', 'EnableWebhooks', BoolToStr(ENABLEWEBHOOKS, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI('WaspLib Settings', 'EnableRemoteInput', BoolToStr(ENABLEREMOTEINPUT, 'true', 'false'), 'Configs/BASettings.ini');
+
+  try
+    Self._WarmBuildCache();
+  except
+  end;
+  Self.Form.SetOnClose(nil);
+  Self.Form.Close();
+end;
+
+procedure TConfig.BuildScriptSection(
+  SavedTeleportMouse, SavedRuneliteMode: Boolean;
+  SavedStopAtLevel: Integer
+);
+begin
+  Self.AddHeader(Self.ScriptSection, 'Action', 'Run the Draynor Village rooftop agility course.');
+
+  Self.AddCheck(Self.ScriptSection, Self.TeleportMouseCheckBox, 'cb_da_teleport_mouse', 'Teleport Mouse mode', 24, 110, SavedTeleportMouse);
+  Self.TeleportMouseCheckBox.SetTooltip('Instead of moving the mouse to obstacles the mouse will be teleported.');
+
+  Self.AddCheck(Self.ScriptSection, Self.RuneliteModeCheckBox, 'cb_da_runelite', 'Runelite mode', 24, 150, SavedRuneliteMode);
+  Self.RuneliteModeCheckBox.SetTooltip('Enable or Disable Runelite mode.');
+  Self.RuneliteModeCheckBox.CheckBox.SetOnChange(@Self.RuneliteModeCheckboxChanged);
+
+  Self.AddEdit(Self.ScriptSection, Self.StopAtLevelInputBox, 'le_da_stop_level', 'Stop at Level (-1 = never)', IntToStr(SavedStopAtLevel), 24, 210, DA_GUI_EDIT_W);
+  Self.StopAtLevelInputBox.Edit.SetOnKeyPress(@Self.StopAtLevelInputBox.Edit.NumberField);
+  Self.StopAtLevelInputBox.SetTooltip('Enter -1 to never stop.');
+end;
+
+procedure TConfig.BuildAccountsSection(
+  SavedDiscordUID, SavedWebhookURL: String;
+  SavedEnableWebhooks, SavedPingOnTerminated: Boolean
+);
+var
+  am: TPanel;
+  selectorPanel, userPanel, passPanel, pinPanel, worldsPanel: TPanel;
+  addBtn, deleteBtn, generateBtn: TButton;
+  leftColW, passW, pinW, worldsLeft, btnW, btnGap: Int32;
+begin
+  Self.AddHeader(Self.AccountsSection, 'Accounts', 'Login account and Discord webhook notifications.');
+
+  am := Self.CreateAccountManager(Self.AccountsSection);
+  am.SetLeft(TControl.AdjustToDPI(16));
+  am.SetTop(TControl.AdjustToDPI(100));
+  am.SetColor(DA_GUI_BG);
+
+  leftColW := TControl.AdjustToDPI(280);
+  passW := Floor(leftColW * 0.6);
+  pinW := Floor(leftColW * 0.3);
+
+  selectorPanel := Self.Form.GetChild('am_selector_panel');
+  userPanel := Self.Form.GetChild('am_user_panel');
+  passPanel := Self.Form.GetChild('am_pass_panel');
+  pinPanel := Self.Form.GetChild('am_pin_panel');
+  worldsPanel := Self.Form.GetChild('am_worlds_panel');
+
+  if selectorPanel <> nil then
+    selectorPanel.SetWidth(leftColW);
+  if userPanel <> nil then
+    userPanel.SetWidth(leftColW);
+  if passPanel <> nil then
+    passPanel.SetWidth(passW);
+  if (pinPanel <> nil) and (selectorPanel <> nil) then
+  begin
+    pinPanel.SetWidth(pinW);
+    pinPanel.SetLeft(selectorPanel.GetLeft() + leftColW - pinW);
+  end;
+
+  if (worldsPanel <> nil) and (selectorPanel <> nil) then
+  begin
+    worldsLeft := selectorPanel.GetLeft() + leftColW + TControl.AdjustToDPI(48);
+    worldsPanel.SetLeft(worldsLeft);
+
+    addBtn := Self.Form.GetChild('am_add_button');
+    deleteBtn := Self.Form.GetChild('am_delete_button');
+    generateBtn := Self.Form.GetChild('am_generate_worlds_button');
+    btnGap := TControl.AdjustToDPI(8);
+    btnW := Floor((worldsPanel.GetWidth() - btnGap) / 2);
+
+    if generateBtn <> nil then
+    begin
+      generateBtn.SetLeft(worldsLeft);
+      generateBtn.SetWidth(worldsPanel.GetWidth());
+    end;
+    if addBtn <> nil then
+    begin
+      addBtn.SetLeft(worldsLeft);
+      addBtn.SetWidth(btnW);
+    end;
+    if deleteBtn <> nil then
+    begin
+      deleteBtn.SetLeft(worldsLeft + worldsPanel.GetWidth() - btnW - TControl.AdjustToDPI(1));
+      deleteBtn.SetWidth(btnW);
     end;
   end;
+
+  Self.MakeLabel(Self.AccountsSection, 'Discord', 24, 340, 11, DA_GUI_TEXT, True);
+
+  Self.AddCheck(Self.AccountsSection, Self.EnableWebhooksCheckBox, 'cb_da_webhooks', 'Discord Notifications', 24, 360, SavedEnableWebhooks);
+  Self.EnableWebhooksCheckBox.SetTooltip('Script will ping you on your own discord server when it stops.');
+  Self.EnableWebhooksCheckBox.CheckBox.SetOnChange(@Self.WebhooksCheckboxChanged);
+
+  Self.WebhookInfo := Self.MakeLabel(Self.AccountsSection, 'Click here to learn how to generate your own Discord webhook URL', 24, 400, 10, $C07020, False);
+  Self.WebhookInfo.SetOnClick(@Self.OpenURL);
+  Self.WebhookInfo.SetCursor(crHandPoint);
+  Self.WebhookInfo.SetTooltip('Click here to learn how to generate your own Discord webhook URL');
+
+  Self.AddEdit(Self.AccountsSection, Self.DiscordUIDInput, 'le_da_discord_uid', 'Discord UID (Optional)', SavedDiscordUID, 24, 430, DA_GUI_EDIT_W);
+  Self.DiscordUIDInput.SetTooltip('What name to @ in discord when script terminates');
+
+  Self.DiscordUIDInfo := Self.MakeLabel(Self.AccountsSection, 'Click here to learn how to find your Discord User ID', DA_GUI_COL2, 448, 10, $C07020, False);
+  Self.DiscordUIDInfo.SetOnClick(@Self.OpenURL);
+  Self.DiscordUIDInfo.SetCursor(crHandPoint);
+  Self.DiscordUIDInfo.SetTooltip('Click here to learn how to find your Discord User ID');
+
+  Self.AddEdit(Self.AccountsSection, Self.WebHookInput, 'le_da_webhook', 'Discord Webhook URL', SavedWebhookURL, 24, 490, 520);
+  Self.WebHookInput.SetTooltip('Discord Webhook URL');
+
+  Self.AddCheck(Self.AccountsSection, Self.PingOnTerminatedCheckBox, 'cb_da_ping_terminated', 'Ping on script termination', 24, 550, SavedPingOnTerminated);
+  Self.PingOnTerminatedCheckBox.SetTooltip('Enable to ping when the script terminates cleanly');
+end;
+
+procedure TConfig.BuildAntibanSection(SavedMaxActions, SavedMaxTime: Integer);
+begin
+  Self.AddHeader(Self.AntibanSection, 'Antiban', 'Session limits.');
+
+  Self.AddEdit(Self.AntibanSection, Self.MaxActionsInput, 'le_da_maxactions', 'Max actions (0 = unlimited)', IntToStr(SavedMaxActions), 24, 110, DA_GUI_EDIT_W);
+  Self.MaxActionsInput.Edit.SetOnKeyPress(@Self.MaxActionsInput.Edit.NumberField);
+  Self.AddEdit(Self.AntibanSection, Self.MaxTimeInput, 'le_da_maxtime', 'Max time minutes (0 = unlimited)', IntToStr(SavedMaxTime), DA_GUI_COL2, 110, DA_GUI_EDIT_W);
+  Self.MaxTimeInput.Edit.SetOnKeyPress(@Self.MaxTimeInput.Edit.NumberField);
+
+  Self.RemoteInputNote := Self.MakeLabel(
+    Self.AntibanSection,
+    'Remote input uses WLSettings.RemoteInput (loaded from WaspLib Settings on start).',
+    24, 180, 10, DA_GUI_MUTED, False
+  );
+  Self.RemoteInputNote.SetWidth(TControl.AdjustToDPI(820));
+end;
+
+procedure TConfig.BuildShell(
+  SavedTeleportMouse, SavedRuneliteMode: Boolean;
+  SavedStopAtLevel: Integer;
+  SavedDiscordUID, SavedWebhookURL: String;
+  SavedEnableWebhooks, SavedPingOnTerminated: Boolean;
+  SavedMaxActions, SavedMaxTime: Integer
+);
+var
+  tab: TTabSheet;
+  contentH, startW, startH, shellW, shellH, statusTop, statusH, mainLeft, mainW, navW, bottomInset: Int32;
+begin
+  Self.AddTab('Draynor Agility Course');
+  tab := Self.Tabs[High(Self.Tabs)];
+
+  Self.Start.SetAlign(alNone);
+  Self.Start.SetVisible(False);
+  Self.Start.SetHeight(0);
+  Self.Start.SetWidth(0);
+
+  bottomInset := TControl.AdjustToDPI(DA_GUI_BOTTOM_INSET);
+  navW := TControl.AdjustToDPI(DA_GUI_NAV_W);
+  statusH := TControl.AdjustToDPI(DA_GUI_STATUS_H);
+  shellW := Self.Size.X;
+  shellH := Self.Size.Y;
+  mainLeft := navW + TControl.AdjustToDPI(2);
+  mainW := shellW - mainLeft;
+  statusTop := shellH - statusH - bottomInset;
+  contentH := statusTop;
+  startW := TControl.AdjustToDPI(132);
+  startH := TControl.AdjustToDPI(DA_GUI_BTN_H);
+
+  Self.NavPanel.Create(tab);
+  Self.NavPanel.SetLeft(0);
+  Self.NavPanel.SetTop(0);
+  Self.NavPanel.SetWidth(navW);
+  Self.NavPanel.SetHeight(shellH);
+  Self.NavPanel.SetColor(DA_GUI_NAV);
+  Self.NavPanel.SetBevelOuter(bvNone);
+
+  Self.DividerPanel.Create(tab);
+  Self.DividerPanel.SetLeft(navW);
+  Self.DividerPanel.SetTop(0);
+  Self.DividerPanel.SetWidth(TControl.AdjustToDPI(2));
+  Self.DividerPanel.SetHeight(shellH);
+  Self.DividerPanel.SetColor(DA_GUI_DIVIDER);
+  Self.DividerPanel.SetBevelOuter(bvNone);
+
+  Self.ContentPanel.Create(tab);
+  Self.ContentPanel.SetLeft(mainLeft);
+  Self.ContentPanel.SetTop(0);
+  Self.ContentPanel.SetWidth(mainW);
+  Self.ContentPanel.SetHeight(contentH);
+  Self.ContentPanel.SetColor(DA_GUI_BG);
+  Self.ContentPanel.SetBevelOuter(bvNone);
+
+  Self.StatusDivider.Create(tab);
+  Self.StatusDivider.SetLeft(mainLeft);
+  Self.StatusDivider.SetTop(statusTop);
+  Self.StatusDivider.SetWidth(mainW);
+  Self.StatusDivider.SetHeight(TControl.AdjustToDPI(2));
+  Self.StatusDivider.SetColor(DA_GUI_DIVIDER);
+  Self.StatusDivider.SetBevelOuter(bvNone);
+
+  Self.StatusPanel.Create(tab);
+  Self.StatusPanel.SetLeft(mainLeft);
+  Self.StatusPanel.SetTop(statusTop + Self.StatusDivider.GetHeight());
+  Self.StatusPanel.SetWidth(mainW);
+  Self.StatusPanel.SetHeight(statusH - Self.StatusDivider.GetHeight());
+  Self.StatusPanel.SetColor(DA_GUI_STATUS);
+  Self.StatusPanel.SetBevelOuter(bvNone);
+
+  Self.StatusPad.Create(tab);
+  Self.StatusPad.SetLeft(mainLeft);
+  Self.StatusPad.SetTop(Self.StatusPanel.GetTop() + Self.StatusPanel.GetHeight());
+  Self.StatusPad.SetWidth(mainW);
+  Self.StatusPad.SetHeight(shellH - Self.StatusPad.GetTop());
+  Self.StatusPad.SetColor(DA_GUI_STATUS);
+  Self.StatusPad.SetBevelOuter(bvNone);
+
+  Self.BrandLabel := Self.MakeLabel(Self.NavPanel, 'Draynor Agility', 16, 28, 14, DA_GUI_TEXT, True);
+  Self.MakeLabel(Self.NavPanel, 'BigAussie', 16, 54, 9, DA_GUI_MUTED, False);
+
+  Self.ScriptNav := Self.MakeNavItem(Self.NavPanel, 'Action', 12, 100, True);
+  Self.AccountsNav := Self.MakeNavItem(Self.NavPanel, 'Accounts', 12, 152);
+  Self.AntibanNav := Self.MakeNavItem(Self.NavPanel, 'Antiban', 12, 204);
+
+  Self.ScriptSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, DA_GUI_BG);
+  Self.AccountsSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, DA_GUI_BG);
+  Self.AntibanSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, DA_GUI_BG);
+
+  Self.ScriptSection.SetWidth(mainW);
+  Self.ScriptSection.SetHeight(contentH);
+  Self.AccountsSection.SetWidth(mainW);
+  Self.AccountsSection.SetHeight(contentH);
+  Self.AntibanSection.SetWidth(mainW);
+  Self.AntibanSection.SetHeight(contentH);
+
+  Self.BuildScriptSection(SavedTeleportMouse, SavedRuneliteMode, SavedStopAtLevel);
+  Self.BuildAccountsSection(SavedDiscordUID, SavedWebhookURL, SavedEnableWebhooks, SavedPingOnTerminated);
+  Self.BuildAntibanSection(SavedMaxActions, SavedMaxTime);
+
+  Self.ScriptNav.SetOnClick(@Self.ShowScript);
+  Self.AccountsNav.SetOnClick(@Self.ShowAccounts);
+  Self.AntibanNav.SetOnClick(@Self.ShowAntiban);
+
+  Self.StartChip.Create(Self.StatusPanel);
+  Self.StartChip.SetLeft(mainW - startW - TControl.AdjustToDPI(24));
+  Self.StartChip.SetTop((Self.StatusPanel.GetHeight() - startH) div 2 + 2);
+  Self.StartChip.SetWidth(startW);
+  Self.StartChip.SetHeight(startH);
+  Self.StartChip.SetCursor(crHandPoint);
+  Self.PaintRoundChip(Self.StartChip, 'Start', DA_GUI_START, DA_GUI_STATUS, True, True);
+  Self.StartChip.SetOnClick(@Self.StartScript);
+
+  Self.WebhooksCheckboxChanged(nil);
+  Self.ShowScript(Self.ScriptNav);
 end;
 
 procedure TConfig.Run(); override;
 var
-  Img: TPicture;
-  BGImg: TImage;
-  tab: TTabSheet;
   SavedDiscordUID, SavedWebhookURL: String;
   SavedPingOnTerminated, SavedEnableWebhooks, SavedRemoteInput, SavedTeleportMouse, SavedRuneliteMode: Boolean;
+  SavedStopAtLevel, SavedMaxActions, SavedMaxTime: Integer;
 begin
-  Self.Setup("BigAussies Draynor RoofHopper");
-  Self.Start.SetOnClick(@Self.StartScript);
+  BashPromptIfUpdateAvailable();
 
   SavedDiscordUID := ReadINI('Webhook Settings', 'DiscordUID', 'Configs/BASettings.ini');
   SavedWebhookURL := ReadINI('Webhook Settings', 'WebhookURL', 'Configs/BASettings.ini');
   SavedEnableWebhooks := StrToBoolDef(ReadINI('Webhook Settings', 'EnableWebhooks', 'Configs/BASettings.ini'), False);
-  SavedPingOnTerminated := StrToBoolDef(ReadINI('Webhook Settings', 'PingOnTerminated', 'Configs/BASettings.ini'), True); 
+  SavedPingOnTerminated := StrToBoolDef(ReadINI('Webhook Settings', 'PingOnTerminated', 'Configs/BASettings.ini'), True);
   SavedRemoteInput := StrToBoolDef(ReadINI('WaspLib Settings', 'EnableRemoteInput', 'Configs/BASettings.ini'), False);
   SavedTeleportMouse := StrToBoolDef(ReadINI('Draynor Agility Settings', 'TeleportMouse', 'Configs/BASettings.ini'), False);
   SavedRuneliteMode := StrToBoolDef(ReadINI('Draynor Agility Settings', 'RuneliteMode', 'Configs/BASettings.ini'), False);
+  SavedStopAtLevel := StrToIntDef(ReadINI('Draynor Agility Settings', 'StopAtLevel', 'Configs/BASettings.ini'), -1);
+
+  if WLSettings.Has('max_actions') then
+    SavedMaxActions := WLSettings.GetInt('max_actions')
+  else
+    SavedMaxActions := 0;
+  if WLSettings.Has('max_time') then
+    SavedMaxTime := WLSettings.GetInt('max_time')
+  else
+    SavedMaxTime := 0;
 
   WLSettings.RemoteInput.Enabled := SavedRemoteInput;
-  WLSettings.RemoteInput.BlockInput := True; // Disabled input, remove this if you want to enable input.
+  WLSettings.RemoteInput.BlockInput := True;
 
-  Self.AddTab('Script Settings');
-  tab := Self.Tabs[High(Self.Tabs)];
-
-  Self.CreateAccountManager(tab);
-
-  with Self.TeleportMouseCheckBox do
-  begin
-    Create(tab);
-    Self.Form.GetFont().SetStyle([fsBold]);
-    SetLeft(TControl.AdjustToDPI(37));
-    SetTop(TControl.AdjustToDPI(140));
-    SetCaption('Teleport Mouse mode');
-    SetHint('Instead of moving the mouse to obstacles the mouse will be teleported.');
-    SetChecked(SavedTeleportMouse);
-  end;
-
-  with Self.RuneliteModeCheckBox do
-  begin
-    Create(tab);
-    Self.Form.GetFont().SetStyle([fsBold]);
-    SetLeft(Self.TeleportMouseCheckBox.GetLeft());
-    SetTop(Self.TeleportMouseCheckBox.GetTop() + TControl.AdjustToDPI(25));
-    SetCaption('Runelite mode');
-    SetHint('Enable or Disable Runelite mode.');
-    SetChecked(SavedRuneliteMode);
-    CheckBox.SetOnChange(@RuneliteModeCheckboxChanged);
-  end;
-
-  with Self.StopAtLevelInputBox do
-  begin
-    Create(tab);
-    Self.Form.GetFont().SetStyle([fsBold]);
-    SetLeft(Self.TeleportMouseCheckBox.GetLeft() + TControl.AdjustToDPI(175));
-    SetTop(TControl.AdjustToDPI(140));
-    SetWidth(110);
-    SetCaption('Stop at Level');
-    SetHint('Enter -1 to never stop.');
-    Edit.SetOnKeyPress(@Edit.NumberField);
-  end;
-
-  with Self.EnableWebhooksCheckBox do
-  begin
-    Create(tab);
-    SetCaption("Discord Notifications");
-    SetLeft(Self.RuneliteModeCheckBox.GetLeft());
-    SetTop(Self.RuneliteModeCheckBox.GetTop() + TControl.AdjustToDPI(25));
-    SetHint('Script will ping you on your own discord server when it stops.');
-    SetChecked(SavedEnableWebhooks);
-    CheckBox.SetOnChange(@WebhooksCheckboxChanged);
-    Self.Form.GetFont().SetStyle([fsBold]);
-  end;
-
-  with Self.WebhookInfo do
-  begin
-    Create(tab);
-    SetLeft(Self.EnableWebhooksCheckBox.GetLeft());
-    SetTop(Self.EnableWebhooksCheckBox.GetTop() + TControl.AdjustToDPI(25));
-    SetCaption('Click here to learn how to generate your own Discord webhook URL');
-    SetHint('Click here to learn how to generate your own Discord webhook URL');
-    setOnClick(@OpenURL);
-    SetFontSize(TControl.AdjustToDPI(7));
-    Self.Form.GetFont().SetStyle([fsBold]);
-  end;
-
-  with Self.DiscordUIDInput do
-  begin
-    Create(tab);
-    SetLeft(Self.WebhookInfo.GetLeft());
-    SetTop(Self.WebhookInfo.GetTop() + TControl.AdjustToDPI(30));
-    SetCaption('Discord UID (Optional)');
-    SetHint('What name to @ in discord when script terminates');
-    SetWidth(TControl.AdjustToDPI(140));
-    SetText(SavedDiscordUID);
-  end;
-
-  with Self.DiscordUIDInfo do
-  begin
-    Create(tab);
-    SetLeft(Self.DiscordUIDInput.GetLeft() + Self.DiscordUIDInput.GetWidth() + TControl.AdjustToDPI(10));
-    SetTop(Self.DiscordUIDInput.GetTop() + TControl.AdjustToDPI(18));
-    SetCaption('Click here to learn how to find your Discord User ID');
-    SetHint('Click here to learn how to find your Discord User ID');
-    setOnClick(@OpenURL);
-    SetFontSize(TControl.AdjustToDPI(7));
-  end;
-
-  with Self.WebHookInput do
-  begin
-    Create(tab);
-    SetLeft(Self.DiscordUIDInput.GetLeft());
-    SetTop(Self.DiscordUIDInput.GetTop() + TControl.AdjustToDPI(45));
-    SetCaption('Discord Webhook URL');
-    SetHint('Discord Webhook URL');
-    SetWidth(TControl.AdjustToDPI(180));
-    SetText(savedWebhookURL);
-  end;
-
-  with Self.PingOnTerminatedCheckBox do
-  begin
-    Create(tab);
-    SetCaption("Ping on script termination");
-    SetLeft(Self.WebHookInput.GetLeft());
-    SetTop(Self.WebHookInput.GetTop() + TControl.AdjustToDPI(50));
-    SetHint('Enable to ping when the script terminates cleanly');
-    SetChecked(SavedPingOnTerminated);
-  end;
-
-  WebhooksCheckboxChanged(Self.EnableWebhooksCheckBox.CheckBox);
-
-  Self.CreateVersionPanel(tab);
-
-  Self.CreateAntibanManager();
-
-  Self.CreateWaspLibSettings();
-
-  Self.CreateAPISettings();
+  Self.Setup('BigAussies Draynor RoofHopper', [DA_GUI_W, DA_GUI_H], False);
+  Self.BuildShell(
+    SavedTeleportMouse, SavedRuneliteMode, SavedStopAtLevel,
+    SavedDiscordUID, SavedWebhookURL, SavedEnableWebhooks, SavedPingOnTerminated,
+    SavedMaxActions, SavedMaxTime
+  );
 
   inherited;
 end;

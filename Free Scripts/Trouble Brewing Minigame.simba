@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := '89354d20-c87d-4706-98d6-6b4f0a65f5f5'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '2'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '3'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -1657,17 +1657,419 @@ begin
 end;
 
 {$IFDEF SCRIPT_GUI}
+const
+  TB_GUI_NAV       = $F0EBE4;
+  TB_GUI_BG        = $FFFFFF;
+  TB_GUI_STATUS    = $F7F4F1;
+  TB_GUI_DIVIDER   = $D4C9BC;
+  TB_GUI_CARD      = $F7F4F1;
+  TB_GUI_ACCENT    = $E0C9AE;
+  TB_GUI_NAV_IDLE  = $E7DED4;
+  TB_GUI_START     = $C9B094;
+  TB_GUI_TEXT      = $1C1C1E;
+  TB_GUI_MUTED     = $6B6B70;
+  TB_GUI_W         = 1120;
+  TB_GUI_H         = 700;
+  TB_GUI_NAV_W     = 190;
+  TB_GUI_STATUS_H  = 56;
+  TB_GUI_BTN_H     = 42;
+  TB_GUI_COMBO_W   = 260;
+  TB_GUI_COMBO_H   = 58;
+  TB_GUI_COMBO_FONT = 10;
+  TB_GUI_EDIT_W    = 260;
+  TB_GUI_COL2      = 308;
+  TB_GUI_BOTTOM_INSET = 34;
+
+  TB_TEAM_ITEMS: TStringArray = ['Red', 'Blue', 'Random'];
+  TB_METHOD_ITEMS: TStringArray = ['Scrapy Bark', 'Buckets'];
+
 type
   TConfig = record(TScriptForm)
-    WebhookLabel , DiscordUIDLabel, DiscordUIDInfo: TLabel;
-    WebHookInput, DiscordUIDInput: TLabeledEdit;
-    PingOnDMCheckBox, PingOnInGameChatCheckBox, PingOnTerminatedCheckBox, EnableWebhooksCheckBox, BirdHouseSettingsCheckbox: TLabeledCheckBox;
-    WebhookInfo: TLabel;
-    OpenNestsCheckBox: TLabeledCheckBox;
+    NavPanel, ContentPanel, StatusPanel, DividerPanel, StatusDivider, StatusPad: TPanel;
+    BrandLabel: TLabel;
+    ScriptNav, AccountsNav, AntibanNav: TImage;
+    StartChip: TImage;
+    ActiveNav: TImage;
+    ScriptSection, AccountsSection, AntibanSection: TPanel;
+
     MethodDropBox, TeamDropBox: TLabeledComboBox;
     PowerFletchCheckBox: TLabeledCheckBox;
+    DisplayNameLabel: TLabel;
     TeamSelection: String;
+
+    WebhookInfo, DiscordUIDInfo: TLabel;
+    WebHookInput, DiscordUIDInput: TLabeledEdit;
+    PingOnTerminatedCheckBox, EnableWebhooksCheckBox: TLabeledCheckBox;
+    MaxActionsInput, MaxTimeInput: TLabeledEdit;
   end;
+
+function TConfig.MakePanel(
+  parent: TWinControl;
+  left, top, width, height, color: Int32
+): TPanel;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetWidth(TControl.AdjustToDPI(width));
+  Result.SetHeight(TControl.AdjustToDPI(height));
+  Result.SetColor(color);
+  Result.SetBevelOuter(bvNone);
+end;
+
+procedure TConfig.PaintRoundChip(
+  img: TImage;
+  labelText: String;
+  fill, parentBg: Int32;
+  selected: Boolean = False;
+  centered: Boolean = False
+);
+var
+  bmp: TBitmap;
+  c: TCanvas;
+  w, h, r, tw, th, tx: Int32;
+begin
+  w := img.GetWidth();
+  h := img.GetHeight();
+  if (w <= 0) or (h <= 0) then
+    Exit;
+
+  r := TControl.AdjustToDPI(6);
+  if r * 2 > h then
+    r := h div 2;
+  if r * 2 > w then
+    r := w div 2;
+
+  bmp := img.GetPicture().GetBitmap();
+  bmp.SetWidth(w);
+  bmp.SetHeight(h);
+  c := bmp.GetCanvas();
+
+  c.GetBrush().SetColor(parentBg);
+  c.GetPen().SetColor(parentBg);
+  c.FillRect(0, 0, w, h);
+
+  c.GetBrush().SetColor(fill);
+  c.GetPen().SetColor(fill);
+  c.RoundRect(0, 0, w - 1, h - 1, r * 2, r * 2);
+
+  c.GetBrush().SetColor(fill);
+  c.GetFont().SetColor(TB_GUI_TEXT);
+  c.GetFont().SetSize(11);
+  if selected then
+    c.GetFont().SetStyle([fsBold])
+  else
+    c.GetFont().SetStyle([]);
+
+  tw := c.TextWidth(labelText);
+  th := c.TextHeight(labelText);
+  if centered then
+    tx := (w - tw) div 2
+  else
+    tx := TControl.AdjustToDPI(16);
+  c.TextOut(tx, (h - th) div 2, labelText);
+
+  img.SetHint(labelText);
+  img.SetShowHint(False);
+  img.Invalidate();
+end;
+
+function TConfig.MakeNavItem(
+  parent: TWinControl;
+  labelText: String;
+  left, top: Int32;
+  selected: Boolean = False
+): TImage;
+var
+  fill: Int32;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetWidth(TControl.AdjustToDPI(TB_GUI_NAV_W - 28));
+  Result.SetHeight(TControl.AdjustToDPI(TB_GUI_BTN_H));
+  Result.SetCursor(crHandPoint);
+
+  if selected then
+    fill := TB_GUI_ACCENT
+  else
+    fill := TB_GUI_NAV_IDLE;
+
+  Self.PaintRoundChip(Result, labelText, fill, TB_GUI_NAV, selected);
+end;
+
+function TConfig.MakeLabel(
+  parent: TWinControl;
+  labelText: String;
+  left, top, fontSize, fontColor: Int32;
+  bold: Boolean = False
+): TLabel;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetCaption(labelText);
+  Result.GetFont().SetSize(fontSize);
+  Result.GetFont().SetColor(fontColor);
+  if bold then
+    Result.GetFont().SetStyle([fsBold]);
+end;
+
+procedure TConfig.AddCheck(
+  parent: TWinControl;
+  var box: TLabeledCheckBox;
+  ctrlName, labelText: String;
+  left, top: Int32;
+  checked: Boolean
+);
+begin
+  box.Create(parent);
+  box.SetLeft(TControl.AdjustToDPI(left));
+  box.SetTop(TControl.AdjustToDPI(top));
+  box.SetName(ctrlName);
+  box.SetFontColor(TB_GUI_TEXT);
+  box.SetCaption(labelText);
+  if checked then
+    box.CheckBox.SetChecked(True);
+end;
+
+procedure TConfig.AddCombo(
+  parent: TWinControl;
+  var box: TLabeledComboBox;
+  ctrlName, labelText: String;
+  left, top: Int32;
+  items: TStringArray;
+  itemIndex: Int32
+);
+begin
+  box.Create(parent);
+  box.SetLeft(TControl.AdjustToDPI(left));
+  box.SetTop(TControl.AdjustToDPI(top));
+  box.SetWidth(TControl.AdjustToDPI(TB_GUI_COMBO_W));
+  box.SetHeight(TControl.AdjustToDPI(TB_GUI_COMBO_H));
+  box.SetName(ctrlName);
+  box.SetCaption(labelText);
+  box.AddItemArray(items);
+  if (itemIndex >= 0) and (itemIndex <= High(items)) then
+    box.SetItemIndex(itemIndex)
+  else
+    box.SetItemIndex(0);
+  box.SetFontColor(TB_GUI_TEXT);
+  box.SetStyle(csDropDownList);
+  box.SetFontSize(TB_GUI_COMBO_FONT);
+  box.ComboBox.SetFontColor(TB_GUI_TEXT);
+  box.ComboBox.GetFont().SetSize(TB_GUI_COMBO_FONT);
+end;
+
+procedure TConfig.AddEdit(
+  parent: TWinControl;
+  var box: TLabeledEdit;
+  ctrlName, labelText, text: String;
+  left, top, width: Int32
+);
+begin
+  box.Create(parent);
+  box.SetLeft(TControl.AdjustToDPI(left));
+  box.SetTop(TControl.AdjustToDPI(top));
+  box.SetWidth(TControl.AdjustToDPI(width));
+  box.SetName(ctrlName);
+  box.SetCaption(labelText);
+  box.SetText(text);
+  box.SetFontColor(TB_GUI_TEXT);
+end;
+
+procedure TConfig.AddHeader(parent: TPanel; titleText, subtitleText: String);
+var
+  header: TPanel;
+  headerW: Int32;
+begin
+  headerW := parent.GetWidth();
+  if headerW <= 0 then
+    headerW := TControl.AdjustToDPI(TB_GUI_W - TB_GUI_NAV_W - 2);
+
+  header := Self.MakePanel(parent, 0, 0, 1, 88, TB_GUI_CARD);
+  header.SetWidth(headerW);
+  header.SetHeight(TControl.AdjustToDPI(88));
+  Self.MakeLabel(header, titleText, 24, 18, 18, TB_GUI_TEXT, True);
+  Self.MakeLabel(header, subtitleText, 24, 52, 10, TB_GUI_MUTED, False);
+end;
+
+procedure TConfig.StyleNav(selected: TImage);
+begin
+  Self.ActiveNav := selected;
+  Self.PaintRoundChip(Self.ScriptNav, Self.ScriptNav.GetHint(), TB_GUI_NAV_IDLE, TB_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AccountsNav, Self.AccountsNav.GetHint(), TB_GUI_NAV_IDLE, TB_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AntibanNav, Self.AntibanNav.GetHint(), TB_GUI_NAV_IDLE, TB_GUI_NAV, False);
+  Self.PaintRoundChip(selected, selected.GetHint(), TB_GUI_ACCENT, TB_GUI_NAV, True);
+end;
+
+procedure TConfig.ShowSection(section: TPanel; selected: TImage);
+begin
+  Self.ScriptSection.SetVisible(False);
+  Self.AccountsSection.SetVisible(False);
+  Self.AntibanSection.SetVisible(False);
+  section.SetVisible(True);
+  Self.StyleNav(selected);
+end;
+
+procedure TConfig.ShowScript({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.ScriptSection, Self.ScriptNav);
+end;
+
+procedure TConfig.ShowAccounts({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AccountsSection, Self.AccountsNav);
+end;
+
+procedure TConfig.ShowAntiban({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AntibanSection, Self.AntibanNav);
+end;
+
+procedure TConfig.OpenURL(Sender: TObject);
+begin
+  if Sender = Self.WebhookInfo then
+    OpenWebPage('https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks')
+  else if Sender = Self.DiscordUIDInfo then
+    OpenWebPage('https://support.discord.com/hc/en-us/articles/206346498-Where-can-I-find-my-User-Server-Message-ID');
+end;
+
+procedure TConfig.WebhooksCheckboxChanged(Sender: TObject);
+begin
+  if Sender = nil then;
+  Self.WebhookInfo.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
+  Self.DiscordUIDInfo.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
+  Self.DiscordUIDInput.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
+  Self.WebHookInput.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
+  Self.PingOnTerminatedCheckBox.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
+end;
+
+procedure TConfig.PowerFletchCheckboxChanged(Sender: TObject);
+begin
+  if Sender = nil then;
+  POWERFLETCHING := Self.PowerFletchCheckBox.IsChecked();
+end;
+
+procedure TConfig.MethodDropBoxChanged(Sender: TObject);
+begin
+  if Sender = nil then;
+  Self.PowerFletchCheckBox.SetVisible(Self.MethodDropBox.GetItemIndex() = 0);
+  METHODTOUSE := Self.MethodDropBox.GetText();
+end;
+
+procedure TConfig.TeamDropBoxChanged(Sender: TObject);
+begin
+  if Sender = nil then;
+  TeamSelection := Self.TeamDropBox.GetText();
+end;
+
+function TConfig.TeamIndexFromSelection(selection: String): Int32;
+begin
+  if selection = 'Blue' then
+    Result := 1
+  else if selection = 'Random' then
+    Result := 2
+  else
+    Result := 0;
+end;
+
+function TConfig.MethodIndexFromSelection(selection: String): Int32;
+begin
+  if selection = 'Buckets' then
+    Result := 1
+  else
+    Result := 0;
+end;
+
+procedure TConfig.LoadUserSettings();
+var
+  SavedDiscordUID, SavedWebhookURL: String;
+  SavedPingOnTerminated, SavedEnableWebhooks: Boolean;
+  Username: String;
+begin
+  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
+    Username := 'NoUserNameSelected'
+  else
+    Username := Login.Players[Login.PlayerIndex].User;
+
+  if Username = '' then Exit;
+
+  TeamSelection := ReadINI(Username + ' BATrouble Brewing', 'TeamSelection', 'Configs/BASettings.ini');
+  METHODTOUSE := ReadINI(Username + ' BATrouble Brewing', 'Method', 'Configs/BASettings.ini');
+  POWERFLETCHING := StrToBoolDef(ReadINI(Username + ' BATrouble Brewing', 'PowerFletch', 'Configs/BASettings.ini'), False);
+  SavedDiscordUID := ReadINI(Username + ' Webhook Settings', 'DiscordUID', 'Configs/BASettings.ini');
+  SavedWebhookURL := ReadINI(Username + ' Webhook Settings', 'WebhookURL', 'Configs/BASettings.ini');
+  SavedEnableWebhooks := StrToBoolDef(ReadINI(Username + ' Webhook Settings', 'EnableWebhooks', 'Configs/BASettings.ini'), False);
+  SavedPingOnTerminated := StrToBoolDef(ReadINI(Username + ' Webhook Settings', 'PingOnTerminated', 'Configs/BASettings.ini'), True);
+
+  if Assigned(Self.TeamDropBox) then
+    Self.TeamDropBox.SetItemIndex(Self.TeamIndexFromSelection(TeamSelection));
+
+  if Assigned(Self.MethodDropBox) then
+  begin
+    Self.MethodDropBox.SetItemIndex(Self.MethodIndexFromSelection(METHODTOUSE));
+    Self.MethodDropBoxChanged(Self.MethodDropBox.ComboBox);
+  end;
+
+  if Assigned(Self.PowerFletchCheckBox) then
+    Self.PowerFletchCheckBox.SetChecked(POWERFLETCHING);
+
+  if Assigned(Self.EnableWebhooksCheckBox) then
+  begin
+    Self.EnableWebhooksCheckBox.SetChecked(SavedEnableWebhooks);
+    Self.WebhooksCheckboxChanged(Self.EnableWebhooksCheckBox.CheckBox);
+  end;
+
+  if Assigned(Self.PingOnTerminatedCheckBox) then
+    Self.PingOnTerminatedCheckBox.SetChecked(SavedPingOnTerminated);
+
+  if Assigned(Self.DiscordUIDInput) then
+    Self.DiscordUIDInput.SetText(SavedDiscordUID);
+
+  if Assigned(Self.WebHookInput) then
+    Self.WebHookInput.SetText(SavedWebhookURL);
+end;
+
+procedure TConfig.SaveUserSettings();
+var
+  Username: String;
+begin
+  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
+    Username := 'NoUserNameSelected'
+  else
+    Username := Login.Players[Login.PlayerIndex].User;
+  if Username = '' then Exit;
+
+  if Assigned(Self.TeamDropBox) then
+    TeamSelection := Self.TeamDropBox.GetText();
+
+  if Assigned(Self.MethodDropBox) then
+    METHODTOUSE := Self.MethodDropBox.GetText();
+
+  if Assigned(Self.PowerFletchCheckBox) then
+    POWERFLETCHING := Self.PowerFletchCheckBox.IsChecked();
+
+  if Assigned(Self.EnableWebhooksCheckBox) then
+    ENABLEWEBHOOKS := Self.EnableWebhooksCheckBox.IsChecked();
+
+  if Assigned(Self.PingOnTerminatedCheckBox) then
+    PINGONTERMINATED := Self.PingOnTerminatedCheckBox.IsChecked();
+
+  if Assigned(Self.DiscordUIDInput) then
+    DiscordUID := Self.DiscordUIDInput.GetText();
+
+  if Assigned(Self.WebHookInput) then
+    WEBHOOKURL := Self.WebHookInput.GetText();
+
+  WriteINI(Username + ' BATrouble Brewing', 'TeamSelection', TeamSelection, 'Configs/BASettings.ini');
+  WriteINI(Username + ' BATrouble Brewing', 'Method', METHODTOUSE, 'Configs/BASettings.ini');
+  WriteINI(Username + ' BATrouble Brewing', 'PowerFletch', BoolToStr(POWERFLETCHING, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI(Username + ' Webhook Settings', 'DiscordUID', DiscordUID, 'Configs/BASettings.ini');
+  WriteINI(Username + ' Webhook Settings', 'WebhookURL', WEBHOOKURL, 'Configs/BASettings.ini');
+  WriteINI(Username + ' Webhook Settings', 'PingOnTerminated', BoolToStr(PINGONTERMINATED, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI(Username + ' Webhook Settings', 'EnableWebhooks', BoolToStr(ENABLEWEBHOOKS, 'true', 'false'), 'Configs/BASettings.ini');
+end;
 
 procedure TConfig.UpdateAccountValues(sender: TObject);
 var
@@ -1678,6 +2080,8 @@ var
   worldsStr: String;
   i: Int32;
 begin
+  if sender = nil then;
+
   selector := TComboBox(Self.Form.GetChild('am_selector_combobox'));
   idx := selector.GetItemIndex();
 
@@ -1685,7 +2089,6 @@ begin
 
   Self.SaveUserSettings();
 
-  // This should move the pindex?
   Login.PlayerIndex := idx;
 
   user := TEdit(Self.Form.GetChild('am_user_edit'));
@@ -1711,407 +2114,290 @@ end;
 
 procedure TConfig.InitializeAccountManager;
 var
-  accountManagerTab: TTabSheet;
   selector: TComboBox;
 begin
   selector := TComboBox(Self.Form.GetChild('am_selector_combobox'));
   selector.SetOnChange(@UpdateAccountValues);
 end;
 
-procedure TConfig.LoadUserSettings();
-var
-  SavedDiscordUID, SavedWebhookURL: String;
-  SavedPingOnTerminated, SavedEnableWebhooks, BHIncludeGUIOpenNests: Boolean;
-  Username: String;
-  seedEditPanel, logTypeComboPanel, bestLogCheckBoxPanel, needClockworksPanel: TComponent;
-  seedEdit: TEdit;
-  logTypeCombo: TComboBox;
-  bestLogCheckBox, needClockworks: TCheckBox;
-  birdhouseTab: TTabSheet;
-  openNestsCheckBox: TCheckBox;
+procedure TConfig.StartScript(Sender: TObject); override;
 begin
-  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
-    Username := 'NoUserNameSelected'
-  else
-    Username := Login.Players[Login.PlayerIndex].User;
+  if Sender = nil then;
 
-  if Username = '' then Exit;
-
-  TeamSelection := ReadINI(Username + ' BATrouble Brewing', 'TeamSelection', 'Configs/BASettings.ini');
-  METHODTOUSE := ReadINI(Username + ' BATrouble Brewing', 'Method', 'Configs/BASettings.ini');
-  POWERFLETCHING := StrToBoolDef(ReadINI(Username + ' BATrouble Brewing', 'PowerFletch', 'Configs/BASettings.ini'), False);
-  SavedDiscordUID := ReadINI(Username + ' Webhook Settings', 'DiscordUID', 'Configs/BASettings.ini');
-  SavedWebhookURL := ReadINI(Username + ' Webhook Settings', 'WebhookURL', 'Configs/BASettings.ini');
-  SavedEnableWebhooks := StrToBoolDef(ReadINI(Username + ' Webhook Settings', 'EnableWebhooks', 'Configs/BASettings.ini'), False);
-  SavedPingOnTerminated := StrToBoolDef(ReadINI(Username + ' Webhook Settings', 'PingOnTerminated', 'Configs/BASettings.ini'), True);
-  {BIRDHOUSEENABLED := StrToBoolDef(ReadINI(Username + ' Birdhouse Settings', 'Enabled', 'Configs/BASettings.ini'), True);
-  BHIncludeGUILogType := ERSLogType(StrToIntDef(ReadINI(Username + ' Birdhouse Settings', 'LogType', 'Configs/BASettings.ini'), 0));
-  BHIncludeGUISeed := ReadINI(Username + ' Birdhouse Settings', 'Seed', 'Configs/BASettings.ini');
-  BHIncludeGUIUseBestLog := StrToBoolDef(ReadINI(Username + ' Birdhouse Settings', 'UseBestLog', 'Configs/BASettings.ini'), False);
-  BHIncludeGUICraftWhileNav := StrToBoolDef(ReadINI(Username + ' Birdhouse Settings', 'CraftWhileNav', 'Configs/BASettings.ini'), False);
-  BHIncludeGUIOpenNests := StrToBoolDef(ReadINI(Username + ' Birdhouse Settings', 'OpenNests', 'Configs/BASettings.ini'), False);}
-
-  if Assigned(Self.EnableWebhooksCheckBox) then
-  begin
-    Self.EnableWebhooksCheckBox.SetChecked(SavedEnableWebhooks);
-    Self.WebhooksCheckboxChanged(Self.EnableWebhooksCheckBox.CheckBox);
-  end;
-
-  if Assigned(Self.PowerFletchCheckBox) then
-  begin
-    Self.PowerFletchCheckBox.SetChecked(POWERFLETCHING);
-  end;
-
-  if Assigned(Self.PingOnTerminatedCheckBox) then
-  begin
-    Self.PingOnTerminatedCheckBox.SetChecked(SavedPingOnTerminated);
-  end;
-
-  if Assigned(Self.DiscordUIDInput) then
-    Self.DiscordUIDInput.SetText(SavedDiscordUID);
-
-  if Assigned(Self.WebHookInput) then
-    Self.WebHookInput.SetText(SavedWebhookURL);
-
-  {if Assigned(Self.BirdHouseSettingsCheckbox) then
-  begin
-    Self.BirdHouseSettingsCheckbox.SetChecked(BIRDHOUSEENABLED);
-    Self.ToggleBirdhouseTabVisibility(Self.BirdHouseSettingsCheckbox.CheckBox);
-  end;
-
-  if Assigned(Self.BirdHouseSettingsCheckbox) then
-    Self.BirdHouseSettingsCheckbox.SetChecked(BIRDHOUSEENABLED);
-
-  seedEditPanel := Self.Form.GetChild('bh_seed_panel');
-  if Assigned(seedEditPanel) then
-  begin
-    seedEdit := TEdit(seedEditPanel.GetChild('bh_seed_edit'));
-    if Assigned(seedEdit) then
-    begin
-      seedEdit.SetText(BHIncludeGUISeed);
-    end;
-  end;
-
-  bestLogCheckBoxPanel := Self.Form.GetChild('bh_bestlogcb_panel');
-  if Assigned(bestLogCheckBoxPanel) then
-  begin
-    bestLogCheckBox := TCheckBox(bestLogCheckBoxPanel.GetChild('bh_bestlogcb_checkbox'));
-    if Assigned(bestLogCheckBox) then
-    begin
-      bestLogCheckBox.SetChecked(BHIncludeGUIUseBestLog);
-    end;
-  end;
-
-  needClockworksPanel := Self.Form.GetChild('bh_extraclockworkcb_panel');
-  if Assigned(needClockworksPanel) then
-  begin
-    needClockworks := TCheckBox(needClockworksPanel.GetChild('bh_extraclockworkcb_checkbox'));
-    if Assigned(needClockworks) then
-    begin
-      needClockworks.SetChecked(BHIncludeGUICraftWhileNav);
-    end;
-  end;}
-
-  if Assigned(Self.OpenNestsCheckBox) then
-    Self.OpenNestsCheckBox.SetChecked(BHIncludeGUIOpenNests);
-end;
-
-procedure TConfig.SaveUserSettings();
-var
-  Username: String;
-begin
- if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
-    Username := 'NoUserNameSelected'
-  else
-    Username := Login.Players[Login.PlayerIndex].User;
-  if Username = '' then Exit;
-
-  POWERFLETCHING := Self.PowerFletchCheckBox.IsChecked();
-
-  if Assigned(Self.EnableWebhooksCheckBox) then
-    ENABLEWEBHOOKS := Self.EnableWebhooksCheckBox.IsChecked();
-
-  if Assigned(Self.PingOnTerminatedCheckBox) then
-    PINGONTERMINATED := Self.PingOnTerminatedCheckBox.IsChecked();
-
-  {if Assigned(Self.BirdHouseSettingsCheckbox) then
-    BIRDHOUSEENABLED := Self.BirdHouseSettingsCheckbox.IsChecked();}
-
-  if Assigned(Self.DiscordUIDInput) then
-    DiscordUID := Self.DiscordUIDInput.GetText();
-
-  if Assigned(Self.WebHookInput) then
-    WEBHOOKURL := Self.WebHookInput.GetText();
-
-  if Assigned(Self.OpenNestsCheckBox) then
-    BHOPENNESTS := Self.OpenNestsCheckBox.IsChecked();
-
-  WriteINI(Username + ' BATrouble Brewing', 'TeamSelection', TeamSelection, 'Configs/BASettings.ini');
-  WriteINI(Username + ' BATrouble Brewing', 'Method', METHODTOUSE, 'Configs/BASettings.ini');
-  WriteINI(Username + ' BATrouble Brewing', 'PowerFletch', BoolToStr(POWERFLETCHING, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI(Username + ' Webhook Settings', 'DiscordUID', DiscordUID, 'Configs/BASettings.ini');
-  WriteINI(Username + ' Webhook Settings', 'WebhookURL', WEBHOOKURL, 'Configs/BASettings.ini');
-  WriteINI(Username + ' Webhook Settings', 'PingOnTerminated', BoolToStr(PINGONTERMINATED, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI(Username + ' Webhook Settings', 'EnableWebhooks', BoolToStr(ENABLEWEBHOOKS, 'true', 'false'), 'Configs/BASettings.ini');
-  {WriteINI(Username + ' Birdhouse Settings', 'Enabled', BoolToStr(BIRDHOUSEENABLED, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI(Username + ' Birdhouse Settings', 'LogType', IntToStr(Ord(BirdHouseRunner.LogType)), 'Configs/BASettings.ini');
-  WriteINI(Username + ' Birdhouse Settings', 'Seed', BirdHouseRunner.Seed, 'Configs/BASettings.ini');
-  WriteINI(Username + ' Birdhouse Settings', 'UseBestLog', BoolToStr(BirdHouseRunner.AlwaysUseBestLog, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI(Username + ' Birdhouse Settings', 'CraftWhileNav', BoolToStr(BirdHouseRunner.NeedClockworks, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI(Username + ' Birdhouse Settings', 'OpenNests', BoolToStr(BHOPENNESTS, 'true', 'false'), 'Configs/BASettings.ini');}
-end;
-
-procedure TConfig.StartScript(sender: TObject); override;
-begin
   METHODTOUSE := Self.MethodDropBox.GetText();
   POWERFLETCHING := Self.PowerFletchCheckBox.IsChecked();
   NPCSELECTION := Self.TeamDropBox.GetText();
+  TeamSelection := NPCSELECTION;
   Self.SaveUserSettings();
 
-  inherited;
+  WLSettings.Put('max_actions', StrToIntDef(Self.MaxActionsInput.GetText(), 0));
+  WLSettings.Put('max_time', StrToIntDef(Self.MaxTimeInput.GetText(), 0));
+  WLSettings.SaveConfig();
+
+  try
+    Self._WarmBuildCache();
+  except
+  end;
+  Self.Form.SetOnClose(nil);
+  Self.Form.Close();
 end;
 
-procedure TConfig.OpenURL(Sender: TObject);
+procedure TConfig.BuildScriptSection();
 begin
-  if Sender = Self.WebhookInfo then
-    OpenWebPage('https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks')
-  else if Sender = Self.DiscordUIDInfo then
-    OpenWebPage('https://support.discord.com/hc/en-us/articles/206346498-Where-can-I-find-my-User-Server-Message-ID');
+  Self.AddHeader(Self.ScriptSection, 'Action', 'Play Trouble Brewing with your chosen team and method.');
+
+  Self.AddCombo(Self.ScriptSection, Self.TeamDropBox, 'lcb_tb_team', 'Select your team', 24, 110, TB_TEAM_ITEMS, Self.TeamIndexFromSelection(TeamSelection));
+  Self.TeamDropBox.SetTooltip('Red Team can join a game in progress, Blue Team cannot.');
+  Self.TeamDropBox.ComboBox.SetOnChange(@Self.TeamDropBoxChanged);
+
+  Self.DisplayNameLabel := Self.MakeLabel(Self.ScriptSection, 'Display Name: ' + Chat.GetDisplayName(), TB_GUI_COL2, 128, 10, TB_GUI_MUTED, False);
+
+  Self.AddCombo(Self.ScriptSection, Self.MethodDropBox, 'lcb_tb_method', 'Choose method', 24, 190, TB_METHOD_ITEMS, Self.MethodIndexFromSelection(METHODTOUSE));
+  Self.MethodDropBox.SetTooltip('Choose the method you want to use.');
+  Self.MethodDropBox.ComboBox.SetOnChange(@Self.MethodDropBoxChanged);
+
+  Self.AddCheck(Self.ScriptSection, Self.PowerFletchCheckBox, 'cb_tb_powerfletch', 'Power Fletch', TB_GUI_COL2, 208, POWERFLETCHING);
+  Self.PowerFletchCheckBox.SetTooltip('Power fletching awards no pieces of eight or cooking XP, but more fletching XP');
+  Self.PowerFletchCheckBox.CheckBox.SetOnChange(@Self.PowerFletchCheckboxChanged);
+  Self.PowerFletchCheckBox.SetVisible(False);
 end;
 
-procedure TConfig.WebhooksCheckboxChanged(Sender: TObject);
-begin
-  Self.WebhookInfo.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
-  Self.DiscordUIDInfo.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
-  Self.DiscordUIDInput.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
-  Self.WebHookInput.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
-  Self.PingOnTerminatedCheckBox.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
-end;
-
-procedure TConfig.PowerFletchCheckboxChanged(Sender: TObject);
-begin
-  POWERFLETCHING := Self.PowerFletchCheckBox.IsChecked();
-end;
-
-{// Thanks to Torwent for the help <3
-procedure TConfig.ToggleBirdhouseTabVisibility(Sender: TObject);
+procedure TConfig.BuildAccountsSection();
 var
-  i: Int32;
-  tab: TTabSheet;
+  am: TPanel;
+  selectorPanel, userPanel, passPanel, pinPanel, worldsPanel: TPanel;
+  addBtn, deleteBtn, generateBtn: TButton;
+  leftColW, passW, pinW, worldsLeft, btnW, btnGap: Int32;
 begin
-  for i := 0 to High(Self.Tabs) do
-    if Self.Tabs[i].getCaption() = 'Birdhouse Settings' then
-    begin
-      Self.Tabs[i].SetTabVisible(TCheckbox(Sender).IsChecked());
-      Break;
-    end;
-end;}
+  Self.AddHeader(Self.AccountsSection, 'Accounts', 'Login account and optional Discord webhook notifications.');
 
-procedure TConfig.MethodDropBoxChanged(Sender: TObject);
-begin
-  Self.PowerFletchCheckBox.SetVisible(Self.MethodDropBox.GetItemIndex() = 0);
-  METHODTOUSE := Self.MethodDropBox.GetText();
-end;
+  am := Self.CreateAccountManager(Self.AccountsSection);
+  am.SetLeft(TControl.AdjustToDPI(16));
+  am.SetTop(TControl.AdjustToDPI(100));
+  am.SetColor(TB_GUI_BG);
 
-procedure TConfig.TeamDropBoxChanged(Sender: TObject);
-begin
-  TeamSelection := Self.TeamDropBox.GetText();
-end;
+  leftColW := TControl.AdjustToDPI(280);
+  passW := Floor(leftColW * 0.6);
+  pinW := Floor(leftColW * 0.3);
 
-{procedure TConfig.AddToBirdHouseGui();
-var
-  tab: TTabSheet;
-begin
-  // Don't tell CJ I added to his GUI
-  for tab in Self.Tabs do
+  selectorPanel := Self.Form.GetChild('am_selector_panel');
+  userPanel := Self.Form.GetChild('am_user_panel');
+  passPanel := Self.Form.GetChild('am_pass_panel');
+  pinPanel := Self.Form.GetChild('am_pin_panel');
+  worldsPanel := Self.Form.GetChild('am_worlds_panel');
+
+  if selectorPanel <> nil then
+    selectorPanel.SetWidth(leftColW);
+  if userPanel <> nil then
+    userPanel.SetWidth(leftColW);
+  if passPanel <> nil then
+    passPanel.SetWidth(passW);
+  if (pinPanel <> nil) and (selectorPanel <> nil) then
   begin
-    if tab.GetCaption() = 'Birdhouse Settings' then
+    pinPanel.SetWidth(pinW);
+    pinPanel.SetLeft(selectorPanel.GetLeft() + leftColW - pinW);
+  end;
+
+  if (worldsPanel <> nil) and (selectorPanel <> nil) then
+  begin
+    worldsLeft := selectorPanel.GetLeft() + leftColW + TControl.AdjustToDPI(48);
+    worldsPanel.SetLeft(worldsLeft);
+
+    addBtn := Self.Form.GetChild('am_add_button');
+    deleteBtn := Self.Form.GetChild('am_delete_button');
+    generateBtn := Self.Form.GetChild('am_generate_worlds_button');
+    btnGap := TControl.AdjustToDPI(8);
+    btnW := Floor((worldsPanel.GetWidth() - btnGap) / 2);
+
+    if generateBtn <> nil then
     begin
-      with Self.OpenNestsCheckBox do
-      begin
-        Create(tab);
-        SetCaption('Open Nests');
-        SetLeft(TControl.AdjustToDPI(570));
-        SetTop(TControl.AdjustToDPI(85));
-        SetChecked(BHOPENNESTS);
-        SetHint('Enable or disable opening nests after birdhouse run.');
-      end;
-      Break;
+      generateBtn.SetLeft(worldsLeft);
+      generateBtn.SetWidth(worldsPanel.GetWidth());
+    end;
+    if addBtn <> nil then
+    begin
+      addBtn.SetLeft(worldsLeft);
+      addBtn.SetWidth(btnW);
+    end;
+    if deleteBtn <> nil then
+    begin
+      deleteBtn.SetLeft(worldsLeft + worldsPanel.GetWidth() - btnW - TControl.AdjustToDPI(1));
+      deleteBtn.SetWidth(btnW);
     end;
   end;
-end;}
 
-procedure TConfig.Run(); override;
+  Self.InitializeAccountManager();
+
+  Self.MakeLabel(Self.AccountsSection, 'Discord', 24, 340, 11, TB_GUI_TEXT, True);
+
+  Self.AddCheck(Self.AccountsSection, Self.EnableWebhooksCheckBox, 'cb_tb_webhooks', 'Discord Notifications', 24, 370, False);
+  Self.EnableWebhooksCheckBox.SetTooltip('Script will ping you on your own discord server when it stops.');
+  Self.EnableWebhooksCheckBox.CheckBox.SetOnChange(@Self.WebhooksCheckboxChanged);
+
+  Self.WebhookInfo := Self.MakeLabel(Self.AccountsSection, 'Click here to learn how to generate your own Discord webhook URL', 24, 410, 10, $C07020, False);
+  Self.WebhookInfo.SetOnClick(@Self.OpenURL);
+  Self.WebhookInfo.SetCursor(crHandPoint);
+  Self.WebhookInfo.SetTooltip('Click here to learn how to generate your own Discord webhook URL');
+
+  Self.AddEdit(Self.AccountsSection, Self.DiscordUIDInput, 'le_tb_discord_uid', 'Discord UID (Optional)', '', 24, 440, TB_GUI_EDIT_W);
+  Self.DiscordUIDInput.SetTooltip('What name to @ in discord when script terminates');
+
+  Self.DiscordUIDInfo := Self.MakeLabel(Self.AccountsSection, 'Click here to learn how to find your Discord User ID', TB_GUI_COL2, 458, 10, $C07020, False);
+  Self.DiscordUIDInfo.SetOnClick(@Self.OpenURL);
+  Self.DiscordUIDInfo.SetCursor(crHandPoint);
+  Self.DiscordUIDInfo.SetTooltip('Click here to learn how to find your Discord User ID');
+
+  Self.AddEdit(Self.AccountsSection, Self.WebHookInput, 'le_tb_webhook', 'Discord Webhook URL', '', 24, 510, 520);
+  Self.WebHookInput.SetTooltip('Discord Webhook URL');
+
+  Self.AddCheck(Self.AccountsSection, Self.PingOnTerminatedCheckBox, 'cb_tb_ping_terminated', 'Ping on script termination', 24, 580, True);
+  Self.PingOnTerminatedCheckBox.SetTooltip('Enable to ping when the script terminates cleanly');
+end;
+
+procedure TConfig.BuildAntibanSection(SavedMaxActions, SavedMaxTime: Integer);
+begin
+  Self.AddHeader(Self.AntibanSection, 'Antiban', 'Session limits.');
+
+  Self.AddEdit(Self.AntibanSection, Self.MaxActionsInput, 'le_tb_maxactions', 'Max actions (0 = unlimited)', IntToStr(SavedMaxActions), 24, 110, TB_GUI_EDIT_W);
+  Self.MaxActionsInput.Edit.SetOnKeyPress(@Self.MaxActionsInput.Edit.NumberField);
+  Self.AddEdit(Self.AntibanSection, Self.MaxTimeInput, 'le_tb_maxtime', 'Max time minutes (0 = unlimited)', IntToStr(SavedMaxTime), TB_GUI_COL2, 110, TB_GUI_EDIT_W);
+  Self.MaxTimeInput.Edit.SetOnKeyPress(@Self.MaxTimeInput.Edit.NumberField);
+end;
+
+procedure TConfig.BuildShell(SavedMaxActions, SavedMaxTime: Integer);
 var
   tab: TTabSheet;
-  SavedDiscordUID, SavedWebhookURL: String;
-  SavedPingOnTerminated, SavedEnableWebhooks: Boolean;
-  DisplayNameLabel: TLabel;
+  contentH, startW, startH, shellW, shellH, statusTop, statusH, mainLeft, mainW, navW, bottomInset: Int32;
 begin
-  ClearDebug();
-  Self.Setup('BigAussies Trouble Brewing');
-  Self.Start.SetOnClick(@Self.StartScript);
-
-  Self.AddTab('Script Settings');
+  Self.AddTab('Trouble Brewing');
   tab := Self.Tabs[High(Self.Tabs)];
-  Self.CreateAccountManager(tab);
-  InitializeAccountManager();
+
+  Self.Start.SetAlign(alNone);
+  Self.Start.SetVisible(False);
+  Self.Start.SetHeight(0);
+  Self.Start.SetWidth(0);
+
+  bottomInset := TControl.AdjustToDPI(TB_GUI_BOTTOM_INSET);
+  navW := TControl.AdjustToDPI(TB_GUI_NAV_W);
+  statusH := TControl.AdjustToDPI(TB_GUI_STATUS_H);
+  shellW := Self.Size.X;
+  shellH := Self.Size.Y;
+  mainLeft := navW + TControl.AdjustToDPI(2);
+  mainW := shellW - mainLeft;
+  statusTop := shellH - statusH - bottomInset;
+  contentH := statusTop;
+  startW := TControl.AdjustToDPI(132);
+  startH := TControl.AdjustToDPI(TB_GUI_BTN_H);
+
+  Self.NavPanel.Create(tab);
+  Self.NavPanel.SetLeft(0);
+  Self.NavPanel.SetTop(0);
+  Self.NavPanel.SetWidth(navW);
+  Self.NavPanel.SetHeight(shellH);
+  Self.NavPanel.SetColor(TB_GUI_NAV);
+  Self.NavPanel.SetBevelOuter(bvNone);
+
+  Self.DividerPanel.Create(tab);
+  Self.DividerPanel.SetLeft(navW);
+  Self.DividerPanel.SetTop(0);
+  Self.DividerPanel.SetWidth(TControl.AdjustToDPI(2));
+  Self.DividerPanel.SetHeight(shellH);
+  Self.DividerPanel.SetColor(TB_GUI_DIVIDER);
+  Self.DividerPanel.SetBevelOuter(bvNone);
+
+  Self.ContentPanel.Create(tab);
+  Self.ContentPanel.SetLeft(mainLeft);
+  Self.ContentPanel.SetTop(0);
+  Self.ContentPanel.SetWidth(mainW);
+  Self.ContentPanel.SetHeight(contentH);
+  Self.ContentPanel.SetColor(TB_GUI_BG);
+  Self.ContentPanel.SetBevelOuter(bvNone);
+
+  Self.StatusDivider.Create(tab);
+  Self.StatusDivider.SetLeft(mainLeft);
+  Self.StatusDivider.SetTop(statusTop);
+  Self.StatusDivider.SetWidth(mainW);
+  Self.StatusDivider.SetHeight(TControl.AdjustToDPI(2));
+  Self.StatusDivider.SetColor(TB_GUI_DIVIDER);
+  Self.StatusDivider.SetBevelOuter(bvNone);
+
+  Self.StatusPanel.Create(tab);
+  Self.StatusPanel.SetLeft(mainLeft);
+  Self.StatusPanel.SetTop(statusTop + Self.StatusDivider.GetHeight());
+  Self.StatusPanel.SetWidth(mainW);
+  Self.StatusPanel.SetHeight(statusH - Self.StatusDivider.GetHeight());
+  Self.StatusPanel.SetColor(TB_GUI_STATUS);
+  Self.StatusPanel.SetBevelOuter(bvNone);
+
+  Self.StatusPad.Create(tab);
+  Self.StatusPad.SetLeft(mainLeft);
+  Self.StatusPad.SetTop(Self.StatusPanel.GetTop() + Self.StatusPanel.GetHeight());
+  Self.StatusPad.SetWidth(mainW);
+  Self.StatusPad.SetHeight(shellH - Self.StatusPad.GetTop());
+  Self.StatusPad.SetColor(TB_GUI_STATUS);
+  Self.StatusPad.SetBevelOuter(bvNone);
+
+  Self.BrandLabel := Self.MakeLabel(Self.NavPanel, 'Trouble Brewing', 16, 28, 14, TB_GUI_TEXT, True);
+  Self.MakeLabel(Self.NavPanel, 'BigAussie', 16, 54, 9, TB_GUI_MUTED, False);
+
+  Self.ScriptNav := Self.MakeNavItem(Self.NavPanel, 'Action', 12, 100, True);
+  Self.AccountsNav := Self.MakeNavItem(Self.NavPanel, 'Accounts', 12, 152);
+  Self.AntibanNav := Self.MakeNavItem(Self.NavPanel, 'Antiban', 12, 204);
+
+  Self.ScriptSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, TB_GUI_BG);
+  Self.AccountsSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, TB_GUI_BG);
+  Self.AntibanSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, TB_GUI_BG);
+
+  Self.ScriptSection.SetWidth(mainW);
+  Self.ScriptSection.SetHeight(contentH);
+  Self.AccountsSection.SetWidth(mainW);
+  Self.AccountsSection.SetHeight(contentH);
+  Self.AntibanSection.SetWidth(mainW);
+  Self.AntibanSection.SetHeight(contentH);
+
+  Self.BuildScriptSection();
+  Self.BuildAccountsSection();
+  Self.BuildAntibanSection(SavedMaxActions, SavedMaxTime);
+
+  Self.ScriptNav.SetOnClick(@Self.ShowScript);
+  Self.AccountsNav.SetOnClick(@Self.ShowAccounts);
+  Self.AntibanNav.SetOnClick(@Self.ShowAntiban);
+
+  Self.StartChip.Create(Self.StatusPanel);
+  Self.StartChip.SetLeft(mainW - startW - TControl.AdjustToDPI(24));
+  Self.StartChip.SetTop((Self.StatusPanel.GetHeight() - startH) div 2 + 2);
+  Self.StartChip.SetWidth(startW);
+  Self.StartChip.SetHeight(startH);
+  Self.StartChip.SetCursor(crHandPoint);
+  Self.PaintRoundChip(Self.StartChip, 'Start', TB_GUI_START, TB_GUI_STATUS, True, True);
+  Self.StartChip.SetOnClick(@Self.StartScript);
+
   Self.LoadUserSettings();
-  //Self.CreateBirdhouseRunSettings();
-  //Self.AddToBirdHouseGui();
-  //Self.LoadUserSettings();
-
-  with Self.TeamDropBox do
-  begin
-    Create(tab);
-    SetCaption('Select your team');
-    SetLeft(TControl.AdjustToDPI(30));
-    SetTop(TControl.AdjustToDPI(140));
-    SetWidth(TControl.AdjustToDPI(140));
-    AddItemArray(['Red', 'Blue', 'Random']);
-    if TeamSelection = '' then
-      SetItemIndex(0)
-    else if TeamSelection = 'Blue' then
-      SetItemIndex(1)
-    else if TeamSelection = 'Random' then
-      SetItemIndex(2)
-    else
-      SetItemIndex(0);
-    SetHint('Red Team can join a game in progress, Blue Team cannot.');
-    ComboBox.SetOnChange(@TeamDropBoxChanged);
-  end;
-
-  with DisplayNameLabel do
-  begin
-    Create(tab);
-    SetLeft(Self.TeamDropBox.GetLeft() + Self.TeamDropBox.GetWidth() + TControl.AdjustToDPI(10));
-    SetTop(Self.TeamDropBox.GetTop() + TControl.AdjustToDPI(18));
-    SetCaption('Display Name: ' + Chat.GetDisplayName());
-  end;
-
-  with Self.MethodDropBox do
-  begin
-    Create(tab);
-    SetCaption('Choose method');
-    SetLeft(Self.TeamDropBox.GetLeft());
-    SetTop(Self.TeamDropBox.GetTop() + TControl.AdjustToDPI(45));
-    SetWidth(TControl.AdjustToDPI(140));
-    Self.MethodDropBox.AddItem('Scrapy Bark');
-    Self.MethodDropBox.AddItem('Buckets');
-    if TeamSelection = '' then
-      Self.MethodDropBox.SetItemIndex(0)
-    if METHODTOUSE = 'Scrapy Bark' then
-      Self.MethodDropBox.SetItemIndex(0)
-    else if METHODTOUSE = 'Buckets' then
-      Self.MethodDropBox.SetItemIndex(1);
-    ComboBox.SetOnChange(@MethodDropBoxChanged);
-    SetHint('Choose the method you want to use.');
-  end;
-
-  with Self.PowerFletchCheckBox do
-  begin
-    Create(tab);
-    SetLeft(Self.MethodDropBox.GetLeft() + Self.MethodDropBox.GetWidth() + TControl.AdjustToDPI(10));
-    SetTop(Self.MethodDropBox.GetTop() + TControl.AdjustToDPI(16));
-    SetCaption('Power Fletch');
-    SetVisible(False);
-    SetHint('Power fletching awards no pieces of eight or cooking XP, but more fletching XP');
-    SetChecked(POWERFLETCHING);
-  end;
-
-  {with BirdHouseSettingsCheckbox do
-  begin
-    Create(Self.Tabs[0]);
-    SetCaption('Enable Birdhouse Runs');
-    SetLeft(Self.MethodDropBox.GetLeft());
-    SetTop(Self.MethodDropBox.GetTop() + TControl.AdjustToDPI(50));
-    SetChecked(True);
-    SetHint('Enables CJ Birdhouse Runs, Settings are at the top of this tab when enabled.');
-    CheckBox.SetOnChange(@ToggleBirdhouseTabVisibility);
-  end;}
-
-  with Self.EnableWebhooksCheckBox do
-  begin
-    Create(tab);
-    SetCaption("Discord Notifications");
-    SetLeft(Self.MethodDropBox.GetLeft());
-    SetTop(Self.MethodDropBox.GetTop() + TControl.AdjustToDPI(50));
-    SetHint('Script will ping you on your own discord server when it stops.');
-    SetChecked(SavedEnableWebhooks);
-    CheckBox.SetOnChange(@WebhooksCheckboxChanged);
-  end;
-
-  with Self.WebhookInfo do
-  begin
-    Create(tab);
-    SetLeft(Self.EnableWebhooksCheckBox.GetLeft());
-    SetTop(Self.EnableWebhooksCheckBox.GetTop() + TControl.AdjustToDPI(25));
-    SetCaption('Click here to learn how to generate your own Discord webhook URL');
-    SetHint('Click here to learn how to generate your own Discord webhook URL');
-    setOnClick(@OpenURL);
-    SetFontSize(TControl.AdjustToDPI(9));
-    SetFontColor(clBlue);
-  end;
-
-  with Self.DiscordUIDInput do
-  begin
-    Create(tab);
-    SetLeft(Self.WebhookInfo.GetLeft());
-    SetTop(Self.WebhookInfo.GetTop() + TControl.AdjustToDPI(30));
-    SetCaption('Discord UID (Optional)');
-    SetHint('What name to @ in discord when script terminates');
-    SetWidth(TControl.AdjustToDPI(140));
-    SetText(SavedDiscordUID);
-  end;
-
-  with Self.DiscordUIDInfo do
-  begin
-    Create(tab);
-    SetFontColor(clBlue);
-    SetLeft(Self.DiscordUIDInput.GetLeft() + Self.DiscordUIDInput.GetWidth() + TControl.AdjustToDPI(10));
-    SetTop(Self.DiscordUIDInput.GetTop() + TControl.AdjustToDPI(18));
-    SetCaption('Click here to learn how to find your Discord User ID');
-    SetHint('Click here to learn how to find your Discord User ID');
-    setOnClick(@OpenURL);
-    SetFontSize(TControl.AdjustToDPI(9));
-  end;
-
-  with Self.WebHookInput do
-  begin
-    Create(tab);
-    SetLeft(Self.DiscordUIDInput.GetLeft());
-    SetTop(Self.DiscordUIDInput.GetTop() + TControl.AdjustToDPI(45));
-    SetCaption('Discord Webhook URL');
-    SetHint('Discord Webhook URL');
-    SetWidth(TControl.AdjustToDPI(180));
-    SetText(savedWebhookURL);
-  end;
-
-  with Self.PingOnTerminatedCheckBox do
-  begin
-    Create(tab);
-    SetCaption("Ping on script termination");
-    SetLeft(Self.WebHookInput.GetLeft());
-    SetTop(Self.WebHookInput.GetTop() + TControl.AdjustToDPI(50));
-    SetHint('Enable to ping when the script terminates cleanly');
-    SetChecked(SavedPingOnTerminated);
-  end;
-
-  //Self.BirdHouseSettingsCheckbox.SetChecked(BIRDHOUSEENABLED);
-  //Self.ToggleBirdhouseTabVisibility(Self.BirdHouseSettingsCheckbox.CheckBox);
-  WebhooksCheckboxChanged(Self.EnableWebhooksCheckBox.CheckBox);
   Self.MethodDropBoxChanged(Self.MethodDropBox.ComboBox);
   Self.TeamDropBoxChanged(Self.TeamDropBox.ComboBox);
   Self.PowerFletchCheckboxChanged(Self.PowerFletchCheckBox.CheckBox);
+  Self.WebhooksCheckboxChanged(Self.EnableWebhooksCheckBox.CheckBox);
 
+  Self.ShowScript(Self.ScriptNav);
+end;
 
-  //Self.CreateVersionPanel(tab);
+procedure TConfig.Run(); override;
+var
+  SavedMaxActions, SavedMaxTime: Integer;
+begin
+  BashPromptIfUpdateAvailable();
 
-  Self.CreateAntibanManager();
+  if WLSettings.Has('max_actions') then
+    SavedMaxActions := WLSettings.GetInt('max_actions')
+  else
+    SavedMaxActions := 0;
+  if WLSettings.Has('max_time') then
+    SavedMaxTime := WLSettings.GetInt('max_time')
+  else
+    SavedMaxTime := 0;
 
-  Self.CreateWaspLibSettings();
-
-  Self.CreateAPISettings();
+  Self.Setup('BigAussies Trouble Brewing', [TB_GUI_W, TB_GUI_H], False);
+  Self.BuildShell(SavedMaxActions, SavedMaxTime);
 
   inherited;
 end;
@@ -2119,6 +2405,7 @@ end;
 var
   Config: TConfig;
 {$ENDIF}
+
 
 begin
   {if FileExists(AppPath+'\Includes\Farm\BirdHouseInclude.simba') then

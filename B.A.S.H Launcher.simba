@@ -1,5 +1,5 @@
 {$DEFINE SCRIPT_ID := 'bfde3085-80dc-4bd6-870a-8cb3186a938c'}
-{$DEFINE SCRIPT_REVISION := '12'}
+{$DEFINE SCRIPT_REVISION := '14'}
 
 {.$DEFINE DEVELOPER_MODE}
 
@@ -1391,38 +1391,23 @@ begin
   end;
 end;
 
-function InferScriptFeatures(const name, path, description: String; existing: TStringArray): TStringArray;
+function InferScriptFeatures(const description: String; existing: TStringArray): TStringArray;
 var
-  hay: String;
+  desc: String;
 begin
   Result := existing;
-  hay := LowerCase(name + ' ' + path + ' ' + description);
+  // Only the launcher description should advertise run support
+  // (avoids false positives like "Prifddinas" furnace lists).
+  desc := LowerCase(description);
 
-  // Known scripts with run addons (until catalog features are fully set).
-  if hay.Contains('gemstone crab') or hay.Contains('gemstonecrab') or hay.Contains('crab slayer') then
+  if desc.Contains('farm runs') or desc.Contains('farm run') then
   begin
     if not Result.Contains('farm_runs') then
       Result += 'farm_runs';
-    if not Result.Contains('birdhouses') then
-      Result += 'birdhouses';
   end;
 
-  if hay.Contains('prifddinas') or hay.Contains('prif agility') then
+  if desc.Contains('birdhouse runs') or desc.Contains('birdhouse run') then
   begin
-    if not Result.Contains('birdhouses') then
-      Result += 'birdhouses';
-  end;
-
-  if hay.Contains('aio lunar') or hay.Contains('lunar spells') then
-  begin
-    if not Result.Contains('birdhouses') then
-      Result += 'birdhouses';
-  end;
-
-  if hay.Contains('farmbhruns') or (hay.Contains('farm') and hay.Contains('birdhouse') and hay.Contains('mhome')) then
-  begin
-    if not Result.Contains('farm_runs') then
-      Result += 'farm_runs';
     if not Result.Contains('birdhouses') then
       Result += 'birdhouses';
   end;
@@ -1438,7 +1423,7 @@ end;
 
 procedure FinalizeScriptMetadata(var script: TScriptData);
 begin
-  script.Features := InferScriptFeatures(script.Name, script.URL, script.Description, script.Features);
+  script.Features := InferScriptFeatures(script.Description, script.Features);
   ApplyRunFeatureActivities(script);
 end;
 
@@ -1733,6 +1718,11 @@ begin
     end;
 
     if script.ID = '' then
+      Continue;
+    // Auto-update channel only — never show in the runnable script list.
+    if SameText(script.ID, 'bfde3085-80dc-4bd6-870a-8cb3186a938c') then
+      Continue;
+    if script.Name.Contains('Launcher') or script.URL.Contains('Launcher') then
       Continue;
     if script.URL = '' then
       script.URL := script.Name + '.simba';
@@ -2343,6 +2333,10 @@ begin
       script.Name := ScriptDisplayNameFromPath(script.URL);
     if script.ID = '' then
       script.ID := script.URL;
+    if SameText(script.ID, 'bfde3085-80dc-4bd6-870a-8cb3186a938c') then
+      Continue;
+    if script.Name.Contains('Launcher') or script.URL.Contains('Launcher') then
+      Continue;
 
     if script.Typ <> EScriptType.FREE then
       Continue;

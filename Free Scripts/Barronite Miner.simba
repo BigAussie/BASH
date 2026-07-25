@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := '6201fd4a-a3b1-408e-a420-13cfc8c218f7'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '2'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '3'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -535,35 +535,447 @@ var
   Script: BarroniteMiner;
 
 {$IFDEF SCRIPT_GUI}
+const
+  BM_GUI_NAV       = $F0EBE4;
+  BM_GUI_BG        = $FFFFFF;
+  BM_GUI_STATUS    = $F7F4F1;
+  BM_GUI_DIVIDER   = $D4C9BC;
+  BM_GUI_CARD      = $F7F4F1;
+  BM_GUI_ACCENT    = $E0C9AE;
+  BM_GUI_NAV_IDLE  = $E7DED4;
+  BM_GUI_START     = $C9B094;
+  BM_GUI_TEXT      = $1C1C1E;
+  BM_GUI_MUTED     = $6B6B70;
+  BM_GUI_W         = 1120;
+  BM_GUI_H         = 700;
+  BM_GUI_NAV_W     = 190;
+  BM_GUI_STATUS_H  = 56;
+  BM_GUI_BTN_H     = 42;
+  BM_GUI_EDIT_W    = 260;
+  BM_GUI_COL2      = 308;
+  BM_GUI_BOTTOM_INSET = 34;
+
 type
   TConfig = record(TScriptForm)
-    Message: TLabel;
+    NavPanel, ContentPanel, StatusPanel, DividerPanel, StatusDivider, StatusPad: TPanel;
+    BrandLabel: TLabel;
+    ScriptNav, AccountsNav, AntibanNav: TImage;
+    StartChip: TImage;
+    ActiveNav: TImage;
+    ScriptSection, AccountsSection, AntibanSection: TPanel;
+
+    MaxActionsInput, MaxTimeInput: TLabeledEdit;
   end;
 
-procedure TConfig.StartScript(sender: TObject); override; 
+function TConfig.MakePanel(
+  parent: TWinControl;
+  left, top, width, height, color: Int32
+): TPanel;
 begin
-  inherited;
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetWidth(TControl.AdjustToDPI(width));
+  Result.SetHeight(TControl.AdjustToDPI(height));
+  Result.SetColor(color);
+  Result.SetBevelOuter(bvNone);
+end;
+
+procedure TConfig.PaintRoundChip(
+  img: TImage;
+  labelText: String;
+  fill, parentBg: Int32;
+  selected: Boolean = False;
+  centered: Boolean = False
+);
+var
+  bmp: TBitmap;
+  c: TCanvas;
+  w, h, r, tw, th, tx: Int32;
+begin
+  w := img.GetWidth();
+  h := img.GetHeight();
+  if (w <= 0) or (h <= 0) then
+    Exit;
+
+  r := TControl.AdjustToDPI(6);
+  if r * 2 > h then
+    r := h div 2;
+  if r * 2 > w then
+    r := w div 2;
+
+  bmp := img.GetPicture().GetBitmap();
+  bmp.SetWidth(w);
+  bmp.SetHeight(h);
+  c := bmp.GetCanvas();
+
+  c.GetBrush().SetColor(parentBg);
+  c.GetPen().SetColor(parentBg);
+  c.FillRect(0, 0, w, h);
+
+  c.GetBrush().SetColor(fill);
+  c.GetPen().SetColor(fill);
+  c.RoundRect(0, 0, w - 1, h - 1, r * 2, r * 2);
+
+  c.GetBrush().SetColor(fill);
+  c.GetFont().SetColor(BM_GUI_TEXT);
+  c.GetFont().SetSize(11);
+  if selected then
+    c.GetFont().SetStyle([fsBold])
+  else
+    c.GetFont().SetStyle([]);
+
+  tw := c.TextWidth(labelText);
+  th := c.TextHeight(labelText);
+  if centered then
+    tx := (w - tw) div 2
+  else
+    tx := TControl.AdjustToDPI(16);
+  c.TextOut(tx, (h - th) div 2, labelText);
+
+  img.SetHint(labelText);
+  img.SetShowHint(False);
+  img.Invalidate();
+end;
+
+function TConfig.MakeNavItem(
+  parent: TWinControl;
+  labelText: String;
+  left, top: Int32;
+  selected: Boolean = False
+): TImage;
+var
+  fill: Int32;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetWidth(TControl.AdjustToDPI(BM_GUI_NAV_W - 28));
+  Result.SetHeight(TControl.AdjustToDPI(BM_GUI_BTN_H));
+  Result.SetCursor(crHandPoint);
+
+  if selected then
+    fill := BM_GUI_ACCENT
+  else
+    fill := BM_GUI_NAV_IDLE;
+
+  Self.PaintRoundChip(Result, labelText, fill, BM_GUI_NAV, selected);
+end;
+
+function TConfig.MakeLabel(
+  parent: TWinControl;
+  labelText: String;
+  left, top, fontSize, fontColor: Int32;
+  bold: Boolean = False
+): TLabel;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetCaption(labelText);
+  Result.GetFont().SetSize(fontSize);
+  Result.GetFont().SetColor(fontColor);
+  if bold then
+    Result.GetFont().SetStyle([fsBold]);
+end;
+
+procedure TConfig.AddEdit(
+  parent: TWinControl;
+  var box: TLabeledEdit;
+  ctrlName, labelText, text: String;
+  left, top, width: Int32
+);
+begin
+  box.Create(parent);
+  box.SetLeft(TControl.AdjustToDPI(left));
+  box.SetTop(TControl.AdjustToDPI(top));
+  box.SetWidth(TControl.AdjustToDPI(width));
+  box.SetName(ctrlName);
+  box.SetCaption(labelText);
+  box.SetText(text);
+  box.SetFontColor(BM_GUI_TEXT);
+end;
+
+procedure TConfig.AddHeader(parent: TPanel; titleText, subtitleText: String);
+var
+  header: TPanel;
+  headerW: Int32;
+begin
+  headerW := parent.GetWidth();
+  if headerW <= 0 then
+    headerW := TControl.AdjustToDPI(BM_GUI_W - BM_GUI_NAV_W - 2);
+
+  header := Self.MakePanel(parent, 0, 0, 1, 88, BM_GUI_CARD);
+  header.SetWidth(headerW);
+  header.SetHeight(TControl.AdjustToDPI(88));
+  Self.MakeLabel(header, titleText, 24, 18, 18, BM_GUI_TEXT, True);
+  Self.MakeLabel(header, subtitleText, 24, 52, 10, BM_GUI_MUTED, False);
+end;
+
+procedure TConfig.StyleNav(selected: TImage);
+begin
+  Self.ActiveNav := selected;
+  Self.PaintRoundChip(Self.ScriptNav, Self.ScriptNav.GetHint(), BM_GUI_NAV_IDLE, BM_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AccountsNav, Self.AccountsNav.GetHint(), BM_GUI_NAV_IDLE, BM_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AntibanNav, Self.AntibanNav.GetHint(), BM_GUI_NAV_IDLE, BM_GUI_NAV, False);
+  Self.PaintRoundChip(selected, selected.GetHint(), BM_GUI_ACCENT, BM_GUI_NAV, True);
+end;
+
+procedure TConfig.ShowSection(section: TPanel; selected: TImage);
+begin
+  Self.ScriptSection.SetVisible(False);
+  Self.AccountsSection.SetVisible(False);
+  Self.AntibanSection.SetVisible(False);
+  section.SetVisible(True);
+  Self.StyleNav(selected);
+end;
+
+procedure TConfig.ShowScript({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.ScriptSection, Self.ScriptNav);
+end;
+
+procedure TConfig.ShowAccounts({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AccountsSection, Self.AccountsNav);
+end;
+
+procedure TConfig.ShowAntiban({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AntibanSection, Self.AntibanNav);
+end;
+
+procedure TConfig.StartScript(Sender: TObject); override;
+begin
+  if Sender = nil then;
+
+  WLSettings.Put('max_actions', StrToIntDef(Self.MaxActionsInput.GetText(), 0));
+  WLSettings.Put('max_time', StrToIntDef(Self.MaxTimeInput.GetText(), 0));
+  WLSettings.SaveConfig();
+
+  try
+    Self._WarmBuildCache();
+  except
+  end;
+  Self.Form.SetOnClose(nil);
+  Self.Form.Close();
+end;
+
+procedure TConfig.BuildScriptSection();
+var
+  hint: TLabel;
+begin
+  Self.AddHeader(Self.ScriptSection, 'Action', 'Mine barronite and crush deposits at the anvil.');
+
+  hint := Self.MakeLabel(Self.ScriptSection, 'Mines barronite rocks, uses the anvil, and banks shards.', 24, 110, 10, BM_GUI_MUTED, False);
+  hint.SetWidth(TControl.AdjustToDPI(820));
+  hint := Self.MakeLabel(Self.ScriptSection, 'Configure your account and antiban options in the other tabs, then press Start.', 24, 140, 10, BM_GUI_MUTED, False);
+  hint.SetWidth(TControl.AdjustToDPI(820));
+end;
+
+procedure TConfig.BuildAccountsSection();
+var
+  am: TPanel;
+  selectorPanel, userPanel, passPanel, pinPanel, worldsPanel: TPanel;
+  addBtn, deleteBtn, generateBtn: TButton;
+  leftColW, passW, pinW, worldsLeft, btnW, btnGap: Int32;
+begin
+  Self.AddHeader(Self.AccountsSection, 'Accounts', 'Login account and hop worlds list.');
+
+  am := Self.CreateAccountManager(Self.AccountsSection);
+  am.SetLeft(TControl.AdjustToDPI(16));
+  am.SetTop(TControl.AdjustToDPI(100));
+  am.SetColor(BM_GUI_BG);
+
+  leftColW := TControl.AdjustToDPI(280);
+  passW := Floor(leftColW * 0.6);
+  pinW := Floor(leftColW * 0.3);
+
+  selectorPanel := Self.Form.GetChild('am_selector_panel');
+  userPanel := Self.Form.GetChild('am_user_panel');
+  passPanel := Self.Form.GetChild('am_pass_panel');
+  pinPanel := Self.Form.GetChild('am_pin_panel');
+  worldsPanel := Self.Form.GetChild('am_worlds_panel');
+
+  if selectorPanel <> nil then
+    selectorPanel.SetWidth(leftColW);
+  if userPanel <> nil then
+    userPanel.SetWidth(leftColW);
+  if passPanel <> nil then
+    passPanel.SetWidth(passW);
+  if (pinPanel <> nil) and (selectorPanel <> nil) then
+  begin
+    pinPanel.SetWidth(pinW);
+    pinPanel.SetLeft(selectorPanel.GetLeft() + leftColW - pinW);
+  end;
+
+  if (worldsPanel <> nil) and (selectorPanel <> nil) then
+  begin
+    worldsLeft := selectorPanel.GetLeft() + leftColW + TControl.AdjustToDPI(48);
+    worldsPanel.SetLeft(worldsLeft);
+
+    addBtn := Self.Form.GetChild('am_add_button');
+    deleteBtn := Self.Form.GetChild('am_delete_button');
+    generateBtn := Self.Form.GetChild('am_generate_worlds_button');
+    btnGap := TControl.AdjustToDPI(8);
+    btnW := Floor((worldsPanel.GetWidth() - btnGap) / 2);
+
+    if generateBtn <> nil then
+    begin
+      generateBtn.SetLeft(worldsLeft);
+      generateBtn.SetWidth(worldsPanel.GetWidth());
+    end;
+    if addBtn <> nil then
+    begin
+      addBtn.SetLeft(worldsLeft);
+      addBtn.SetWidth(btnW);
+    end;
+    if deleteBtn <> nil then
+    begin
+      deleteBtn.SetLeft(worldsLeft + worldsPanel.GetWidth() - btnW - TControl.AdjustToDPI(1));
+      deleteBtn.SetWidth(btnW);
+    end;
+  end;
+end;
+
+procedure TConfig.BuildAntibanSection(SavedMaxActions, SavedMaxTime: Integer);
+begin
+  Self.AddHeader(Self.AntibanSection, 'Antiban', 'Session limits.');
+
+  Self.AddEdit(Self.AntibanSection, Self.MaxActionsInput, 'le_bm_maxactions', 'Max actions (0 = unlimited)', IntToStr(SavedMaxActions), 24, 110, BM_GUI_EDIT_W);
+  Self.MaxActionsInput.Edit.SetOnKeyPress(@Self.MaxActionsInput.Edit.NumberField);
+  Self.AddEdit(Self.AntibanSection, Self.MaxTimeInput, 'le_bm_maxtime', 'Max time minutes (0 = unlimited)', IntToStr(SavedMaxTime), BM_GUI_COL2, 110, BM_GUI_EDIT_W);
+  Self.MaxTimeInput.Edit.SetOnKeyPress(@Self.MaxTimeInput.Edit.NumberField);
+end;
+
+procedure TConfig.BuildShell(SavedMaxActions, SavedMaxTime: Integer);
+var
+  tab: TTabSheet;
+  contentH, startW, startH, shellW, shellH, statusTop, statusH, mainLeft, mainW, navW, bottomInset: Int32;
+begin
+  Self.AddTab('Barronite Miner');
+  tab := Self.Tabs[High(Self.Tabs)];
+
+  Self.Start.SetAlign(alNone);
+  Self.Start.SetVisible(False);
+  Self.Start.SetHeight(0);
+  Self.Start.SetWidth(0);
+
+  bottomInset := TControl.AdjustToDPI(BM_GUI_BOTTOM_INSET);
+  navW := TControl.AdjustToDPI(BM_GUI_NAV_W);
+  statusH := TControl.AdjustToDPI(BM_GUI_STATUS_H);
+  shellW := Self.Size.X;
+  shellH := Self.Size.Y;
+  mainLeft := navW + TControl.AdjustToDPI(2);
+  mainW := shellW - mainLeft;
+  statusTop := shellH - statusH - bottomInset;
+  contentH := statusTop;
+  startW := TControl.AdjustToDPI(132);
+  startH := TControl.AdjustToDPI(BM_GUI_BTN_H);
+
+  Self.NavPanel.Create(tab);
+  Self.NavPanel.SetLeft(0);
+  Self.NavPanel.SetTop(0);
+  Self.NavPanel.SetWidth(navW);
+  Self.NavPanel.SetHeight(shellH);
+  Self.NavPanel.SetColor(BM_GUI_NAV);
+  Self.NavPanel.SetBevelOuter(bvNone);
+
+  Self.DividerPanel.Create(tab);
+  Self.DividerPanel.SetLeft(navW);
+  Self.DividerPanel.SetTop(0);
+  Self.DividerPanel.SetWidth(TControl.AdjustToDPI(2));
+  Self.DividerPanel.SetHeight(shellH);
+  Self.DividerPanel.SetColor(BM_GUI_DIVIDER);
+  Self.DividerPanel.SetBevelOuter(bvNone);
+
+  Self.ContentPanel.Create(tab);
+  Self.ContentPanel.SetLeft(mainLeft);
+  Self.ContentPanel.SetTop(0);
+  Self.ContentPanel.SetWidth(mainW);
+  Self.ContentPanel.SetHeight(contentH);
+  Self.ContentPanel.SetColor(BM_GUI_BG);
+  Self.ContentPanel.SetBevelOuter(bvNone);
+
+  Self.StatusDivider.Create(tab);
+  Self.StatusDivider.SetLeft(mainLeft);
+  Self.StatusDivider.SetTop(statusTop);
+  Self.StatusDivider.SetWidth(mainW);
+  Self.StatusDivider.SetHeight(TControl.AdjustToDPI(2));
+  Self.StatusDivider.SetColor(BM_GUI_DIVIDER);
+  Self.StatusDivider.SetBevelOuter(bvNone);
+
+  Self.StatusPanel.Create(tab);
+  Self.StatusPanel.SetLeft(mainLeft);
+  Self.StatusPanel.SetTop(statusTop + Self.StatusDivider.GetHeight());
+  Self.StatusPanel.SetWidth(mainW);
+  Self.StatusPanel.SetHeight(statusH - Self.StatusDivider.GetHeight());
+  Self.StatusPanel.SetColor(BM_GUI_STATUS);
+  Self.StatusPanel.SetBevelOuter(bvNone);
+
+  Self.StatusPad.Create(tab);
+  Self.StatusPad.SetLeft(mainLeft);
+  Self.StatusPad.SetTop(Self.StatusPanel.GetTop() + Self.StatusPanel.GetHeight());
+  Self.StatusPad.SetWidth(mainW);
+  Self.StatusPad.SetHeight(shellH - Self.StatusPad.GetTop());
+  Self.StatusPad.SetColor(BM_GUI_STATUS);
+  Self.StatusPad.SetBevelOuter(bvNone);
+
+  Self.BrandLabel := Self.MakeLabel(Self.NavPanel, 'Barronite Miner', 16, 28, 14, BM_GUI_TEXT, True);
+  Self.MakeLabel(Self.NavPanel, 'BigAussie', 16, 54, 9, BM_GUI_MUTED, False);
+
+  Self.ScriptNav := Self.MakeNavItem(Self.NavPanel, 'Action', 12, 100, True);
+  Self.AccountsNav := Self.MakeNavItem(Self.NavPanel, 'Accounts', 12, 152);
+  Self.AntibanNav := Self.MakeNavItem(Self.NavPanel, 'Antiban', 12, 204);
+
+  Self.ScriptSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, BM_GUI_BG);
+  Self.AccountsSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, BM_GUI_BG);
+  Self.AntibanSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, BM_GUI_BG);
+
+  Self.ScriptSection.SetWidth(mainW);
+  Self.ScriptSection.SetHeight(contentH);
+  Self.AccountsSection.SetWidth(mainW);
+  Self.AccountsSection.SetHeight(contentH);
+  Self.AntibanSection.SetWidth(mainW);
+  Self.AntibanSection.SetHeight(contentH);
+
+  Self.BuildScriptSection();
+  Self.BuildAccountsSection();
+  Self.BuildAntibanSection(SavedMaxActions, SavedMaxTime);
+
+  Self.ScriptNav.SetOnClick(@Self.ShowScript);
+  Self.AccountsNav.SetOnClick(@Self.ShowAccounts);
+  Self.AntibanNav.SetOnClick(@Self.ShowAntiban);
+
+  Self.StartChip.Create(Self.StatusPanel);
+  Self.StartChip.SetLeft(mainW - startW - TControl.AdjustToDPI(24));
+  Self.StartChip.SetTop((Self.StatusPanel.GetHeight() - startH) div 2 + 2);
+  Self.StartChip.SetWidth(startW);
+  Self.StartChip.SetHeight(startH);
+  Self.StartChip.SetCursor(crHandPoint);
+  Self.PaintRoundChip(Self.StartChip, 'Start', BM_GUI_START, BM_GUI_STATUS, True, True);
+  Self.StartChip.SetOnClick(@Self.StartScript);
+
+  Self.ShowScript(Self.ScriptNav);
 end;
 
 procedure TConfig.Run(); override;
 var
-  tab: TTabSheet;
+  SavedMaxActions, SavedMaxTime: Integer;
 begin
-  Self.Setup("BigAussies Barronite Miner");
-  Self.Start.SetOnClick(@Self.StartScript);
+  BashPromptIfUpdateAvailable();
 
-  Self.AddTab('Script Settings');
-  tab := Self.Tabs[High(Self.Tabs)];
+  if WLSettings.Has('max_actions') then
+    SavedMaxActions := WLSettings.GetInt('max_actions')
+  else
+    SavedMaxActions := 0;
+  if WLSettings.Has('max_time') then
+    SavedMaxTime := WLSettings.GetInt('max_time')
+  else
+    SavedMaxTime := 0;
 
-  Self.CreateAccountManager(tab);
-
-  Self.CreateVersionPanel(tab);
-
-  Self.CreateAntibanManager();
-
-  Self.CreateWaspLibSettings();
-
-  Self.CreateAPISettings();
+  Self.Setup('BigAussies Barronite Miner', [BM_GUI_W, BM_GUI_H], False);
+  Self.BuildShell(SavedMaxActions, SavedMaxTime);
 
   inherited;
 end;

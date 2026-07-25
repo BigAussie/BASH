@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := '8dc108d0-7e16-472e-839e-dfd7f64e9f08'}
-{$DEFINE SCRIPT_REVISION := '3'}
+{$DEFINE SCRIPT_REVISION := '4'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -1152,108 +1152,256 @@ begin
 end;
 
 {$IFDEF SCRIPT_GUI}
+const
+  IW_GUI_NAV       = $F0EBE4;
+  IW_GUI_BG        = $FFFFFF;
+  IW_GUI_STATUS    = $F7F4F1;
+  IW_GUI_DIVIDER   = $D4C9BC;
+  IW_GUI_CARD      = $F7F4F1;
+  IW_GUI_ACCENT    = $E0C9AE;
+  IW_GUI_NAV_IDLE  = $E7DED4;
+  IW_GUI_START     = $C9B094;
+  IW_GUI_TEXT      = $1C1C1E;
+  IW_GUI_MUTED     = $6B6B70;
+  IW_GUI_W         = 1120;
+  IW_GUI_H         = 700;
+  IW_GUI_NAV_W     = 190;
+  IW_GUI_STATUS_H  = 56;
+  IW_GUI_BTN_H     = 42;
+  IW_GUI_EDIT_W    = 260;
+  IW_GUI_COL2      = 308;
+  IW_GUI_BOTTOM_INSET = 34;
+
 type
   TConfig = record(TScriptForm)
-    ScriptInfoLabel: TLabel;
-    EnableWebhooksCheckBox: TLabeledCheckBox;
-    WebHookInput: TLabeledEdit;
-    HourlyReportsCheckBox: TLabeledCheckBox;
-    SessionSummaryCheckBox: TLabeledCheckBox;
-    WebhookInfo: TLabel;
+    NavPanel, ContentPanel, StatusPanel, DividerPanel, StatusDivider, StatusPad: TPanel;
+    BrandLabel: TLabel;
+    ScriptNav, AccountsNav, AntibanNav: TImage;
+    StartChip: TImage;
+    ActiveNav: TImage;
+    ScriptSection, AccountsSection, AntibanSection: TPanel;
+
+    PreferPopulatedTreesCheckBox, PowerCutCheckBox: TLabeledCheckBox;
+    EnableWebhooksCheckBox, HourlyReportsCheckBox, SessionSummaryCheckBox: TLabeledCheckBox;
+    EnableWorldHoppingCheckBox, OverrideBreaksCheckBox: TLabeledCheckBox;
+    WebHookInput, WorldHopIntervalInput, CustomBreakIntervalInput, CustomBreakDurationInput: TLabeledEdit;
+    MaxActionsInput, MaxTimeInput: TLabeledEdit;
     TestButton: TButton;
-    
-    EnableWorldHoppingCheckBox: TLabeledCheckBox;
-    WorldHopIntervalInput: TLabeledEdit;
-    
-    PreferPopulatedTreesCheckBox: TLabeledCheckBox;
-    PowerCutCheckBox: TLabeledCheckBox;
-    
-    OverrideBreaksCheckBox: TLabeledCheckBox;
-    CustomBreakIntervalInput: TLabeledEdit;
-    CustomBreakDurationInput: TLabeledEdit;
+    WebhookInfo: TLabel;
   end;
 
-procedure TConfig.StartScript(sender: TObject); override;
-var
-  Username: String;
+function TConfig.MakePanel(
+  parent: TWinControl;
+  left, top, width, height, color: Int32
+): TPanel;
 begin
-  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
-    Username := 'NoUserSelected'
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetWidth(TControl.AdjustToDPI(width));
+  Result.SetHeight(TControl.AdjustToDPI(height));
+  Result.SetColor(color);
+  Result.SetBevelOuter(bvNone);
+end;
+
+procedure TConfig.PaintRoundChip(
+  img: TImage;
+  labelText: String;
+  fill, parentBg: Int32;
+  selected: Boolean = False;
+  centered: Boolean = False
+);
+var
+  bmp: TBitmap;
+  c: TCanvas;
+  w, h, r, tw, th, tx: Int32;
+begin
+  w := img.GetWidth();
+  h := img.GetHeight();
+  if (w <= 0) or (h <= 0) then
+    Exit;
+
+  r := TControl.AdjustToDPI(6);
+  if r * 2 > h then
+    r := h div 2;
+  if r * 2 > w then
+    r := w div 2;
+
+  bmp := img.GetPicture().GetBitmap();
+  bmp.SetWidth(w);
+  bmp.SetHeight(h);
+  c := bmp.GetCanvas();
+
+  c.GetBrush().SetColor(parentBg);
+  c.GetPen().SetColor(parentBg);
+  c.FillRect(0, 0, w, h);
+
+  c.GetBrush().SetColor(fill);
+  c.GetPen().SetColor(fill);
+  c.RoundRect(0, 0, w - 1, h - 1, r * 2, r * 2);
+
+  c.GetBrush().SetColor(fill);
+  c.GetFont().SetColor(IW_GUI_TEXT);
+  c.GetFont().SetSize(11);
+  if selected then
+    c.GetFont().SetStyle([fsBold])
   else
-    Username := Login.Players[Login.PlayerIndex].User;
+    c.GetFont().SetStyle([]);
 
-  WEBHOOKURL := Self.WebHookInput.GetText;
-  ENABLEWEBHOOKS := Self.EnableWebhooksCheckBox.IsChecked();
-  SENDHOURLYREPORTMSG := Self.HourlyReportsCheckBox.IsChecked();
-  SENDSESSIONSUMMARYMSG := Self.SessionSummaryCheckBox.IsChecked();
-  
-  if Assigned(Self.EnableWorldHoppingCheckBox) then
-    ENABLEWORLDHOPPING := Self.EnableWorldHoppingCheckBox.IsChecked();
-  
-  if Assigned(Self.WorldHopIntervalInput) then
-    WORLDHOPINTERVAL := StrToIntDef(Self.WorldHopIntervalInput.GetText(), 45);
-  
-  if Assigned(Self.PreferPopulatedTreesCheckBox) then
-    PREFERPOPULATEDTREES := Self.PreferPopulatedTreesCheckBox.IsChecked();
-  
-  if Assigned(Self.PowerCutCheckBox) then
-    POWERCUT := Self.PowerCutCheckBox.IsChecked();
-  
-  if Assigned(Self.OverrideBreaksCheckBox) then
-    OVERRIDEBREAKS := Self.OverrideBreaksCheckBox.IsChecked();
-  
-  if Assigned(Self.CustomBreakIntervalInput) then
-    CUSTOMBREAKINTERVAL := StrToIntDef(Self.CustomBreakIntervalInput.GetText(), 60);
-  
-  if Assigned(Self.CustomBreakDurationInput) then
-    CUSTOMBREAKDURATION := StrToIntDef(Self.CustomBreakDurationInput.GetText(), 5);
+  tw := c.TextWidth(labelText);
+  th := c.TextHeight(labelText);
+  if centered then
+    tx := (w - tw) div 2
+  else
+    tx := TControl.AdjustToDPI(16);
+  c.TextOut(tx, (h - th) div 2, labelText);
 
-  WriteINI(Username + ' Ironwood Webhook Settings', 'WebhookURL', WEBHOOKURL, 'Configs/BAIronwoodSettings.ini');
-  WriteINI(Username + ' Ironwood Webhook Settings', 'EnableWebhooks', BoolToStr(ENABLEWEBHOOKS, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
-  WriteINI(Username + ' Ironwood Webhook Settings', 'HourlyReports', BoolToStr(SENDHOURLYREPORTMSG, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
-  WriteINI(Username + ' Ironwood Webhook Settings', 'SessionSummary', BoolToStr(SENDSESSIONSUMMARYMSG, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
-  WriteINI(Username + ' Ironwood Script Settings', 'EnableWorldHopping', BoolToStr(ENABLEWORLDHOPPING, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
-  WriteINI(Username + ' Ironwood Script Settings', 'WorldHopInterval', IntToStr(WORLDHOPINTERVAL), 'Configs/BAIronwoodSettings.ini');
-  WriteINI(Username + ' Ironwood Script Settings', 'PreferPopulatedTrees', BoolToStr(PREFERPOPULATEDTREES, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
-  WriteINI(Username + ' Ironwood Script Settings', 'PowerCut', BoolToStr(POWERCUT, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
-  WriteINI(Username + ' Ironwood Antiban Manager', 'OverrideBreaks', BoolToStr(OVERRIDEBREAKS, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
-  WriteINI(Username + ' Ironwood Antiban Manager', 'CustomBreakInterval', IntToStr(CUSTOMBREAKINTERVAL), 'Configs/BAIronwoodSettings.ini');
-  WriteINI(Username + ' Ironwood Antiban Manager', 'CustomBreakDuration', IntToStr(CUSTOMBREAKDURATION), 'Configs/BAIronwoodSettings.ini');
+  img.SetHint(labelText);
+  img.SetShowHint(False);
+  img.Invalidate();
+end;
 
-  Discord.SetWebhook(WEBHOOKURL);
+function TConfig.MakeNavItem(
+  parent: TWinControl;
+  labelText: String;
+  left, top: Int32;
+  selected: Boolean = False
+): TImage;
+var
+  fill: Int32;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetWidth(TControl.AdjustToDPI(IW_GUI_NAV_W - 28));
+  Result.SetHeight(TControl.AdjustToDPI(IW_GUI_BTN_H));
+  Result.SetCursor(crHandPoint);
 
-  inherited;
+  if selected then
+    fill := IW_GUI_ACCENT
+  else
+    fill := IW_GUI_NAV_IDLE;
+
+  Self.PaintRoundChip(Result, labelText, fill, IW_GUI_NAV, selected);
+end;
+
+function TConfig.MakeLabel(
+  parent: TWinControl;
+  labelText: String;
+  left, top, fontSize, fontColor: Int32;
+  bold: Boolean = False
+): TLabel;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetCaption(labelText);
+  Result.GetFont().SetSize(fontSize);
+  Result.GetFont().SetColor(fontColor);
+  if bold then
+    Result.GetFont().SetStyle([fsBold]);
+end;
+
+procedure TConfig.AddCheck(
+  parent: TWinControl;
+  var box: TLabeledCheckBox;
+  ctrlName, labelText: String;
+  left, top: Int32;
+  checked: Boolean
+);
+begin
+  box.Create(parent);
+  box.SetLeft(TControl.AdjustToDPI(left));
+  box.SetTop(TControl.AdjustToDPI(top));
+  box.SetName(ctrlName);
+  box.SetFontColor(IW_GUI_TEXT);
+  box.SetCaption(labelText);
+  if checked then
+    box.CheckBox.SetChecked(True);
+end;
+
+procedure TConfig.AddEdit(
+  parent: TWinControl;
+  var box: TLabeledEdit;
+  ctrlName, labelText, text: String;
+  left, top, width: Int32
+);
+begin
+  box.Create(parent);
+  box.SetLeft(TControl.AdjustToDPI(left));
+  box.SetTop(TControl.AdjustToDPI(top));
+  box.SetWidth(TControl.AdjustToDPI(width));
+  box.SetName(ctrlName);
+  box.SetCaption(labelText);
+  box.SetText(text);
+  box.SetFontColor(IW_GUI_TEXT);
+end;
+
+procedure TConfig.AddHeader(parent: TPanel; titleText, subtitleText: String);
+var
+  header: TPanel;
+  headerW: Int32;
+begin
+  headerW := parent.GetWidth();
+  if headerW <= 0 then
+    headerW := TControl.AdjustToDPI(IW_GUI_W - IW_GUI_NAV_W - 2);
+
+  header := Self.MakePanel(parent, 0, 0, 1, 88, IW_GUI_CARD);
+  header.SetWidth(headerW);
+  header.SetHeight(TControl.AdjustToDPI(88));
+  Self.MakeLabel(header, titleText, 24, 18, 18, IW_GUI_TEXT, True);
+  Self.MakeLabel(header, subtitleText, 24, 52, 10, IW_GUI_MUTED, False);
+end;
+
+procedure TConfig.StyleNav(selected: TImage);
+begin
+  Self.ActiveNav := selected;
+  Self.PaintRoundChip(Self.ScriptNav, Self.ScriptNav.GetHint(), IW_GUI_NAV_IDLE, IW_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AccountsNav, Self.AccountsNav.GetHint(), IW_GUI_NAV_IDLE, IW_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AntibanNav, Self.AntibanNav.GetHint(), IW_GUI_NAV_IDLE, IW_GUI_NAV, False);
+  Self.PaintRoundChip(selected, selected.GetHint(), IW_GUI_ACCENT, IW_GUI_NAV, True);
+end;
+
+procedure TConfig.ShowSection(section: TPanel; selected: TImage);
+begin
+  Self.ScriptSection.SetVisible(False);
+  Self.AccountsSection.SetVisible(False);
+  Self.AntibanSection.SetVisible(False);
+  section.SetVisible(True);
+  Self.StyleNav(selected);
+end;
+
+procedure TConfig.ShowScript({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.ScriptSection, Self.ScriptNav);
+end;
+
+procedure TConfig.ShowAccounts({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AccountsSection, Self.AccountsNav);
+end;
+
+procedure TConfig.ShowAntiban({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AntibanSection, Self.AntibanNav);
 end;
 
 procedure TConfig.WebhooksCheckboxChanged(Sender: TObject);
 var
-  VisibleState: Boolean;
+  ShowWebhook: Boolean;
 begin
-  VisibleState := Self.EnableWebhooksCheckBox.IsChecked();
-
-  Self.WebHookInput.SetVisible(VisibleState);
-  Self.TestButton.SetVisible(VisibleState);
-  Self.HourlyReportsCheckBox.SetVisible(VisibleState);
-  Self.SessionSummaryCheckBox.SetVisible(VisibleState);
-  Self.WebhookInfo.SetVisible(VisibleState);
+  if Sender = nil then;
+  ShowWebhook := Self.EnableWebhooksCheckBox.IsChecked();
+  Self.WebHookInput.SetVisible(ShowWebhook);
+  Self.TestButton.SetVisible(ShowWebhook);
+  Self.WebhookInfo.SetVisible(ShowWebhook);
+  Self.HourlyReportsCheckBox.SetVisible(ShowWebhook);
+  Self.SessionSummaryCheckBox.SetVisible(ShowWebhook);
 end;
 
-procedure TConfig.WorldHopCheckboxChanged({$H-}sender: TObject){$H+};
+procedure TConfig.OpenWebhookHelp(Sender: TObject);
 begin
-  if Assigned(Self.WorldHopIntervalInput) then
-    Self.WorldHopIntervalInput.SetVisible(Self.EnableWorldHoppingCheckBox.IsChecked());
-end;
-
-procedure TConfig.OverrideBreaksCheckboxChanged({$H-}sender: TObject){$H+};
-begin
-  if Assigned(Self.CustomBreakIntervalInput) then
-    Self.CustomBreakIntervalInput.SetVisible(Self.OverrideBreaksCheckBox.IsChecked());
-  if Assigned(Self.CustomBreakDurationInput) then
-    Self.CustomBreakDurationInput.SetVisible(Self.OverrideBreaksCheckBox.IsChecked());
-end;
-
-procedure TConfig.OpenURL(Sender: TObject);
-begin
+  if Sender = nil then;
   OpenWebPage('https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks');
 end;
 
@@ -1274,30 +1422,356 @@ begin
     ShowMessage('Failed to send test message: ' + Discord.LastError);
 end;
 
-procedure TConfig.Run(); override;
+procedure TConfig.OverrideBreaksCheckboxChanged(Sender: TObject);
+begin
+  if Sender = nil then;
+  Self.CustomBreakIntervalInput.SetVisible(Self.OverrideBreaksCheckBox.IsChecked());
+  Self.CustomBreakDurationInput.SetVisible(Self.OverrideBreaksCheckBox.IsChecked());
+end;
+
+procedure TConfig.WorldHoppingCheckboxChanged(Sender: TObject);
+begin
+  if Sender = nil then;
+  Self.WorldHopIntervalInput.SetVisible(Self.EnableWorldHoppingCheckBox.IsChecked());
+end;
+
+procedure TConfig.StartScript(Sender: TObject); override;
+var
+  Username: String;
+begin
+  if Sender = nil then;
+
+  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
+    Username := 'NoUserSelected'
+  else
+    Username := Login.Players[Login.PlayerIndex].User;
+
+  WEBHOOKURL := Self.WebHookInput.GetText;
+  ENABLEWEBHOOKS := Self.EnableWebhooksCheckBox.IsChecked();
+  SENDHOURLYREPORTMSG := Self.HourlyReportsCheckBox.IsChecked();
+  SENDSESSIONSUMMARYMSG := Self.SessionSummaryCheckBox.IsChecked();
+
+  ENABLEWORLDHOPPING := Self.EnableWorldHoppingCheckBox.IsChecked();
+  WORLDHOPINTERVAL := StrToIntDef(Self.WorldHopIntervalInput.GetText(), 45);
+
+  PREFERPOPULATEDTREES := Self.PreferPopulatedTreesCheckBox.IsChecked();
+  POWERCUT := Self.PowerCutCheckBox.IsChecked();
+
+  OVERRIDEBREAKS := Self.OverrideBreaksCheckBox.IsChecked();
+  CUSTOMBREAKINTERVAL := StrToIntDef(Self.CustomBreakIntervalInput.GetText(), 60);
+  CUSTOMBREAKDURATION := StrToIntDef(Self.CustomBreakDurationInput.GetText(), 5);
+
+  WLSettings.Put('max_actions', StrToIntDef(Self.MaxActionsInput.GetText(), 0));
+  WLSettings.Put('max_time', StrToIntDef(Self.MaxTimeInput.GetText(), 0));
+  WLSettings.SaveConfig();
+
+  WriteINI(Username + ' Ironwood Webhook Settings', 'WebhookURL', WEBHOOKURL, 'Configs/BAIronwoodSettings.ini');
+  WriteINI(Username + ' Ironwood Webhook Settings', 'EnableWebhooks', BoolToStr(ENABLEWEBHOOKS, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
+  WriteINI(Username + ' Ironwood Webhook Settings', 'HourlyReports', BoolToStr(SENDHOURLYREPORTMSG, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
+  WriteINI(Username + ' Ironwood Webhook Settings', 'SessionSummary', BoolToStr(SENDSESSIONSUMMARYMSG, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
+  WriteINI(Username + ' Ironwood Script Settings', 'EnableWorldHopping', BoolToStr(ENABLEWORLDHOPPING, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
+  WriteINI(Username + ' Ironwood Script Settings', 'WorldHopInterval', IntToStr(WORLDHOPINTERVAL), 'Configs/BAIronwoodSettings.ini');
+  WriteINI(Username + ' Ironwood Script Settings', 'PreferPopulatedTrees', BoolToStr(PREFERPOPULATEDTREES, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
+  WriteINI(Username + ' Ironwood Script Settings', 'PowerCut', BoolToStr(POWERCUT, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
+  WriteINI(Username + ' Ironwood Antiban Manager', 'OverrideBreaks', BoolToStr(OVERRIDEBREAKS, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
+  WriteINI(Username + ' Ironwood Antiban Manager', 'CustomBreakInterval', IntToStr(CUSTOMBREAKINTERVAL), 'Configs/BAIronwoodSettings.ini');
+  WriteINI(Username + ' Ironwood Antiban Manager', 'CustomBreakDuration', IntToStr(CUSTOMBREAKDURATION), 'Configs/BAIronwoodSettings.ini');
+
+  Discord.SetWebhook(WEBHOOKURL);
+
+  try
+    Self._WarmBuildCache();
+  except
+  end;
+  Self.Form.SetOnClose(nil);
+  Self.Form.Close();
+end;
+
+procedure TConfig.BuildScriptSection(
+  SavedPreferPopulatedTrees, SavedPowerCut: Boolean
+);
+begin
+  Self.AddHeader(Self.ScriptSection, 'Action', 'Chop ironwood trees in the Mining Guild.');
+
+  Self.AddCheck(Self.ScriptSection, Self.PreferPopulatedTreesCheckBox, 'cb_iw_prefer_populated', 'Prefer trees with players (forestry)', 24, 110, SavedPreferPopulatedTrees);
+  Self.PreferPopulatedTreesCheckBox.SetTooltip('Prefer chopping trees that other players are already at for forestry worlds.');
+
+  Self.AddCheck(Self.ScriptSection, Self.PowerCutCheckBox, 'cb_iw_powercut', 'Power cut (drop logs)', 24, 150, SavedPowerCut);
+  Self.PowerCutCheckBox.SetTooltip('Drop logs instead of banking. Clue scrolls will still be kept.');
+end;
+
+procedure TConfig.BuildAccountsSection(
+  SavedWebhookURL: String;
+  SavedEnableWebhooks, SavedHourly, SavedSessionSummary: Boolean
+);
+var
+  am: TPanel;
+  selectorPanel, userPanel, passPanel, pinPanel, worldsPanel, jagexPanel: TPanel;
+  addBtn, deleteBtn, generateBtn: TButton;
+  leftColW, passW, pinW, worldsLeft, btnW, btnGap: Int32;
+begin
+  Self.AddHeader(Self.AccountsSection, 'Accounts', 'Login account and optional Discord webhook notifications.');
+
+  am := Self.CreateAccountManager(Self.AccountsSection);
+  am.SetLeft(TControl.AdjustToDPI(16));
+  am.SetTop(TControl.AdjustToDPI(100));
+  am.SetColor(IW_GUI_BG);
+
+  leftColW := TControl.AdjustToDPI(280);
+  passW := Floor(leftColW * 0.6);
+  pinW := Floor(leftColW * 0.3);
+
+  selectorPanel := Self.Form.GetChild('am_selector_panel');
+  userPanel := Self.Form.GetChild('am_user_panel');
+  passPanel := Self.Form.GetChild('am_pass_panel');
+  pinPanel := Self.Form.GetChild('am_pin_panel');
+  worldsPanel := Self.Form.GetChild('am_worlds_panel');
+  jagexPanel := Self.Form.GetChild('am_jagex_panel');
+
+  if selectorPanel <> nil then
+    selectorPanel.SetWidth(leftColW);
+  if userPanel <> nil then
+    userPanel.SetWidth(leftColW);
+  if jagexPanel <> nil then
+    jagexPanel.SetWidth(leftColW);
+  if passPanel <> nil then
+    passPanel.SetWidth(passW);
+  if (pinPanel <> nil) and (selectorPanel <> nil) then
+  begin
+    pinPanel.SetWidth(pinW);
+    pinPanel.SetLeft(selectorPanel.GetLeft() + leftColW - pinW);
+  end;
+
+  if (worldsPanel <> nil) and (selectorPanel <> nil) and (userPanel <> nil) then
+  begin
+    worldsLeft := selectorPanel.GetLeft() + leftColW + TControl.AdjustToDPI(48);
+    worldsPanel.SetLeft(worldsLeft);
+    worldsPanel.SetHeight(userPanel.GetBottom());
+
+    addBtn := Self.Form.GetChild('am_add_button');
+    deleteBtn := Self.Form.GetChild('am_delete_button');
+    generateBtn := Self.Form.GetChild('am_generate_worlds_button');
+    btnGap := TControl.AdjustToDPI(8);
+    btnW := Floor((worldsPanel.GetWidth() - btnGap) / 2);
+
+    if generateBtn <> nil then
+    begin
+      generateBtn.SetLeft(worldsLeft);
+      generateBtn.SetWidth(worldsPanel.GetWidth());
+    end;
+    if addBtn <> nil then
+    begin
+      addBtn.SetLeft(worldsLeft);
+      addBtn.SetWidth(btnW);
+    end;
+    if deleteBtn <> nil then
+    begin
+      deleteBtn.SetLeft(worldsLeft + worldsPanel.GetWidth() - btnW - TControl.AdjustToDPI(1));
+      deleteBtn.SetWidth(btnW);
+    end;
+
+    if (addBtn <> nil) and (am.GetHeight() < addBtn.GetTop() + addBtn.GetHeight() + TControl.AdjustToDPI(8)) then
+      am.SetHeight(addBtn.GetTop() + addBtn.GetHeight() + TControl.AdjustToDPI(8));
+  end;
+
+  Self.ApplyJagexAccountVisibility();
+
+  Self.MakeLabel(Self.AccountsSection, 'Discord', 24, 340, 11, IW_GUI_TEXT, True);
+
+  Self.AddCheck(Self.AccountsSection, Self.EnableWebhooksCheckBox, 'cb_iw_webhooks', 'Discord notifications', 24, 360, SavedEnableWebhooks);
+  Self.EnableWebhooksCheckBox.SetTooltip('Send hourly progress and session summary messages to Discord.');
+  Self.EnableWebhooksCheckBox.CheckBox.SetOnChange(@Self.WebhooksCheckboxChanged);
+
+  Self.AddCheck(Self.AccountsSection, Self.HourlyReportsCheckBox, 'cb_iw_hourly', 'Hourly progress reports', 24, 390, SavedHourly);
+  Self.HourlyReportsCheckBox.SetTooltip('Send an hourly progress report to Discord while the script is running.');
+
+  Self.AddCheck(Self.AccountsSection, Self.SessionSummaryCheckBox, 'cb_iw_session', 'Session summary on stop', 24, 420, SavedSessionSummary);
+  Self.SessionSummaryCheckBox.SetTooltip('Send a session summary message when the script stops.');
+
+  Self.WebhookInfo := Self.MakeLabel(Self.AccountsSection, 'Click here to learn how to generate a Discord webhook URL', 24, 460, 10, $C07020, False);
+  Self.WebhookInfo.SetOnClick(@Self.OpenWebhookHelp);
+  Self.WebhookInfo.SetCursor(crHandPoint);
+  Self.WebhookInfo.SetTooltip('Opens a guide for creating a Discord webhook URL.');
+
+  Self.AddEdit(Self.AccountsSection, Self.WebHookInput, 'le_iw_webhook', 'Webhook URL', SavedWebhookURL, 24, 490, 520);
+  Self.WebHookInput.SetPasswordChar('*');
+  Self.WebHookInput.SetTooltip('Paste your Discord webhook URL here. Kept hidden while typing.');
+
+  Self.TestButton.Create(Self.AccountsSection);
+  Self.TestButton.SetLeft(TControl.AdjustToDPI(560));
+  Self.TestButton.SetTop(TControl.AdjustToDPI(508));
+  Self.TestButton.SetWidth(TControl.AdjustToDPI(80));
+  Self.TestButton.SetHeight(TControl.AdjustToDPI(28));
+  Self.TestButton.SetCaption('Test');
+  Self.TestButton.SetTooltip('Sends a test Discord message using the webhook URL above.');
+  Self.TestButton.SetOnClick(@Self.TestButtonClick);
+end;
+
+procedure TConfig.BuildAntibanSection(
+  SavedEnableWorldHopping, SavedOverrideBreaks: Boolean;
+  SavedWorldHopInterval, SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime: Integer
+);
+begin
+  Self.AddHeader(Self.AntibanSection, 'Antiban', 'Breaks, world hopping, and session limits.');
+
+  Self.AddEdit(Self.AntibanSection, Self.MaxActionsInput, 'le_iw_maxactions', 'Max actions (0 = unlimited)', IntToStr(SavedMaxActions), 24, 110, IW_GUI_EDIT_W);
+  Self.MaxActionsInput.Edit.SetOnKeyPress(@Self.MaxActionsInput.Edit.NumberField);
+  Self.MaxActionsInput.SetTooltip('Stop after this many completed actions. 0 = no limit.');
+  Self.AddEdit(Self.AntibanSection, Self.MaxTimeInput, 'le_iw_maxtime', 'Max time minutes (0 = unlimited)', IntToStr(SavedMaxTime), IW_GUI_COL2, 110, IW_GUI_EDIT_W);
+  Self.MaxTimeInput.Edit.SetOnKeyPress(@Self.MaxTimeInput.Edit.NumberField);
+  Self.MaxTimeInput.SetTooltip('Stop after this many minutes of runtime. 0 = no limit.');
+
+  Self.AddCheck(Self.AntibanSection, Self.OverrideBreaksCheckBox, 'cb_iw_override_breaks', 'Override default breaks', 24, 190, SavedOverrideBreaks);
+  Self.OverrideBreaksCheckBox.SetTooltip('Replace default break timing with the custom interval and duration below.');
+  Self.OverrideBreaksCheckBox.CheckBox.SetOnChange(@Self.OverrideBreaksCheckboxChanged);
+
+  Self.AddEdit(Self.AntibanSection, Self.CustomBreakIntervalInput, 'le_iw_break_interval', 'Break interval (minutes)', IntToStr(SavedCustomBreakInterval), 24, 230, IW_GUI_EDIT_W);
+  Self.CustomBreakIntervalInput.Edit.SetOnKeyPress(@Self.CustomBreakIntervalInput.Edit.NumberField);
+  Self.CustomBreakIntervalInput.SetTooltip('How often to take breaks when override is enabled. Includes randomness.');
+  Self.AddEdit(Self.AntibanSection, Self.CustomBreakDurationInput, 'le_iw_break_duration', 'Break duration (minutes)', IntToStr(SavedCustomBreakDuration), IW_GUI_COL2, 230, IW_GUI_EDIT_W);
+  Self.CustomBreakDurationInput.Edit.SetOnKeyPress(@Self.CustomBreakDurationInput.Edit.NumberField);
+  Self.CustomBreakDurationInput.SetTooltip('How long each break lasts when override is enabled. Includes randomness.');
+
+  Self.AddCheck(Self.AntibanSection, Self.EnableWorldHoppingCheckBox, 'cb_iw_worldhop', 'Enable world hopping', 24, 310, SavedEnableWorldHopping);
+  Self.EnableWorldHoppingCheckBox.SetTooltip('Hop worlds on a timer. Needs at least 2 worlds saved on the account.');
+  Self.EnableWorldHoppingCheckBox.CheckBox.SetOnChange(@Self.WorldHoppingCheckboxChanged);
+
+  Self.AddEdit(Self.AntibanSection, Self.WorldHopIntervalInput, 'le_iw_hop_interval', 'World hop interval (minutes)', IntToStr(SavedWorldHopInterval), 24, 350, IW_GUI_EDIT_W);
+  Self.WorldHopIntervalInput.Edit.SetOnKeyPress(@Self.WorldHopIntervalInput.Edit.NumberField);
+  Self.WorldHopIntervalInput.SetTooltip('Minutes between world hops. Small random variation is applied.');
+end;
+
+procedure TConfig.BuildShell(
+  SavedPreferPopulatedTrees, SavedPowerCut: Boolean;
+  SavedWebhookURL: String;
+  SavedEnableWebhooks, SavedHourly, SavedSessionSummary: Boolean;
+  SavedEnableWorldHopping, SavedOverrideBreaks: Boolean;
+  SavedWorldHopInterval, SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime: Integer
+);
 var
   tab: TTabSheet;
-  Username: String;
-  SavedWebhookURL: String;
-  SavedEnableWebhooks: Boolean;
-  SavedHourly: Boolean;
-  SavedSessionSummary: Boolean;
-  SavedEnableWorldHopping: Boolean;
-  SavedWorldHopInterval: Integer;
-  SavedPreferPopulatedTrees: Boolean;
-  SavedPowerCut: Boolean;
-  SavedOverrideBreaks: Boolean;
-  SavedCustomBreakInterval, SavedCustomBreakDuration: Integer;
+  contentH, startW, startH, shellW, shellH, statusTop, statusH, mainLeft, mainW, navW, bottomInset: Int32;
 begin
-  Self.Setup('BigAussies Ironwood Chopper');
-  Self.Start.SetOnClick(@Self.StartScript);
-
-  Self.AddTab('Script Settings');
+  Self.AddTab('Ironwood Chopper');
   tab := Self.Tabs[High(Self.Tabs)];
 
-  Self.CreateAccountManager(tab);
-  Self.CreateAntibanManager();
-  Self.CreateWaspLibSettings();
+  Self.Start.SetAlign(alNone);
+  Self.Start.SetVisible(False);
+  Self.Start.SetHeight(0);
+  Self.Start.SetWidth(0);
+
+  bottomInset := TControl.AdjustToDPI(IW_GUI_BOTTOM_INSET);
+  navW := TControl.AdjustToDPI(IW_GUI_NAV_W);
+  statusH := TControl.AdjustToDPI(IW_GUI_STATUS_H);
+  shellW := Self.Size.X;
+  shellH := Self.Size.Y;
+  mainLeft := navW + TControl.AdjustToDPI(2);
+  mainW := shellW - mainLeft;
+  statusTop := shellH - statusH - bottomInset;
+  contentH := statusTop;
+  startW := TControl.AdjustToDPI(132);
+  startH := TControl.AdjustToDPI(IW_GUI_BTN_H);
+
+  Self.NavPanel.Create(tab);
+  Self.NavPanel.SetLeft(0);
+  Self.NavPanel.SetTop(0);
+  Self.NavPanel.SetWidth(navW);
+  Self.NavPanel.SetHeight(shellH);
+  Self.NavPanel.SetColor(IW_GUI_NAV);
+  Self.NavPanel.SetBevelOuter(bvNone);
+
+  Self.DividerPanel.Create(tab);
+  Self.DividerPanel.SetLeft(navW);
+  Self.DividerPanel.SetTop(0);
+  Self.DividerPanel.SetWidth(TControl.AdjustToDPI(2));
+  Self.DividerPanel.SetHeight(shellH);
+  Self.DividerPanel.SetColor(IW_GUI_DIVIDER);
+  Self.DividerPanel.SetBevelOuter(bvNone);
+
+  Self.ContentPanel.Create(tab);
+  Self.ContentPanel.SetLeft(mainLeft);
+  Self.ContentPanel.SetTop(0);
+  Self.ContentPanel.SetWidth(mainW);
+  Self.ContentPanel.SetHeight(contentH);
+  Self.ContentPanel.SetColor(IW_GUI_BG);
+  Self.ContentPanel.SetBevelOuter(bvNone);
+
+  Self.StatusDivider.Create(tab);
+  Self.StatusDivider.SetLeft(mainLeft);
+  Self.StatusDivider.SetTop(statusTop);
+  Self.StatusDivider.SetWidth(mainW);
+  Self.StatusDivider.SetHeight(TControl.AdjustToDPI(2));
+  Self.StatusDivider.SetColor(IW_GUI_DIVIDER);
+  Self.StatusDivider.SetBevelOuter(bvNone);
+
+  Self.StatusPanel.Create(tab);
+  Self.StatusPanel.SetLeft(mainLeft);
+  Self.StatusPanel.SetTop(statusTop + Self.StatusDivider.GetHeight());
+  Self.StatusPanel.SetWidth(mainW);
+  Self.StatusPanel.SetHeight(statusH - Self.StatusDivider.GetHeight());
+  Self.StatusPanel.SetColor(IW_GUI_STATUS);
+  Self.StatusPanel.SetBevelOuter(bvNone);
+
+  Self.StatusPad.Create(tab);
+  Self.StatusPad.SetLeft(mainLeft);
+  Self.StatusPad.SetTop(Self.StatusPanel.GetTop() + Self.StatusPanel.GetHeight());
+  Self.StatusPad.SetWidth(mainW);
+  Self.StatusPad.SetHeight(shellH - Self.StatusPad.GetTop());
+  Self.StatusPad.SetColor(IW_GUI_STATUS);
+  Self.StatusPad.SetBevelOuter(bvNone);
+
+  Self.BrandLabel := Self.MakeLabel(Self.NavPanel, 'Ironwood Chopper', 16, 28, 14, IW_GUI_TEXT, True);
+  Self.MakeLabel(Self.NavPanel, 'BigAussie', 16, 54, 9, IW_GUI_MUTED, False);
+
+  Self.ScriptNav := Self.MakeNavItem(Self.NavPanel, 'Action', 12, 100, True);
+  Self.AccountsNav := Self.MakeNavItem(Self.NavPanel, 'Accounts', 12, 152);
+  Self.AntibanNav := Self.MakeNavItem(Self.NavPanel, 'Antiban', 12, 204);
+
+  Self.ScriptSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, IW_GUI_BG);
+  Self.AccountsSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, IW_GUI_BG);
+  Self.AntibanSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, IW_GUI_BG);
+
+  Self.ScriptSection.SetWidth(mainW);
+  Self.ScriptSection.SetHeight(contentH);
+  Self.AccountsSection.SetWidth(mainW);
+  Self.AccountsSection.SetHeight(contentH);
+  Self.AntibanSection.SetWidth(mainW);
+  Self.AntibanSection.SetHeight(contentH);
+
+  Self.BuildScriptSection(SavedPreferPopulatedTrees, SavedPowerCut);
+  Self.BuildAccountsSection(SavedWebhookURL, SavedEnableWebhooks, SavedHourly, SavedSessionSummary);
+  Self.BuildAntibanSection(SavedEnableWorldHopping, SavedOverrideBreaks, SavedWorldHopInterval, SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime);
+
+  Self.ScriptNav.SetOnClick(@Self.ShowScript);
+  Self.AccountsNav.SetOnClick(@Self.ShowAccounts);
+  Self.AntibanNav.SetOnClick(@Self.ShowAntiban);
+
+  Self.StartChip.Create(Self.StatusPanel);
+  Self.StartChip.SetLeft(mainW - startW - TControl.AdjustToDPI(24));
+  Self.StartChip.SetTop((Self.StatusPanel.GetHeight() - startH) div 2 + 2);
+  Self.StartChip.SetWidth(startW);
+  Self.StartChip.SetHeight(startH);
+  Self.StartChip.SetCursor(crHandPoint);
+  Self.PaintRoundChip(Self.StartChip, 'Start', IW_GUI_START, IW_GUI_STATUS, True, True);
+  Self.StartChip.SetOnClick(@Self.StartScript);
+
+  Self.WebhooksCheckboxChanged(nil);
+  Self.OverrideBreaksCheckboxChanged(nil);
+  Self.WorldHoppingCheckboxChanged(nil);
+  Self.ShowScript(Self.ScriptNav);
+end;
+
+procedure TConfig.Run(); override;
+var
+  Username: String;
+  SavedWebhookURL: String;
+  SavedEnableWebhooks, SavedHourly, SavedSessionSummary: Boolean;
+  SavedEnableWorldHopping, SavedOverrideBreaks: Boolean;
+  SavedPreferPopulatedTrees, SavedPowerCut: Boolean;
+  SavedWorldHopInterval, SavedCustomBreakInterval, SavedCustomBreakDuration: Integer;
+  SavedMaxActions, SavedMaxTime: Integer;
+begin
+  BashPromptIfUpdateAvailable();
 
   if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
     Username := 'NoUserSelected'
@@ -1316,155 +1790,22 @@ begin
   SavedCustomBreakInterval := StrToIntDef(ReadINI(Username + ' Ironwood Antiban Manager', 'CustomBreakInterval', 'Configs/BAIronwoodSettings.ini'), 60);
   SavedCustomBreakDuration := StrToIntDef(ReadINI(Username + ' Ironwood Antiban Manager', 'CustomBreakDuration', 'Configs/BAIronwoodSettings.ini'), 5);
 
-  with Self.EnableWorldHoppingCheckBox do
-  begin
-    Create(tab);
-    SetCaption('Enable World Hopping');
-    SetLeft(TControl.AdjustToDPI(40));
-    SetTop(TControl.AdjustToDPI(140));
-    SetChecked(SavedEnableWorldHopping);
-    SetHint('Hop worlds at random intervals. Requires at least 2 worlds in player setup.');
-    CheckBox.SetOnChange(@Self.WorldHopCheckboxChanged);
-  end;
-  
-  with Self.WorldHopIntervalInput do
-  begin
-    Create(tab);
-    SetCaption('World Hop Interval (minutes)');
-    SetLeft(Self.EnableWorldHoppingCheckBox.GetLeft());
-    SetTop(Self.EnableWorldHoppingCheckBox.GetTop() + TControl.AdjustToDPI(30));
-    SetWidth(TControl.AdjustToDPI(155));
-    SetText(IntToStr(SavedWorldHopInterval));
-    SetHint('How often to hop worlds in minutes (±10% random variation)');
-    Edit.SetOnKeyPress(@Edit.NumberField);
-  end;
+  if WLSettings.Has('max_actions') then
+    SavedMaxActions := WLSettings.GetInt('max_actions')
+  else
+    SavedMaxActions := 0;
+  if WLSettings.Has('max_time') then
+    SavedMaxTime := WLSettings.GetInt('max_time')
+  else
+    SavedMaxTime := 0;
 
-  with Self.PreferPopulatedTreesCheckBox do
-  begin
-    Create(tab);
-    SetCaption('Prefer Trees With Players (Forestry)');
-    SetLeft(TControl.AdjustToDPI(40));
-    SetTop(Self.WorldHopIntervalInput.GetTop() + TControl.AdjustToDPI(45));
-    SetChecked(SavedPreferPopulatedTrees);
-    SetHint('Prefer chopping trees that other players are already at for forestry worlds.');
-  end;
-
-  with Self.PowerCutCheckBox do
-  begin
-    Create(tab);
-    SetCaption('Power Cut (Drop Logs)');
-    SetLeft(TControl.AdjustToDPI(40));
-    SetTop(Self.PreferPopulatedTreesCheckBox.GetTop() + TControl.AdjustToDPI(25));
-    SetChecked(SavedPowerCut);
-    SetHint('Drop logs instead of banking. Clue scrolls will still be kept.');
-  end;
-
-  with Self.EnableWebhooksCheckBox do
-  begin
-    Create(tab);
-    SetCaption('Enable Discord Notifications');
-    SetLeft(TControl.AdjustToDPI(40));
-    SetTop(Self.PowerCutCheckBox.GetTop() + TControl.AdjustToDPI(30));
-    SetChecked(SavedEnableWebhooks);
-    CheckBox.SetOnChange(@Self.WebhooksCheckboxChanged);
-  end;
-
-  with Self.WebHookInput do
-  begin
-    Create(tab);
-    SetCaption('Webhook URL');
-    SetLeft(Self.EnableWebhooksCheckBox.GetLeft());
-    SetTop(Self.EnableWebhooksCheckBox.GetTop() + TControl.AdjustToDPI(30));
-    SetWidth(TControl.AdjustToDPI(300));
-    SetText(SavedWebhookURL);
-    SetPasswordChar('*');
-  end;
-
-  with Self.TestButton do
-  begin
-    Create(tab);
-    SetCaption('Test Webhook');
-    SetLeft(Self.EnableWebhooksCheckBox.GetRight() + TControl.AdjustToDPI(10));
-    SetTop(Self.EnableWebhooksCheckBox.GetTop() + TControl.AdjustToDPI(10));
-    SetWidth(TControl.AdjustToDPI(90));
-    SetOnClick(@Self.TestButtonClick);
-  end;
-
-  with Self.WebhookInfo do
-  begin
-    Create(tab);
-    SetLeft(Self.WebHookInput.GetLeft());
-    SetTop(Self.WebHookInput.GetTop() + Self.WebHookInput.GetHeight() + TControl.AdjustToDPI(5));
-    SetCaption('Need help creating a webhook? Click here.');
-    SetFontColor(clBlue);
-    SetOnClick(@Self.OpenURL);
-  end;
-
-  with Self.HourlyReportsCheckBox do
-  begin
-    Create(tab);
-    SetCaption('Hourly Progress Reports');
-    SetLeft(Self.WebHookInput.GetLeft());
-    SetTop(Self.WebhookInfo.GetTop() + TControl.AdjustToDPI(25));
-    SetChecked(SavedHourly);
-  end;
-
-  with Self.SessionSummaryCheckBox do
-  begin
-    Create(tab);
-    SetCaption('Session Summary on Stop');
-    SetLeft(Self.HourlyReportsCheckBox.GetLeft());
-    SetTop(Self.HourlyReportsCheckBox.GetTop() + TControl.AdjustToDPI(25));
-    SetChecked(SavedSessionSummary);
-  end;
-
-  Self.WebhooksCheckboxChanged(Self.EnableWebhooksCheckBox.CheckBox);
-  Self.WorldHopCheckboxChanged(nil);
-  
-  for tab in Self.Tabs do
-  begin
-    if tab.GetCaption() = 'Antiban Manager' then
-    begin
-      with Self.OverrideBreaksCheckBox do
-      begin
-        Create(tab);
-        SetCaption('Override Default Breaks');
-        SetLeft(TControl.AdjustToDPI(90));
-        SetTop(TControl.AdjustToDPI(220));
-        SetChecked(SavedOverrideBreaks);
-        SetHint('Override the default WaspLib break intervals with custom settings.');
-        CheckBox.SetOnChange(@OverrideBreaksCheckboxChanged);
-      end;
-      
-      with Self.CustomBreakIntervalInput do
-      begin
-        Create(tab);
-        SetCaption('Break Interval (minutes)');
-        SetLeft(TControl.AdjustToDPI(90));
-        SetTop(TControl.AdjustToDPI(240));
-        SetWidth(TControl.AdjustToDPI(160));
-        SetText(IntToStr(SavedCustomBreakInterval));
-        SetHint('How often to take breaks (e.g., 60 = every hour). Includes 25% randomness.');
-        Edit.SetOnKeyPress(@Edit.NumberField);
-      end;
-      
-      with Self.CustomBreakDurationInput do
-      begin
-        Create(tab);
-        SetCaption('Break Duration (minutes)');
-        SetLeft(TControl.AdjustToDPI(270));
-        SetTop(TControl.AdjustToDPI(240));
-        SetWidth(TControl.AdjustToDPI(160));
-        SetText(IntToStr(SavedCustomBreakDuration));
-        SetHint('How long breaks should last (e.g., 5 = 5 minute break). Includes 33% randomness.');
-        Edit.SetOnKeyPress(@Edit.NumberField);
-      end;
-      
-      Break;
-    end;
-  end;
-  
-  Self.OverrideBreaksCheckboxChanged(nil);
+  Self.Setup('BigAussies Ironwood Chopper', [IW_GUI_W, IW_GUI_H], False);
+  Self.BuildShell(
+    SavedPreferPopulatedTrees, SavedPowerCut,
+    SavedWebhookURL, SavedEnableWebhooks, SavedHourly, SavedSessionSummary,
+    SavedEnableWorldHopping, SavedOverrideBreaks,
+    SavedWorldHopInterval, SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime
+  );
 
   inherited;
 end;

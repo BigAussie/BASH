@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := '5d89af42-7819-45b6-b4fb-886971d700bf'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '2'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '3'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -691,146 +691,536 @@ var
   Script: SaltMiner;
 
 {$IFDEF SCRIPT_GUI}
+const
+  SM_GUI_NAV       = $F0EBE4;
+  SM_GUI_BG        = $FFFFFF;
+  SM_GUI_STATUS    = $F7F4F1;
+  SM_GUI_DIVIDER   = $D4C9BC;
+  SM_GUI_CARD      = $F7F4F1;
+  SM_GUI_ACCENT    = $E0C9AE;
+  SM_GUI_NAV_IDLE  = $E7DED4;
+  SM_GUI_START     = $C9B094;
+  SM_GUI_TEXT      = $1C1C1E;
+  SM_GUI_MUTED     = $6B6B70;
+  SM_GUI_W         = 1120;
+  SM_GUI_H         = 700;
+  SM_GUI_NAV_W     = 190;
+  SM_GUI_STATUS_H  = 56;
+  SM_GUI_BTN_H     = 42;
+  SM_GUI_EDIT_W    = 260;
+  SM_GUI_COL2      = 308;
+  SM_GUI_BOTTOM_INSET = 34;
+
 type
   TConfig = record(TScriptForm)
-    StonyInputBoxLabel, IcyInputBoxLabel, BasaltOnlyLabel, TeSaltMineInputLabel, EfhSaltMineInputLabel, Message, UrtSaltMineInputLabel: TLabel;
+    NavPanel, ContentPanel, StatusPanel, DividerPanel, StatusDivider, StatusPad: TPanel;
+    BrandLabel: TLabel;
+    ScriptNav, AccountsNav, AntibanNav: TImage;
+    StartChip: TImage;
+    ActiveNav: TImage;
+    ScriptSection, AccountsSection, AntibanSection: TPanel;
+
+    Message: TLabel;
     StonyInputBox, IcyInputBox, TeSaltMineInputBox, EfhSaltMineInputBox, UrtSaltMineInputBox: TLabeledEdit;
     BasaltOnlyCheckBox: TLabeledCheckBox;
+    MaxActionsInput, MaxTimeInput: TLabeledEdit;
   end;
 
-procedure TConfig.StartScript(sender: TObject); override; 
+function TConfig.MakePanel(
+  parent: TWinControl;
+  left, top, width, height, color: Int32
+): TPanel;
 begin
-  STONYBASALTINPUT := StrToInt(Self.StonyInputBox.GetText);
-  ICYBASALTINPUT := StrToInt(Self.IcyInputBox.GetText);
-  TESALTMINEINPUT := StrToInt(Self.TeSaltMineInputBox.GetText);
-  EFHSALTMINEINPUT := StrToInt(Self.EfhSaltMineInputBox.GetText);
-  URTSALTMINEINPUT := StrToInt(Self.UrtSaltMineInputBox.GetText);
-  BASALTONLYCHECK := Self.BasaltOnlyCheckBox.IsChecked();
-  inherited;
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetWidth(TControl.AdjustToDPI(width));
+  Result.SetHeight(TControl.AdjustToDPI(height));
+  Result.SetColor(color);
+  Result.SetBevelOuter(bvNone);
+end;
+
+procedure TConfig.PaintRoundChip(
+  img: TImage;
+  labelText: String;
+  fill, parentBg: Int32;
+  selected: Boolean = False;
+  centered: Boolean = False
+);
+var
+  bmp: TBitmap;
+  c: TCanvas;
+  w, h, r, tw, th, tx: Int32;
+begin
+  w := img.GetWidth();
+  h := img.GetHeight();
+  if (w <= 0) or (h <= 0) then
+    Exit;
+
+  r := TControl.AdjustToDPI(6);
+  if r * 2 > h then
+    r := h div 2;
+  if r * 2 > w then
+    r := w div 2;
+
+  bmp := img.GetPicture().GetBitmap();
+  bmp.SetWidth(w);
+  bmp.SetHeight(h);
+  c := bmp.GetCanvas();
+
+  c.GetBrush().SetColor(parentBg);
+  c.GetPen().SetColor(parentBg);
+  c.FillRect(0, 0, w, h);
+
+  c.GetBrush().SetColor(fill);
+  c.GetPen().SetColor(fill);
+  c.RoundRect(0, 0, w - 1, h - 1, r * 2, r * 2);
+
+  c.GetBrush().SetColor(fill);
+  c.GetFont().SetColor(SM_GUI_TEXT);
+  c.GetFont().SetSize(11);
+  if selected then
+    c.GetFont().SetStyle([fsBold])
+  else
+    c.GetFont().SetStyle([]);
+
+  tw := c.TextWidth(labelText);
+  th := c.TextHeight(labelText);
+  if centered then
+    tx := (w - tw) div 2
+  else
+    tx := TControl.AdjustToDPI(16);
+  c.TextOut(tx, (h - th) div 2, labelText);
+
+  img.SetHint(labelText);
+  img.SetShowHint(False);
+  img.Invalidate();
+end;
+
+function TConfig.MakeNavItem(
+  parent: TWinControl;
+  labelText: String;
+  left, top: Int32;
+  selected: Boolean = False
+): TImage;
+var
+  fill: Int32;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetWidth(TControl.AdjustToDPI(SM_GUI_NAV_W - 28));
+  Result.SetHeight(TControl.AdjustToDPI(SM_GUI_BTN_H));
+  Result.SetCursor(crHandPoint);
+
+  if selected then
+    fill := SM_GUI_ACCENT
+  else
+    fill := SM_GUI_NAV_IDLE;
+
+  Self.PaintRoundChip(Result, labelText, fill, SM_GUI_NAV, selected);
+end;
+
+function TConfig.MakeLabel(
+  parent: TWinControl;
+  labelText: String;
+  left, top, fontSize, fontColor: Int32;
+  bold: Boolean = False
+): TLabel;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetCaption(labelText);
+  Result.GetFont().SetSize(fontSize);
+  Result.GetFont().SetColor(fontColor);
+  if bold then
+    Result.GetFont().SetStyle([fsBold]);
+end;
+
+procedure TConfig.AddCheck(
+  parent: TWinControl;
+  var box: TLabeledCheckBox;
+  ctrlName, labelText: String;
+  left, top: Int32;
+  checked: Boolean
+);
+begin
+  box.Create(parent);
+  box.SetLeft(TControl.AdjustToDPI(left));
+  box.SetTop(TControl.AdjustToDPI(top));
+  box.SetName(ctrlName);
+  box.SetFontColor(SM_GUI_TEXT);
+  box.SetCaption(labelText);
+  if checked then
+    box.CheckBox.SetChecked(True);
+end;
+
+procedure TConfig.AddEdit(
+  parent: TWinControl;
+  var box: TLabeledEdit;
+  ctrlName, labelText, text: String;
+  left, top, width: Int32
+);
+begin
+  box.Create(parent);
+  box.SetLeft(TControl.AdjustToDPI(left));
+  box.SetTop(TControl.AdjustToDPI(top));
+  box.SetWidth(TControl.AdjustToDPI(width));
+  box.SetName(ctrlName);
+  box.SetCaption(labelText);
+  box.SetText(text);
+  box.SetFontColor(SM_GUI_TEXT);
+end;
+
+procedure TConfig.AddHeader(parent: TPanel; titleText, subtitleText: String);
+var
+  header: TPanel;
+  headerW: Int32;
+begin
+  headerW := parent.GetWidth();
+  if headerW <= 0 then
+    headerW := TControl.AdjustToDPI(SM_GUI_W - SM_GUI_NAV_W - 2);
+
+  header := Self.MakePanel(parent, 0, 0, 1, 88, SM_GUI_CARD);
+  header.SetWidth(headerW);
+  header.SetHeight(TControl.AdjustToDPI(88));
+  Self.MakeLabel(header, titleText, 24, 18, 18, SM_GUI_TEXT, True);
+  Self.MakeLabel(header, subtitleText, 24, 52, 10, SM_GUI_MUTED, False);
+end;
+
+procedure TConfig.StyleNav(selected: TImage);
+begin
+  Self.ActiveNav := selected;
+  Self.PaintRoundChip(Self.ScriptNav, Self.ScriptNav.GetHint(), SM_GUI_NAV_IDLE, SM_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AccountsNav, Self.AccountsNav.GetHint(), SM_GUI_NAV_IDLE, SM_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AntibanNav, Self.AntibanNav.GetHint(), SM_GUI_NAV_IDLE, SM_GUI_NAV, False);
+  Self.PaintRoundChip(selected, selected.GetHint(), SM_GUI_ACCENT, SM_GUI_NAV, True);
+end;
+
+procedure TConfig.ShowSection(section: TPanel; selected: TImage);
+begin
+  Self.ScriptSection.SetVisible(False);
+  Self.AccountsSection.SetVisible(False);
+  Self.AntibanSection.SetVisible(False);
+  section.SetVisible(True);
+  Self.StyleNav(selected);
+end;
+
+procedure TConfig.ShowScript({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.ScriptSection, Self.ScriptNav);
+end;
+
+procedure TConfig.ShowAccounts({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AccountsSection, Self.AccountsNav);
+end;
+
+procedure TConfig.ShowAntiban({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AntibanSection, Self.AntibanNav);
 end;
 
 procedure TConfig.BasaltOnlyCheckBoxClicked(Sender: TObject);
+var
+  showSalt: Boolean;
 begin
-  Self.StonyInputBox.SetVisible(not Self.BasaltOnlyCheckBox.CheckBox.IsChecked());
-  Self.IcyInputBox.SetVisible(not Self.BasaltOnlyCheckBox.CheckBox.IsChecked());
-  Self.TeSaltMineInputBox.SetVisible(not Self.BasaltOnlyCheckBox.CheckBox.IsChecked());
-  Self.EfhSaltMineInputBox.SetVisible(not Self.BasaltOnlyCheckBox.CheckBox.IsChecked());
-  //Self.StonyInputBoxLabel.SetVisible(not Self.BasaltOnlyCheckBox.CheckBox.IsChecked());
-  //Self.IcyInputBoxLabel.SetVisible(not Self.BasaltOnlyCheckBox.CheckBox.IsChecked());
-  //Self.TeSaltMineInputLabel.SetVisible(not Self.BasaltOnlyCheckBox.CheckBox.IsChecked());
-  //Self.EfhSaltMineInputLabel.SetVisible(not Self.BasaltOnlyCheckBox.CheckBox.IsChecked());
-  Self.Message.SetVisible(not Self.BasaltOnlyCheckBox.CheckBox.IsChecked());
-  //Self.UrtSaltMineInputLabel.SetVisible(not Self.BasaltOnlyCheckBox.CheckBox.IsChecked());
-  Self.UrtSaltMineInputBox.SetVisible(not Self.BasaltOnlyCheckBox.CheckBox.IsChecked());
+  if Sender = nil then;
+  showSalt := not Self.BasaltOnlyCheckBox.IsChecked();
+  Self.StonyInputBox.SetVisible(showSalt);
+  Self.IcyInputBox.SetVisible(showSalt);
+  Self.TeSaltMineInputBox.SetVisible(showSalt);
+  Self.EfhSaltMineInputBox.SetVisible(showSalt);
+  Self.UrtSaltMineInputBox.SetVisible(showSalt);
+  Self.Message.SetVisible(showSalt);
+end;
+
+procedure TConfig.StartScript(Sender: TObject); override;
+var
+  Username: String;
+begin
+  if Sender = nil then;
+
+  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
+    Username := 'NoUserNameSelected'
+  else
+    Username := Login.Players[Login.PlayerIndex].User;
+
+  STONYBASALTINPUT := StrToIntDef(Self.StonyInputBox.GetText(), 0);
+  ICYBASALTINPUT := StrToIntDef(Self.IcyInputBox.GetText(), 0);
+  TESALTMINEINPUT := StrToIntDef(Self.TeSaltMineInputBox.GetText(), 0);
+  EFHSALTMINEINPUT := StrToIntDef(Self.EfhSaltMineInputBox.GetText(), 0);
+  URTSALTMINEINPUT := StrToIntDef(Self.UrtSaltMineInputBox.GetText(), 0);
+  BASALTONLYCHECK := Self.BasaltOnlyCheckBox.IsChecked();
+
+  WLSettings.Put('max_actions', StrToIntDef(Self.MaxActionsInput.GetText(), 0));
+  WLSettings.Put('max_time', StrToIntDef(Self.MaxTimeInput.GetText(), 0));
+  WLSettings.SaveConfig();
+
+  WriteINI(Username + ' Salt Miner Settings', 'BasaltOnly', BoolToStr(BASALTONLYCHECK, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI(Username + ' Salt Miner Settings', 'StonyBasalt', IntToStr(STONYBASALTINPUT), 'Configs/BASettings.ini');
+  WriteINI(Username + ' Salt Miner Settings', 'IcyBasalt', IntToStr(ICYBASALTINPUT), 'Configs/BASettings.ini');
+  WriteINI(Username + ' Salt Miner Settings', 'TeSalt', IntToStr(TESALTMINEINPUT), 'Configs/BASettings.ini');
+  WriteINI(Username + ' Salt Miner Settings', 'EfhSalt', IntToStr(EFHSALTMINEINPUT), 'Configs/BASettings.ini');
+  WriteINI(Username + ' Salt Miner Settings', 'UrtSalt', IntToStr(URTSALTMINEINPUT), 'Configs/BASettings.ini');
+
+  try
+    Self._WarmBuildCache();
+  except
+  end;
+  Self.Form.SetOnClose(nil);
+  Self.Form.Close();
+end;
+
+procedure TConfig.BuildScriptSection(
+  SavedBasaltOnly: Boolean;
+  SavedStony, SavedIcy, SavedTe, SavedEfh, SavedUrt: Integer
+);
+begin
+  Self.AddHeader(Self.ScriptSection, 'Action', 'Mine salts and craft basalt in Weiss.');
+
+  Self.AddCheck(Self.ScriptSection, Self.BasaltOnlyCheckBox, 'cb_sm_basalt_only', 'Mine/Note Basalt Only', 24, 110, SavedBasaltOnly);
+  Self.BasaltOnlyCheckBox.SetTooltip('Enabled to Mine and Note BASALT ONLY');
+  Self.BasaltOnlyCheckBox.CheckBox.SetOnChange(@Self.BasaltOnlyCheckBoxClicked);
+
+  Self.AddEdit(Self.ScriptSection, Self.StonyInputBox, 'le_sm_stony', 'Stony Basalt to make', IntToStr(SavedStony), 24, 170, SM_GUI_EDIT_W);
+  Self.StonyInputBox.Edit.SetOnKeyPress(@Self.StonyInputBox.Edit.NumberField);
+  Self.AddEdit(Self.ScriptSection, Self.IcyInputBox, 'le_sm_icy', 'Icy Basalt to make', IntToStr(SavedIcy), 24, 240, SM_GUI_EDIT_W);
+  Self.IcyInputBox.Edit.SetOnKeyPress(@Self.IcyInputBox.Edit.NumberField);
+
+  Self.Message := Self.MakeLabel(Self.ScriptSection, 'Amounts below for mining just salts.', SM_GUI_COL2, 110, 10, $0000C8, False);
+  Self.Message.SetWidth(TControl.AdjustToDPI(400));
+
+  Self.AddEdit(Self.ScriptSection, Self.TeSaltMineInputBox, 'le_sm_te', 'Te salt to mine', IntToStr(SavedTe), SM_GUI_COL2, 170, SM_GUI_EDIT_W);
+  Self.TeSaltMineInputBox.Edit.SetOnKeyPress(@Self.TeSaltMineInputBox.Edit.NumberField);
+  Self.AddEdit(Self.ScriptSection, Self.EfhSaltMineInputBox, 'le_sm_efh', 'Efh salt to mine', IntToStr(SavedEfh), SM_GUI_COL2, 240, SM_GUI_EDIT_W);
+  Self.EfhSaltMineInputBox.Edit.SetOnKeyPress(@Self.EfhSaltMineInputBox.Edit.NumberField);
+  Self.AddEdit(Self.ScriptSection, Self.UrtSaltMineInputBox, 'le_sm_urt', 'Urt salt to mine', IntToStr(SavedUrt), SM_GUI_COL2, 310, SM_GUI_EDIT_W);
+  Self.UrtSaltMineInputBox.Edit.SetOnKeyPress(@Self.UrtSaltMineInputBox.Edit.NumberField);
+end;
+
+procedure TConfig.BuildAccountsSection();
+var
+  am: TPanel;
+  selectorPanel, userPanel, passPanel, pinPanel, worldsPanel: TPanel;
+  addBtn, deleteBtn, generateBtn: TButton;
+  leftColW, passW, pinW, worldsLeft, btnW, btnGap: Int32;
+begin
+  Self.AddHeader(Self.AccountsSection, 'Accounts', 'Login account and hop worlds list.');
+
+  am := Self.CreateAccountManager(Self.AccountsSection);
+  am.SetLeft(TControl.AdjustToDPI(16));
+  am.SetTop(TControl.AdjustToDPI(100));
+  am.SetColor(SM_GUI_BG);
+
+  leftColW := TControl.AdjustToDPI(280);
+  passW := Floor(leftColW * 0.6);
+  pinW := Floor(leftColW * 0.3);
+
+  selectorPanel := Self.Form.GetChild('am_selector_panel');
+  userPanel := Self.Form.GetChild('am_user_panel');
+  passPanel := Self.Form.GetChild('am_pass_panel');
+  pinPanel := Self.Form.GetChild('am_pin_panel');
+  worldsPanel := Self.Form.GetChild('am_worlds_panel');
+
+  if selectorPanel <> nil then
+    selectorPanel.SetWidth(leftColW);
+  if userPanel <> nil then
+    userPanel.SetWidth(leftColW);
+  if passPanel <> nil then
+    passPanel.SetWidth(passW);
+  if (pinPanel <> nil) and (selectorPanel <> nil) then
+  begin
+    pinPanel.SetWidth(pinW);
+    pinPanel.SetLeft(selectorPanel.GetLeft() + leftColW - pinW);
+  end;
+
+  if (worldsPanel <> nil) and (selectorPanel <> nil) then
+  begin
+    worldsLeft := selectorPanel.GetLeft() + leftColW + TControl.AdjustToDPI(48);
+    worldsPanel.SetLeft(worldsLeft);
+
+    addBtn := Self.Form.GetChild('am_add_button');
+    deleteBtn := Self.Form.GetChild('am_delete_button');
+    generateBtn := Self.Form.GetChild('am_generate_worlds_button');
+    btnGap := TControl.AdjustToDPI(8);
+    btnW := Floor((worldsPanel.GetWidth() - btnGap) / 2);
+
+    if generateBtn <> nil then
+    begin
+      generateBtn.SetLeft(worldsLeft);
+      generateBtn.SetWidth(worldsPanel.GetWidth());
+    end;
+    if addBtn <> nil then
+    begin
+      addBtn.SetLeft(worldsLeft);
+      addBtn.SetWidth(btnW);
+    end;
+    if deleteBtn <> nil then
+    begin
+      deleteBtn.SetLeft(worldsLeft + worldsPanel.GetWidth() - btnW - TControl.AdjustToDPI(1));
+      deleteBtn.SetWidth(btnW);
+    end;
+  end;
+end;
+
+procedure TConfig.BuildAntibanSection(SavedMaxActions, SavedMaxTime: Integer);
+begin
+  Self.AddHeader(Self.AntibanSection, 'Antiban', 'Session limits.');
+
+  Self.AddEdit(Self.AntibanSection, Self.MaxActionsInput, 'le_sm_maxactions', 'Max actions (0 = unlimited)', IntToStr(SavedMaxActions), 24, 110, SM_GUI_EDIT_W);
+  Self.MaxActionsInput.Edit.SetOnKeyPress(@Self.MaxActionsInput.Edit.NumberField);
+  Self.AddEdit(Self.AntibanSection, Self.MaxTimeInput, 'le_sm_maxtime', 'Max time minutes (0 = unlimited)', IntToStr(SavedMaxTime), SM_GUI_COL2, 110, SM_GUI_EDIT_W);
+  Self.MaxTimeInput.Edit.SetOnKeyPress(@Self.MaxTimeInput.Edit.NumberField);
+end;
+
+procedure TConfig.BuildShell(
+  SavedBasaltOnly: Boolean;
+  SavedStony, SavedIcy, SavedTe, SavedEfh, SavedUrt, SavedMaxActions, SavedMaxTime: Integer
+);
+var
+  tab: TTabSheet;
+  contentH, startW, startH, shellW, shellH, statusTop, statusH, mainLeft, mainW, navW, bottomInset: Int32;
+begin
+  Self.AddTab('Salt Miner');
+  tab := Self.Tabs[High(Self.Tabs)];
+
+  Self.Start.SetAlign(alNone);
+  Self.Start.SetVisible(False);
+  Self.Start.SetHeight(0);
+  Self.Start.SetWidth(0);
+
+  bottomInset := TControl.AdjustToDPI(SM_GUI_BOTTOM_INSET);
+  navW := TControl.AdjustToDPI(SM_GUI_NAV_W);
+  statusH := TControl.AdjustToDPI(SM_GUI_STATUS_H);
+  shellW := Self.Size.X;
+  shellH := Self.Size.Y;
+  mainLeft := navW + TControl.AdjustToDPI(2);
+  mainW := shellW - mainLeft;
+  statusTop := shellH - statusH - bottomInset;
+  contentH := statusTop;
+  startW := TControl.AdjustToDPI(132);
+  startH := TControl.AdjustToDPI(SM_GUI_BTN_H);
+
+  Self.NavPanel.Create(tab);
+  Self.NavPanel.SetLeft(0);
+  Self.NavPanel.SetTop(0);
+  Self.NavPanel.SetWidth(navW);
+  Self.NavPanel.SetHeight(shellH);
+  Self.NavPanel.SetColor(SM_GUI_NAV);
+  Self.NavPanel.SetBevelOuter(bvNone);
+
+  Self.DividerPanel.Create(tab);
+  Self.DividerPanel.SetLeft(navW);
+  Self.DividerPanel.SetTop(0);
+  Self.DividerPanel.SetWidth(TControl.AdjustToDPI(2));
+  Self.DividerPanel.SetHeight(shellH);
+  Self.DividerPanel.SetColor(SM_GUI_DIVIDER);
+  Self.DividerPanel.SetBevelOuter(bvNone);
+
+  Self.ContentPanel.Create(tab);
+  Self.ContentPanel.SetLeft(mainLeft);
+  Self.ContentPanel.SetTop(0);
+  Self.ContentPanel.SetWidth(mainW);
+  Self.ContentPanel.SetHeight(contentH);
+  Self.ContentPanel.SetColor(SM_GUI_BG);
+  Self.ContentPanel.SetBevelOuter(bvNone);
+
+  Self.StatusDivider.Create(tab);
+  Self.StatusDivider.SetLeft(mainLeft);
+  Self.StatusDivider.SetTop(statusTop);
+  Self.StatusDivider.SetWidth(mainW);
+  Self.StatusDivider.SetHeight(TControl.AdjustToDPI(2));
+  Self.StatusDivider.SetColor(SM_GUI_DIVIDER);
+  Self.StatusDivider.SetBevelOuter(bvNone);
+
+  Self.StatusPanel.Create(tab);
+  Self.StatusPanel.SetLeft(mainLeft);
+  Self.StatusPanel.SetTop(statusTop + Self.StatusDivider.GetHeight());
+  Self.StatusPanel.SetWidth(mainW);
+  Self.StatusPanel.SetHeight(statusH - Self.StatusDivider.GetHeight());
+  Self.StatusPanel.SetColor(SM_GUI_STATUS);
+  Self.StatusPanel.SetBevelOuter(bvNone);
+
+  Self.StatusPad.Create(tab);
+  Self.StatusPad.SetLeft(mainLeft);
+  Self.StatusPad.SetTop(Self.StatusPanel.GetTop() + Self.StatusPanel.GetHeight());
+  Self.StatusPad.SetWidth(mainW);
+  Self.StatusPad.SetHeight(shellH - Self.StatusPad.GetTop());
+  Self.StatusPad.SetColor(SM_GUI_STATUS);
+  Self.StatusPad.SetBevelOuter(bvNone);
+
+  Self.BrandLabel := Self.MakeLabel(Self.NavPanel, 'Salt Miner', 16, 28, 14, SM_GUI_TEXT, True);
+  Self.MakeLabel(Self.NavPanel, 'BigAussie', 16, 54, 9, SM_GUI_MUTED, False);
+
+  Self.ScriptNav := Self.MakeNavItem(Self.NavPanel, 'Action', 12, 100, True);
+  Self.AccountsNav := Self.MakeNavItem(Self.NavPanel, 'Accounts', 12, 152);
+  Self.AntibanNav := Self.MakeNavItem(Self.NavPanel, 'Antiban', 12, 204);
+
+  Self.ScriptSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, SM_GUI_BG);
+  Self.AccountsSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, SM_GUI_BG);
+  Self.AntibanSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, SM_GUI_BG);
+
+  Self.ScriptSection.SetWidth(mainW);
+  Self.ScriptSection.SetHeight(contentH);
+  Self.AccountsSection.SetWidth(mainW);
+  Self.AccountsSection.SetHeight(contentH);
+  Self.AntibanSection.SetWidth(mainW);
+  Self.AntibanSection.SetHeight(contentH);
+
+  Self.BuildScriptSection(SavedBasaltOnly, SavedStony, SavedIcy, SavedTe, SavedEfh, SavedUrt);
+  Self.BuildAccountsSection();
+  Self.BuildAntibanSection(SavedMaxActions, SavedMaxTime);
+
+  Self.ScriptNav.SetOnClick(@Self.ShowScript);
+  Self.AccountsNav.SetOnClick(@Self.ShowAccounts);
+  Self.AntibanNav.SetOnClick(@Self.ShowAntiban);
+
+  Self.StartChip.Create(Self.StatusPanel);
+  Self.StartChip.SetLeft(mainW - startW - TControl.AdjustToDPI(24));
+  Self.StartChip.SetTop((Self.StatusPanel.GetHeight() - startH) div 2 + 2);
+  Self.StartChip.SetWidth(startW);
+  Self.StartChip.SetHeight(startH);
+  Self.StartChip.SetCursor(crHandPoint);
+  Self.PaintRoundChip(Self.StartChip, 'Start', SM_GUI_START, SM_GUI_STATUS, True, True);
+  Self.StartChip.SetOnClick(@Self.StartScript);
+
+  Self.BasaltOnlyCheckBoxClicked(nil);
+  Self.ShowScript(Self.ScriptNav);
 end;
 
 procedure TConfig.Run(); override;
 var
-  tab: TTabSheet;
+  Username: String;
+  SavedBasaltOnly: Boolean;
+  SavedStony, SavedIcy, SavedTe, SavedEfh, SavedUrt, SavedMaxActions, SavedMaxTime: Integer;
 begin
-  Self.Setup("BigAussies Salt Miner");
-  Self.Start.SetOnClick(@Self.StartScript);
+  BashPromptIfUpdateAvailable();
 
-  Self.AddTab('Script Settings');
-  tab := Self.Tabs[High(Self.Tabs)];
+  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
+    Username := 'NoUserNameSelected'
+  else
+    Username := Login.Players[Login.PlayerIndex].User;
 
-  Self.CreateAccountManager(tab);
+  SavedBasaltOnly := StrToBoolDef(ReadINI(Username + ' Salt Miner Settings', 'BasaltOnly', 'Configs/BASettings.ini'), BASALTONLYCHECK);
+  SavedStony := StrToIntDef(ReadINI(Username + ' Salt Miner Settings', 'StonyBasalt', 'Configs/BASettings.ini'), STONYBASALTINPUT);
+  SavedIcy := StrToIntDef(ReadINI(Username + ' Salt Miner Settings', 'IcyBasalt', 'Configs/BASettings.ini'), ICYBASALTINPUT);
+  SavedTe := StrToIntDef(ReadINI(Username + ' Salt Miner Settings', 'TeSalt', 'Configs/BASettings.ini'), TESALTMINEINPUT);
+  SavedEfh := StrToIntDef(ReadINI(Username + ' Salt Miner Settings', 'EfhSalt', 'Configs/BASettings.ini'), EFHSALTMINEINPUT);
+  SavedUrt := StrToIntDef(ReadINI(Username + ' Salt Miner Settings', 'UrtSalt', 'Configs/BASettings.ini'), URTSALTMINEINPUT);
 
-  Self.CreateVersionPanel(tab);
+  if WLSettings.Has('max_actions') then
+    SavedMaxActions := WLSettings.GetInt('max_actions')
+  else
+    SavedMaxActions := 0;
+  if WLSettings.Has('max_time') then
+    SavedMaxTime := WLSettings.GetInt('max_time')
+  else
+    SavedMaxTime := 0;
 
-  with Self.BasaltOnlyLabel do
-  begin
-    Create(tab);
-    SetLeft(TControl.AdjustToDPI(37));
-    SetTop(TControl.AdjustToDPI(160));
-    SetCaption('Enabled this to mine and note Basalt Only.');
-  end;
-
-  with Self.BasaltOnlyCheckBox do
-  begin
-    Create(tab);
-    SetCaption("Mine/Note Basalt Only.");
-    SetLeft(Self.BasaltOnlyLabel.GetLeft());
-    SetTop(Self.BasaltOnlyLabel.GetTop() + TControl.AdjustToDPI(20));
-    SetHint('Enabled to Mine and Note BASALT ONLY');
-    CheckBox.setOnChange(@Self.BasaltOnlyCheckBoxClicked);
-  end;
-
-  with Self.StonyInputBox do
-  begin
-    Create(tab);
-    SetLeft(Self.BasaltOnlyCheckBox.GetLeft());
-    SetTop(Self.BasaltOnlyCheckBox.GetTop() + TControl.AdjustToDPI(50));
-    SetCaption('Stony Basalt to make.');
-    SetHint('Number of Stony Basalt to make.');
-    SetWidth(TControl.AdjustToDPI(120));
-    SetText('0');
-    Edit.SetOnKeyPress(@Edit.NumberField);
-  end;
-
-  with Self.IcyInputBox do
-  begin
-    Create(tab);
-    SetLeft(Self.StonyInputBox.GetLeft());
-    SetTop(Self.StonyInputBox.GetTop() + TControl.AdjustToDPI(50));
-    SetCaption('Icy Basalt to make.');
-    SetHint('Number of Icy Basalt to make.');
-    SetWidth(TControl.AdjustToDPI(120));
-    SetText('0');
-    Edit.SetOnKeyPress(@Edit.NumberField);
-  end;
-
-  with Self.Message do
-  begin
-    Create(tab);
-    SetLeft(TControl.AdjustToDPI(410));
-    SetTop(TControl.AdjustToDPI(160));
-    SetCaption('Amounts below for mining just salts.');
-    SetFontColor(clRed);
-  end;
-
-
-  with Self.TeSaltMineInputBox do
-  begin
-    Create(tab);
-    SetLeft(Self.Message.GetLeft());
-    SetTop(Self.Message.GetTop() + TControl.AdjustToDPI(50));
-    SetCaption('Te salt to mine..');
-    SetHint('Te salt to mine.');
-    SetWidth(100);
-    SetText('0');
-    Edit.SetOnKeyPress(@Edit.NumberField);
-  end;
-
-  with Self.EfhSaltMineInputBox do
-  begin
-    Create(tab);
-    SetLeft(Self.TeSaltMineInputBox.GetLeft());
-    SetTop(Self.TeSaltMineInputBox.GetTop() + TControl.AdjustToDPI(50));
-    SetCaption('Efh salt to mine.');
-    SetHint('Efh salt to mine.');
-    SetWidth(100);
-    SetText('0');
-    Edit.SetOnKeyPress(@Edit.NumberField);
-  end;
-
-  with Self.UrtSaltMineInputBox do
-  begin
-    Create(tab);
-    SetLeft(Self.EfhSaltMineInputBox.GetLeft());
-    SetTop(Self.EfhSaltMineInputBox.GetTop() + TControl.AdjustToDPI(50));
-    SetCaption('Urt salt to mine.');
-    SetHint('Urt salt to mine.');
-    SetWidth(100);
-    SetText('0');
-    Edit.SetOnKeyPress(@Edit.NumberField);
-  end;
-
-  Self.CreateAntibanManager();
-
-  Self.CreateWaspLibSettings();
-
-  Self.CreateAPISettings();
+  Self.Setup('BigAussies Salt Miner', [SM_GUI_W, SM_GUI_H], False);
+  Self.BuildShell(SavedBasaltOnly, SavedStony, SavedIcy, SavedTe, SavedEfh, SavedUrt, SavedMaxActions, SavedMaxTime);
 
   inherited;
 end;

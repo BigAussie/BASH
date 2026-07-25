@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'cf2ed007-5328-4914-b6fc-cd521759f893'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '2'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '3'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -529,29 +529,236 @@ var
   Script: CalcifiedMiner;
 
 {$IFDEF SCRIPT_GUI}
+const
+  CM_GUI_NAV       = $F0EBE4;
+  CM_GUI_BG        = $FFFFFF;
+  CM_GUI_STATUS    = $F7F4F1;
+  CM_GUI_DIVIDER   = $D4C9BC;
+  CM_GUI_CARD      = $F7F4F1;
+  CM_GUI_ACCENT    = $E0C9AE;
+  CM_GUI_NAV_IDLE  = $E7DED4;
+  CM_GUI_START     = $C9B094;
+  CM_GUI_TEXT      = $1C1C1E;
+  CM_GUI_MUTED     = $6B6B70;
+  CM_GUI_W         = 1120;
+  CM_GUI_H         = 700;
+  CM_GUI_NAV_W     = 190;
+  CM_GUI_STATUS_H  = 56;
+  CM_GUI_BTN_H     = 42;
+  CM_GUI_EDIT_W    = 260;
+  CM_GUI_COL2      = 308;
+  CM_GUI_BOTTOM_INSET = 34;
+
 type
   TConfig = record(TScriptForm)
+    NavPanel, ContentPanel, StatusPanel, DividerPanel, StatusDivider, StatusPad: TPanel;
+    BrandLabel: TLabel;
+    ScriptNav, AccountsNav, AntibanNav: TImage;
+    StartChip: TImage;
+    ActiveNav: TImage;
+    ScriptSection, AccountsSection, AntibanSection: TPanel;
+
     PowerMineCheckbox: TLabeledCheckBox;
     IgnoreWaterfallsCheckBox, PingOnTerminatedCheckBox, EnableWebhooksCheckBox: TLabeledCheckBox;
-    WebhookLabel , DiscordUIDLabel, WebhookInfo, DiscordUIDInfo: TLabel;
+    WebhookInfo, DiscordUIDInfo: TLabel;
     WebHookInput, DiscordUIDInput: TLabeledEdit;
+    MaxActionsInput, MaxTimeInput: TLabeledEdit;
   end;
 
-procedure TConfig.StartScript(sender: TObject); override;
+function TConfig.MakePanel(
+  parent: TWinControl;
+  left, top, width, height, color: Int32
+): TPanel;
 begin
-  POWERMINING := Self.PowerMineCheckbox.IsChecked();
-  IGNOREWATERFALLS := Self.IgnoreWaterfallsCheckBox.IsChecked();
-  ENABLEWEBHOOKS := Self.EnableWebhooksCheckBox.IsChecked();
-  DiscordUID := Self.DiscordUIDInput.GetText();
-  WEBHOOKURL := Self.WebHookInput.GetText();
-  PINGONTERMINATED := Self.PingOnTerminatedCheckBox.IsChecked();
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetWidth(TControl.AdjustToDPI(width));
+  Result.SetHeight(TControl.AdjustToDPI(height));
+  Result.SetColor(color);
+  Result.SetBevelOuter(bvNone);
+end;
 
-  WriteINI('Webhook Settings', 'DiscordUID', DiscordUID, 'Configs/BASettings.ini');
-  WriteINI('Webhook Settings', 'WebhookURL', WEBHOOKURL, 'Configs/BASettings.ini');
-  WriteINI('Webhook Settings', 'PingOnTerminated', BoolToStr(PINGONTERMINATED, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI('Webhook Settings', 'EnableWebhooks', BoolToStr(ENABLEWEBHOOKS, 'true', 'false'), 'Configs/BASettings.ini');
+procedure TConfig.PaintRoundChip(
+  img: TImage;
+  labelText: String;
+  fill, parentBg: Int32;
+  selected: Boolean = False;
+  centered: Boolean = False
+);
+var
+  bmp: TBitmap;
+  c: TCanvas;
+  w, h, r, tw, th, tx: Int32;
+begin
+  w := img.GetWidth();
+  h := img.GetHeight();
+  if (w <= 0) or (h <= 0) then
+    Exit;
 
-  inherited;
+  r := TControl.AdjustToDPI(6);
+  if r * 2 > h then
+    r := h div 2;
+  if r * 2 > w then
+    r := w div 2;
+
+  bmp := img.GetPicture().GetBitmap();
+  bmp.SetWidth(w);
+  bmp.SetHeight(h);
+  c := bmp.GetCanvas();
+
+  c.GetBrush().SetColor(parentBg);
+  c.GetPen().SetColor(parentBg);
+  c.FillRect(0, 0, w, h);
+
+  c.GetBrush().SetColor(fill);
+  c.GetPen().SetColor(fill);
+  c.RoundRect(0, 0, w - 1, h - 1, r * 2, r * 2);
+
+  c.GetBrush().SetColor(fill);
+  c.GetFont().SetColor(CM_GUI_TEXT);
+  c.GetFont().SetSize(11);
+  if selected then
+    c.GetFont().SetStyle([fsBold])
+  else
+    c.GetFont().SetStyle([]);
+
+  tw := c.TextWidth(labelText);
+  th := c.TextHeight(labelText);
+  if centered then
+    tx := (w - tw) div 2
+  else
+    tx := TControl.AdjustToDPI(16);
+  c.TextOut(tx, (h - th) div 2, labelText);
+
+  img.SetHint(labelText);
+  img.SetShowHint(False);
+  img.Invalidate();
+end;
+
+function TConfig.MakeNavItem(
+  parent: TWinControl;
+  labelText: String;
+  left, top: Int32;
+  selected: Boolean = False
+): TImage;
+var
+  fill: Int32;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetWidth(TControl.AdjustToDPI(CM_GUI_NAV_W - 28));
+  Result.SetHeight(TControl.AdjustToDPI(CM_GUI_BTN_H));
+  Result.SetCursor(crHandPoint);
+
+  if selected then
+    fill := CM_GUI_ACCENT
+  else
+    fill := CM_GUI_NAV_IDLE;
+
+  Self.PaintRoundChip(Result, labelText, fill, CM_GUI_NAV, selected);
+end;
+
+function TConfig.MakeLabel(
+  parent: TWinControl;
+  labelText: String;
+  left, top, fontSize, fontColor: Int32;
+  bold: Boolean = False
+): TLabel;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetCaption(labelText);
+  Result.GetFont().SetSize(fontSize);
+  Result.GetFont().SetColor(fontColor);
+  if bold then
+    Result.GetFont().SetStyle([fsBold]);
+end;
+
+procedure TConfig.AddCheck(
+  parent: TWinControl;
+  var box: TLabeledCheckBox;
+  ctrlName, labelText: String;
+  left, top: Int32;
+  checked: Boolean
+);
+begin
+  box.Create(parent);
+  box.SetLeft(TControl.AdjustToDPI(left));
+  box.SetTop(TControl.AdjustToDPI(top));
+  box.SetName(ctrlName);
+  box.SetFontColor(CM_GUI_TEXT);
+  box.SetCaption(labelText);
+  if checked then
+    box.CheckBox.SetChecked(True);
+end;
+
+procedure TConfig.AddEdit(
+  parent: TWinControl;
+  var box: TLabeledEdit;
+  ctrlName, labelText, text: String;
+  left, top, width: Int32
+);
+begin
+  box.Create(parent);
+  box.SetLeft(TControl.AdjustToDPI(left));
+  box.SetTop(TControl.AdjustToDPI(top));
+  box.SetWidth(TControl.AdjustToDPI(width));
+  box.SetName(ctrlName);
+  box.SetCaption(labelText);
+  box.SetText(text);
+  box.SetFontColor(CM_GUI_TEXT);
+end;
+
+procedure TConfig.AddHeader(parent: TPanel; titleText, subtitleText: String);
+var
+  header: TPanel;
+  headerW: Int32;
+begin
+  headerW := parent.GetWidth();
+  if headerW <= 0 then
+    headerW := TControl.AdjustToDPI(CM_GUI_W - CM_GUI_NAV_W - 2);
+
+  header := Self.MakePanel(parent, 0, 0, 1, 88, CM_GUI_CARD);
+  header.SetWidth(headerW);
+  header.SetHeight(TControl.AdjustToDPI(88));
+  Self.MakeLabel(header, titleText, 24, 18, 18, CM_GUI_TEXT, True);
+  Self.MakeLabel(header, subtitleText, 24, 52, 10, CM_GUI_MUTED, False);
+end;
+
+procedure TConfig.StyleNav(selected: TImage);
+begin
+  Self.ActiveNav := selected;
+  Self.PaintRoundChip(Self.ScriptNav, Self.ScriptNav.GetHint(), CM_GUI_NAV_IDLE, CM_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AccountsNav, Self.AccountsNav.GetHint(), CM_GUI_NAV_IDLE, CM_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AntibanNav, Self.AntibanNav.GetHint(), CM_GUI_NAV_IDLE, CM_GUI_NAV, False);
+  Self.PaintRoundChip(selected, selected.GetHint(), CM_GUI_ACCENT, CM_GUI_NAV, True);
+end;
+
+procedure TConfig.ShowSection(section: TPanel; selected: TImage);
+begin
+  Self.ScriptSection.SetVisible(False);
+  Self.AccountsSection.SetVisible(False);
+  Self.AntibanSection.SetVisible(False);
+  section.SetVisible(True);
+  Self.StyleNav(selected);
+end;
+
+procedure TConfig.ShowScript({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.ScriptSection, Self.ScriptNav);
+end;
+
+procedure TConfig.ShowAccounts({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AccountsSection, Self.AccountsNav);
+end;
+
+procedure TConfig.ShowAntiban({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AntibanSection, Self.AntibanNav);
 end;
 
 procedure TConfig.OpenURL(Sender: TObject);
@@ -564,6 +771,7 @@ end;
 
 procedure TConfig.WebhooksCheckboxChanged(Sender: TObject);
 begin
+  if Sender = nil then;
   Self.WebhookInfo.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
   Self.DiscordUIDInfo.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
   Self.DiscordUIDInput.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
@@ -571,119 +779,300 @@ begin
   Self.PingOnTerminatedCheckBox.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
 end;
 
-procedure TConfig.Run(); override;
+procedure TConfig.StartScript(Sender: TObject); override;
+begin
+  if Sender = nil then;
+
+  POWERMINING := Self.PowerMineCheckbox.IsChecked();
+  IGNOREWATERFALLS := Self.IgnoreWaterfallsCheckBox.IsChecked();
+  ENABLEWEBHOOKS := Self.EnableWebhooksCheckBox.IsChecked();
+  DiscordUID := Self.DiscordUIDInput.GetText();
+  WEBHOOKURL := Self.WebHookInput.GetText();
+  PINGONTERMINATED := Self.PingOnTerminatedCheckBox.IsChecked();
+
+  WLSettings.Put('max_actions', StrToIntDef(Self.MaxActionsInput.GetText(), 0));
+  WLSettings.Put('max_time', StrToIntDef(Self.MaxTimeInput.GetText(), 0));
+  WLSettings.SaveConfig();
+
+  WriteINI('Webhook Settings', 'DiscordUID', DiscordUID, 'Configs/BASettings.ini');
+  WriteINI('Webhook Settings', 'WebhookURL', WEBHOOKURL, 'Configs/BASettings.ini');
+  WriteINI('Webhook Settings', 'PingOnTerminated', BoolToStr(PINGONTERMINATED, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI('Webhook Settings', 'EnableWebhooks', BoolToStr(ENABLEWEBHOOKS, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI('Calcified Mining Settings', 'PowerMining', BoolToStr(POWERMINING, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI('Calcified Mining Settings', 'IgnoreWaterfalls', BoolToStr(IGNOREWATERFALLS, 'true', 'false'), 'Configs/BASettings.ini');
+
+  try
+    Self._WarmBuildCache();
+  except
+  end;
+  Self.Form.SetOnClose(nil);
+  Self.Form.Close();
+end;
+
+procedure TConfig.BuildScriptSection(SavedIgnoreWaterfalls, SavedPowerMining: Boolean);
+begin
+  Self.AddHeader(Self.ScriptSection, 'Action', 'Mine calcified rocks and process deposits in Cam Torum.');
+
+  Self.AddCheck(Self.ScriptSection, Self.IgnoreWaterfallsCheckBox, 'cb_cm_ignore_waterfalls', 'Ignore Waterfalls', 24, 110, SavedIgnoreWaterfalls);
+  Self.IgnoreWaterfallsCheckBox.SetTooltip('When enabled, waterfalls will be ignored.');
+
+  Self.AddCheck(Self.ScriptSection, Self.PowerMineCheckbox, 'cb_cm_power_mine', 'Power Mining', 24, 150, SavedPowerMining);
+  Self.PowerMineCheckbox.SetTooltip('Disables banking and breaking of deposits.');
+end;
+
+procedure TConfig.BuildAccountsSection(
+  SavedEnableWebhooks, SavedPingOnTerminated: Boolean;
+  SavedDiscordUID, SavedWebhookURL: String
+);
+var
+  am: TPanel;
+  selectorPanel, userPanel, passPanel, pinPanel, worldsPanel: TPanel;
+  addBtn, deleteBtn, generateBtn: TButton;
+  leftColW, passW, pinW, worldsLeft, btnW, btnGap: Int32;
+begin
+  Self.AddHeader(Self.AccountsSection, 'Accounts', 'Login account and optional Discord webhook notifications.');
+
+  am := Self.CreateAccountManager(Self.AccountsSection);
+  am.SetLeft(TControl.AdjustToDPI(16));
+  am.SetTop(TControl.AdjustToDPI(100));
+  am.SetColor(CM_GUI_BG);
+
+  leftColW := TControl.AdjustToDPI(280);
+  passW := Floor(leftColW * 0.6);
+  pinW := Floor(leftColW * 0.3);
+
+  selectorPanel := Self.Form.GetChild('am_selector_panel');
+  userPanel := Self.Form.GetChild('am_user_panel');
+  passPanel := Self.Form.GetChild('am_pass_panel');
+  pinPanel := Self.Form.GetChild('am_pin_panel');
+  worldsPanel := Self.Form.GetChild('am_worlds_panel');
+
+  if selectorPanel <> nil then
+    selectorPanel.SetWidth(leftColW);
+  if userPanel <> nil then
+    userPanel.SetWidth(leftColW);
+  if passPanel <> nil then
+    passPanel.SetWidth(passW);
+  if (pinPanel <> nil) and (selectorPanel <> nil) then
+  begin
+    pinPanel.SetWidth(pinW);
+    pinPanel.SetLeft(selectorPanel.GetLeft() + leftColW - pinW);
+  end;
+
+  if (worldsPanel <> nil) and (selectorPanel <> nil) then
+  begin
+    worldsLeft := selectorPanel.GetLeft() + leftColW + TControl.AdjustToDPI(48);
+    worldsPanel.SetLeft(worldsLeft);
+
+    addBtn := Self.Form.GetChild('am_add_button');
+    deleteBtn := Self.Form.GetChild('am_delete_button');
+    generateBtn := Self.Form.GetChild('am_generate_worlds_button');
+    btnGap := TControl.AdjustToDPI(8);
+    btnW := Floor((worldsPanel.GetWidth() - btnGap) / 2);
+
+    if generateBtn <> nil then
+    begin
+      generateBtn.SetLeft(worldsLeft);
+      generateBtn.SetWidth(worldsPanel.GetWidth());
+    end;
+    if addBtn <> nil then
+    begin
+      addBtn.SetLeft(worldsLeft);
+      addBtn.SetWidth(btnW);
+    end;
+    if deleteBtn <> nil then
+    begin
+      deleteBtn.SetLeft(worldsLeft + worldsPanel.GetWidth() - btnW - TControl.AdjustToDPI(1));
+      deleteBtn.SetWidth(btnW);
+    end;
+  end;
+
+  Self.MakeLabel(Self.AccountsSection, 'Discord', 24, 340, 11, CM_GUI_TEXT, True);
+
+  Self.AddCheck(Self.AccountsSection, Self.EnableWebhooksCheckBox, 'cb_cm_webhooks', 'Enable webhooks', 24, 370, SavedEnableWebhooks);
+  Self.EnableWebhooksCheckBox.SetTooltip('Enable or Disable Discord Webhooks.');
+  Self.EnableWebhooksCheckBox.CheckBox.SetOnChange(@Self.WebhooksCheckboxChanged);
+
+  Self.WebhookInfo := Self.MakeLabel(Self.AccountsSection, 'Click here to learn how to generate a Discord webhook URL', 24, 410, 10, $C07020, False);
+  Self.WebhookInfo.SetOnClick(@Self.OpenURL);
+  Self.WebhookInfo.SetCursor(crHandPoint);
+  Self.WebhookInfo.SetTooltip('Opens a guide for creating a Discord webhook URL.');
+
+  Self.AddEdit(Self.AccountsSection, Self.DiscordUIDInput, 'le_cm_discord_uid', 'Discord UID (Optional)', SavedDiscordUID, 24, 440, CM_GUI_EDIT_W);
+  Self.DiscordUIDInput.SetTooltip('This will mention you in the discord message.');
+
+  Self.DiscordUIDInfo := Self.MakeLabel(Self.AccountsSection, 'Click here to learn how to find your Discord User ID', CM_GUI_COL2, 458, 10, $C07020, False);
+  Self.DiscordUIDInfo.SetOnClick(@Self.OpenURL);
+  Self.DiscordUIDInfo.SetCursor(crHandPoint);
+  Self.DiscordUIDInfo.SetTooltip('Opens a guide for finding your Discord User ID.');
+
+  Self.AddEdit(Self.AccountsSection, Self.WebHookInput, 'le_cm_webhook', 'Webhook URL', SavedWebhookURL, 24, 510, 520);
+  Self.WebHookInput.SetTooltip('Paste your Discord webhook URL here.');
+
+  Self.AddCheck(Self.AccountsSection, Self.PingOnTerminatedCheckBox, 'cb_cm_ping_terminated', 'Ping on terminated', 24, 580, SavedPingOnTerminated);
+  Self.PingOnTerminatedCheckBox.SetTooltip('Enable to ping when the script terminates cleanly');
+end;
+
+procedure TConfig.BuildAntibanSection(SavedMaxActions, SavedMaxTime: Integer);
+begin
+  Self.AddHeader(Self.AntibanSection, 'Antiban', 'Session limits.');
+
+  Self.AddEdit(Self.AntibanSection, Self.MaxActionsInput, 'le_cm_maxactions', 'Max actions (0 = unlimited)', IntToStr(SavedMaxActions), 24, 110, CM_GUI_EDIT_W);
+  Self.MaxActionsInput.Edit.SetOnKeyPress(@Self.MaxActionsInput.Edit.NumberField);
+  Self.AddEdit(Self.AntibanSection, Self.MaxTimeInput, 'le_cm_maxtime', 'Max time minutes (0 = unlimited)', IntToStr(SavedMaxTime), CM_GUI_COL2, 110, CM_GUI_EDIT_W);
+  Self.MaxTimeInput.Edit.SetOnKeyPress(@Self.MaxTimeInput.Edit.NumberField);
+end;
+
+procedure TConfig.BuildShell(
+  SavedIgnoreWaterfalls, SavedPowerMining, SavedEnableWebhooks, SavedPingOnTerminated: Boolean;
+  SavedDiscordUID, SavedWebhookURL: String;
+  SavedMaxActions, SavedMaxTime: Integer
+);
 var
   tab: TTabSheet;
-  SavedPingOnTerminated, SavedEnableWebhooks: Boolean;
-  SavedDiscordUID, SavedWebhookURL: String;
+  contentH, startW, startH, shellW, shellH, statusTop, statusH, mainLeft, mainW, navW, bottomInset: Int32;
 begin
-  Self.Setup("BigAussies Calcified Mining");
-  Self.Start.SetOnClick(@Self.StartScript);
-
-  SavedDiscordUID := ReadINI('Webhook Settings', 'DiscordUID', 'Configs/BASettings.ini');
-  SavedWebhookURL := ReadINI('Webhook Settings', 'WebhookURL', 'Configs/BASettings.ini');
-  SavedEnableWebhooks := StrToBoolDef(ReadINI('Webhook Settings', 'EnableWebhooks', 'Configs/BASettings.ini'), False);
-  SavedPingOnTerminated := StrToBoolDef(ReadINI('Webhook Settings', 'PingOnTerminated', 'Configs/BASettings.ini'), True); 
-  
-  Self.AddTab('Script Settings');
+  Self.AddTab('Calcified Mining');
   tab := Self.Tabs[High(Self.Tabs)];
 
-  Self.CreateAccountManager(tab);
+  Self.Start.SetAlign(alNone);
+  Self.Start.SetVisible(False);
+  Self.Start.SetHeight(0);
+  Self.Start.SetWidth(0);
 
-  Self.CreateVersionPanel(tab);
+  bottomInset := TControl.AdjustToDPI(CM_GUI_BOTTOM_INSET);
+  navW := TControl.AdjustToDPI(CM_GUI_NAV_W);
+  statusH := TControl.AdjustToDPI(CM_GUI_STATUS_H);
+  shellW := Self.Size.X;
+  shellH := Self.Size.Y;
+  mainLeft := navW + TControl.AdjustToDPI(2);
+  mainW := shellW - mainLeft;
+  statusTop := shellH - statusH - bottomInset;
+  contentH := statusTop;
+  startW := TControl.AdjustToDPI(132);
+  startH := TControl.AdjustToDPI(CM_GUI_BTN_H);
 
-  with IgnoreWaterfallsCheckBox do
-  begin
-    Create(tab);
-    SetCaption("Ignore Waterfalls.");
-    SetLeft(TControl.AdjustToDPI(37));
-    SetTop(TControl.AdjustToDPI(140));
-    SetHint('When enabled, waterfalls will be ignored.');
-    SetChecked(IGNOREWATERFALLS);
-  end;
+  Self.NavPanel.Create(tab);
+  Self.NavPanel.SetLeft(0);
+  Self.NavPanel.SetTop(0);
+  Self.NavPanel.SetWidth(navW);
+  Self.NavPanel.SetHeight(shellH);
+  Self.NavPanel.SetColor(CM_GUI_NAV);
+  Self.NavPanel.SetBevelOuter(bvNone);
 
-  with PowerMineCheckbox do
-  begin
-    Create(tab);
-    SetCaption("Power Mining mode.");
-    SetLeft(Self.IgnoreWaterfallsCheckBox.GetLeft());
-    SetTop(Self.IgnoreWaterfallsCheckBox.GetTop() + TControl.AdjustToDPI(20));
-    SetHint('Disables banking and breaking of deposits.');
-    SetChecked(POWERMINING);
-  end;
+  Self.DividerPanel.Create(tab);
+  Self.DividerPanel.SetLeft(navW);
+  Self.DividerPanel.SetTop(0);
+  Self.DividerPanel.SetWidth(TControl.AdjustToDPI(2));
+  Self.DividerPanel.SetHeight(shellH);
+  Self.DividerPanel.SetColor(CM_GUI_DIVIDER);
+  Self.DividerPanel.SetBevelOuter(bvNone);
 
-  with EnableWebhooksCheckBox do
-  begin
-    Create(tab);
-    SetCaption("Discord Webhooks notifications.");
-    SetLeft(Self.PowerMineCheckbox.GetLeft());
-    SetTop(Self.PowerMineCheckbox.GetTop() + TControl.AdjustToDPI(20));
-    SetHint('Enable or Disable Discord Webhooks.');
-    SetChecked(SavedEnableWebhooks);
-    CheckBox.SetOnChange(@WebhooksCheckboxChanged);
-  end;
+  Self.ContentPanel.Create(tab);
+  Self.ContentPanel.SetLeft(mainLeft);
+  Self.ContentPanel.SetTop(0);
+  Self.ContentPanel.SetWidth(mainW);
+  Self.ContentPanel.SetHeight(contentH);
+  Self.ContentPanel.SetColor(CM_GUI_BG);
+  Self.ContentPanel.SetBevelOuter(bvNone);
 
-  with WebhookInfo do
-  begin
-    Create(tab);
-    SetLeft(Self.EnableWebhooksCheckBox.GetLeft());
-    SetTop(Self.EnableWebhooksCheckBox.GetTop() + TControl.AdjustToDPI(20));
-    SetCaption('Click here to learn how to generate your own Discord webhook URL');
-    SetHint('Click here to learn how to generate your own Discord webhook URL');
-    setOnClick(@OpenURL);
-    SetFontSize(TControl.AdjustToDPI(7));
-  end;
+  Self.StatusDivider.Create(tab);
+  Self.StatusDivider.SetLeft(mainLeft);
+  Self.StatusDivider.SetTop(statusTop);
+  Self.StatusDivider.SetWidth(mainW);
+  Self.StatusDivider.SetHeight(TControl.AdjustToDPI(2));
+  Self.StatusDivider.SetColor(CM_GUI_DIVIDER);
+  Self.StatusDivider.SetBevelOuter(bvNone);
 
-  with DiscordUIDInput do
-  begin
-    Create(tab);
-    SetLeft(Self.WebhookInfo.GetLeft());
-    SetTop(Self.WebhookInfo.GetTop() + TControl.AdjustToDPI(26));
-    SetCaption('Discord UID (Optional)');
-    SetHint('This will mention you in the discord message.');
-    SetWidth(TControl.AdjustToDPI(140));
-    SetText(SavedDiscordUID);
-  end;
+  Self.StatusPanel.Create(tab);
+  Self.StatusPanel.SetLeft(mainLeft);
+  Self.StatusPanel.SetTop(statusTop + Self.StatusDivider.GetHeight());
+  Self.StatusPanel.SetWidth(mainW);
+  Self.StatusPanel.SetHeight(statusH - Self.StatusDivider.GetHeight());
+  Self.StatusPanel.SetColor(CM_GUI_STATUS);
+  Self.StatusPanel.SetBevelOuter(bvNone);
 
-  with DiscordUIDInfo do
-  begin
-    Create(tab);
-    SetLeft(Self.DiscordUIDInput.GetLeft() + Self.DiscordUIDInput.GetWidth() + TControl.AdjustToDPI(10));
-    SetTop(Self.DiscordUIDInput.GetTop() + TControl.AdjustToDPI(18));
-    SetCaption('Click here to learn how to find your Discord User ID');
-    SetHint('Click here to learn how to find your Discord User ID');
-    setOnClick(@OpenURL);
-    SetFontSize(TControl.AdjustToDPI(7));
-  end;
+  Self.StatusPad.Create(tab);
+  Self.StatusPad.SetLeft(mainLeft);
+  Self.StatusPad.SetTop(Self.StatusPanel.GetTop() + Self.StatusPanel.GetHeight());
+  Self.StatusPad.SetWidth(mainW);
+  Self.StatusPad.SetHeight(shellH - Self.StatusPad.GetTop());
+  Self.StatusPad.SetColor(CM_GUI_STATUS);
+  Self.StatusPad.SetBevelOuter(bvNone);
 
-  with WebHookInput do
-  begin
-    Create(tab);
-    SetLeft(Self.DiscordUIDInput.GetLeft());
-    SetTop(Self.DiscordUIDInput.GetTop() + TControl.AdjustToDPI(45));
-    SetCaption('Discord Webhook URL');
-    SetHint('Discord Webhook URL');
-    SetWidth(TControl.AdjustToDPI(180));
-    SetText(savedWebhookURL);
-  end;
+  Self.BrandLabel := Self.MakeLabel(Self.NavPanel, 'Calcified Mining', 16, 28, 14, CM_GUI_TEXT, True);
+  Self.MakeLabel(Self.NavPanel, 'BigAussie', 16, 54, 9, CM_GUI_MUTED, False);
 
-  with PingOnTerminatedCheckBox do
-  begin
-    Create(tab);
-    SetCaption("Ping on script termination");
-    SetLeft(Self.WebHookInput.GetLeft());
-    SetTop(Self.WebHookInput.GetTop() + TControl.AdjustToDPI(50));
-    SetHint('Enable to ping when the script terminates cleanly');
-    SetChecked(SavedPingOnTerminated);
-  end; 
+  Self.ScriptNav := Self.MakeNavItem(Self.NavPanel, 'Action', 12, 100, True);
+  Self.AccountsNav := Self.MakeNavItem(Self.NavPanel, 'Accounts', 12, 152);
+  Self.AntibanNav := Self.MakeNavItem(Self.NavPanel, 'Antiban', 12, 204);
 
-  WebhooksCheckboxChanged(Self.EnableWebhooksCheckBox.CheckBox);
+  Self.ScriptSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, CM_GUI_BG);
+  Self.AccountsSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, CM_GUI_BG);
+  Self.AntibanSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, CM_GUI_BG);
 
-  Self.CreateAntibanManager();
+  Self.ScriptSection.SetWidth(mainW);
+  Self.ScriptSection.SetHeight(contentH);
+  Self.AccountsSection.SetWidth(mainW);
+  Self.AccountsSection.SetHeight(contentH);
+  Self.AntibanSection.SetWidth(mainW);
+  Self.AntibanSection.SetHeight(contentH);
 
-  Self.CreateWaspLibSettings();
+  Self.BuildScriptSection(SavedIgnoreWaterfalls, SavedPowerMining);
+  Self.BuildAccountsSection(SavedEnableWebhooks, SavedPingOnTerminated, SavedDiscordUID, SavedWebhookURL);
+  Self.BuildAntibanSection(SavedMaxActions, SavedMaxTime);
 
-  Self.CreateAPISettings();
+  Self.ScriptNav.SetOnClick(@Self.ShowScript);
+  Self.AccountsNav.SetOnClick(@Self.ShowAccounts);
+  Self.AntibanNav.SetOnClick(@Self.ShowAntiban);
+
+  Self.StartChip.Create(Self.StatusPanel);
+  Self.StartChip.SetLeft(mainW - startW - TControl.AdjustToDPI(24));
+  Self.StartChip.SetTop((Self.StatusPanel.GetHeight() - startH) div 2 + 2);
+  Self.StartChip.SetWidth(startW);
+  Self.StartChip.SetHeight(startH);
+  Self.StartChip.SetCursor(crHandPoint);
+  Self.PaintRoundChip(Self.StartChip, 'Start', CM_GUI_START, CM_GUI_STATUS, True, True);
+  Self.StartChip.SetOnClick(@Self.StartScript);
+
+  Self.WebhooksCheckboxChanged(nil);
+  Self.ShowScript(Self.ScriptNav);
+end;
+
+procedure TConfig.Run(); override;
+var
+  SavedIgnoreWaterfalls, SavedPowerMining, SavedEnableWebhooks, SavedPingOnTerminated: Boolean;
+  SavedDiscordUID, SavedWebhookURL: String;
+  SavedMaxActions, SavedMaxTime: Integer;
+begin
+  BashPromptIfUpdateAvailable();
+
+  SavedDiscordUID := ReadINI('Webhook Settings', 'DiscordUID', 'Configs/BASettings.ini');
+  if SavedDiscordUID = '' then
+    SavedDiscordUID := DiscordUID;
+  SavedWebhookURL := ReadINI('Webhook Settings', 'WebhookURL', 'Configs/BASettings.ini');
+  if SavedWebhookURL = '' then
+    SavedWebhookURL := WEBHOOKURL;
+  SavedEnableWebhooks := StrToBoolDef(ReadINI('Webhook Settings', 'EnableWebhooks', 'Configs/BASettings.ini'), ENABLEWEBHOOKS);
+  SavedPingOnTerminated := StrToBoolDef(ReadINI('Webhook Settings', 'PingOnTerminated', 'Configs/BASettings.ini'), PINGONTERMINATED);
+
+  SavedPowerMining := StrToBoolDef(ReadINI('Calcified Mining Settings', 'PowerMining', 'Configs/BASettings.ini'), POWERMINING);
+  SavedIgnoreWaterfalls := StrToBoolDef(ReadINI('Calcified Mining Settings', 'IgnoreWaterfalls', 'Configs/BASettings.ini'), IGNOREWATERFALLS);
+
+  if WLSettings.Has('max_actions') then
+    SavedMaxActions := WLSettings.GetInt('max_actions')
+  else
+    SavedMaxActions := 0;
+  if WLSettings.Has('max_time') then
+    SavedMaxTime := WLSettings.GetInt('max_time')
+  else
+    SavedMaxTime := 0;
+
+  Self.Setup('BigAussies Calcified Mining', [CM_GUI_W, CM_GUI_H], False);
+  Self.BuildShell(
+    SavedIgnoreWaterfalls, SavedPowerMining, SavedEnableWebhooks, SavedPingOnTerminated,
+    SavedDiscordUID, SavedWebhookURL, SavedMaxActions, SavedMaxTime
+  );
 
   inherited;
 end;

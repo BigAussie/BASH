@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := '1218ea6e-f502-46db-9b91-feb89baecbdc'}
-{$DEFINE SCRIPT_REVISION := '2'}  
+{$DEFINE SCRIPT_REVISION := '3'}  
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -2204,23 +2204,52 @@ begin
 end;
 
 {$IFDEF SCRIPT_GUI}
+const
+  LS_GUI_NAV       = $F0EBE4;
+  LS_GUI_BG        = $FFFFFF;
+  LS_GUI_STATUS    = $F7F4F1;
+  LS_GUI_DIVIDER   = $D4C9BC;
+  LS_GUI_CARD      = $F7F4F1;
+  LS_GUI_ACCENT    = $E0C9AE;
+  LS_GUI_NAV_IDLE  = $E7DED4;
+  LS_GUI_START     = $C9B094;
+  LS_GUI_TEXT      = $1C1C1E;
+  LS_GUI_MUTED     = $6B6B70;
+  LS_GUI_LINK      = $C07020;
+  LS_GUI_W         = 1120;
+  LS_GUI_H         = 780;
+  LS_GUI_NAV_W     = 190;
+  LS_GUI_STATUS_H  = 56;
+  LS_GUI_BTN_H     = 42;
+  LS_GUI_EDIT_W    = 260;
+  LS_GUI_COMBO_W   = 260;
+  LS_GUI_COMBO_H   = 58;
+  LS_GUI_COMBO_FONT = 10;
+  LS_GUI_COL2      = 308;
+  LS_GUI_BOTTOM_INSET = 34;
+
 type
   TConfig = record(TScriptForm)
-    Message, Message2, QuantityLabel, BankFillersInfoLabel, ScriptSpeedLabel, GEInfoLabel, GEInfoLabel2, StopAtLevelLabel, ItemSelectorLabel, LunarSpellLabel: TLabel;
-    QuantityInputBox, StopAtLevelInputBox: TEdit;
-    ScriptSpeedSelector: TLabeledCombobox;
-    SELLNOTEDITEMCHECKBox, BUYRUNESCHECKBox, BUYRAWMATERIALSCheckbox, BankFillersCheckBox, BirdHouseSettingsCheckbox: TLabeledCheckBox;
-    LunarSpellSelector, ReturnMethodDropdown: TComboBox;
-    ItemSelector, bankSelector: TComboBox;
-    returnMethodSelector: TLabeledCombobox;
-    OpenNestsCheckBox: TLabeledCheckBox;
-    // Discord Webhooks
+    NavPanel, ContentPanel, StatusPanel, DividerPanel, StatusDivider, StatusPad: TPanel;
+    BrandLabel: TLabel;
+    ScriptNav, AccountsNav, AntibanNav, BirdhouseNav: TImage;
+    StartChip: TImage;
+    ActiveNav: TImage;
+    ScriptSection, AccountsSection, AntibanSection, BirdhouseSection: TPanel;
+
+    Message2, BirdhouseInfoLabel, BirdhouseIntervalLabel: TLabel;
+    QuantityInputBox, StopAtLevelInputBox: TLabeledEdit;
+    LunarSpellSelector, ItemSelector, ScriptSpeedSelector: TLabeledCombobox;
+    BankSelector, returnMethodSelector: TLabeledCombobox;
+    LogTypeCombo: TLabeledCombobox;
+    SeedInput: TLabeledEdit;
+    SELLNOTEDITEMCHECKBox, BUYRUNESCHECKBox, BUYRAWMATERIALSCheckbox, BankFillersCheckBox: TLabeledCheckBox;
+    BirdHouseSettingsCheckbox, UseBestLogCheckBox, CraftWhileNavCheckBox: TLabeledCheckBox;
+    RunNowRadio, RunLaterRadio: TRadioButton;
     PingOnTerminatedCheckBox, EnableWebhooksCheckBox: TLabeledCheckBox;
-    WebhookLabel , DiscordUIDLabel, WebhookInfo, DiscordUIDInfo: TLabel;
+    WebhookInfo, DiscordUIDInfo: TLabel;
     WebHookInput, DiscordUIDInput: TLabeledEdit;
-    SavedDiscordUID, SavedWebhookURL: String;
-    SavedPingOnTerminated, SavedEnableWebhooks: Boolean;
-    // End Discord Webhooks
+    MaxActionsInput, MaxTimeInput: TLabeledEdit;
   end;
 
 function StringToScriptSpeed(const S: String): ScriptSpeedTypes;
@@ -2232,15 +2261,436 @@ begin
   else Result := NORMAL;
 end;
 
-procedure TConfig.StartScript(sender: TObject); override; 
+function StringToSpell(const S: String): ELunarSpell;
+begin
+  if S = 'Bake Pie' then Result := BAKE_PIE
+  else if S = 'Humidify' then Result := HUMIDIFY
+  else if S = 'Spin Flax' then Result := SPIN_FLAX
+  else if S = 'Superglass Make' then Result := SUPERGLASS_MAKE
+  else if S = 'Tan Leather' then Result := TAN_LEATHER
+  else if S = 'String Jewellery' then Result := STRING_JEWELLERY
+  else if S = 'Plank Make' then Result := PLANK_MAKE
+  else if S = 'Recharge Dragonstone' then Result := RECHARGE_DRAGONSTONE
+  else Result := BAKE_PIE;
+end;
+
+function TConfig.MakePanel(
+  parent: TWinControl;
+  left, top, width, height, color: Int32
+): TPanel;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetWidth(TControl.AdjustToDPI(width));
+  Result.SetHeight(TControl.AdjustToDPI(height));
+  Result.SetColor(color);
+  Result.SetBevelOuter(bvNone);
+end;
+
+procedure TConfig.PaintRoundChip(
+  img: TImage;
+  labelText: String;
+  fill, parentBg: Int32;
+  selected: Boolean = False;
+  centered: Boolean = False
+);
+var
+  bmp: TBitmap;
+  c: TCanvas;
+  w, h, r, tw, th, tx: Int32;
+begin
+  w := img.GetWidth();
+  h := img.GetHeight();
+  if (w <= 0) or (h <= 0) then
+    Exit;
+
+  r := TControl.AdjustToDPI(6);
+  if r * 2 > h then
+    r := h div 2;
+  if r * 2 > w then
+    r := w div 2;
+
+  bmp := img.GetPicture().GetBitmap();
+  bmp.SetWidth(w);
+  bmp.SetHeight(h);
+  c := bmp.GetCanvas();
+
+  c.GetBrush().SetColor(parentBg);
+  c.GetPen().SetColor(parentBg);
+  c.FillRect(0, 0, w, h);
+
+  c.GetBrush().SetColor(fill);
+  c.GetPen().SetColor(fill);
+  c.RoundRect(0, 0, w - 1, h - 1, r * 2, r * 2);
+
+  c.GetBrush().SetColor(fill);
+  c.GetFont().SetColor(LS_GUI_TEXT);
+  c.GetFont().SetSize(11);
+  if selected then
+    c.GetFont().SetStyle([fsBold])
+  else
+    c.GetFont().SetStyle([]);
+
+  tw := c.TextWidth(labelText);
+  th := c.TextHeight(labelText);
+  if centered then
+    tx := (w - tw) div 2
+  else
+    tx := TControl.AdjustToDPI(16);
+  c.TextOut(tx, (h - th) div 2, labelText);
+
+  img.SetHint(labelText);
+  img.SetShowHint(False);
+  img.Invalidate();
+end;
+
+function TConfig.MakeNavItem(
+  parent: TWinControl;
+  labelText: String;
+  left, top: Int32;
+  selected: Boolean = False
+): TImage;
+var
+  fill: Int32;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetWidth(TControl.AdjustToDPI(LS_GUI_NAV_W - 28));
+  Result.SetHeight(TControl.AdjustToDPI(LS_GUI_BTN_H));
+  Result.SetCursor(crHandPoint);
+
+  if selected then
+    fill := LS_GUI_ACCENT
+  else
+    fill := LS_GUI_NAV_IDLE;
+
+  Self.PaintRoundChip(Result, labelText, fill, LS_GUI_NAV, selected);
+end;
+
+function TConfig.MakeLabel(
+  parent: TWinControl;
+  labelText: String;
+  left, top, fontSize, fontColor: Int32;
+  bold: Boolean = False
+): TLabel;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetCaption(labelText);
+  Result.GetFont().SetSize(fontSize);
+  Result.GetFont().SetColor(fontColor);
+  if bold then
+    Result.GetFont().SetStyle([fsBold]);
+end;
+
+procedure TConfig.AddCheck(
+  parent: TWinControl;
+  var box: TLabeledCheckBox;
+  ctrlName, labelText: String;
+  left, top: Int32;
+  checked: Boolean
+);
+begin
+  box.Create(parent);
+  box.SetLeft(TControl.AdjustToDPI(left));
+  box.SetTop(TControl.AdjustToDPI(top));
+  box.SetName(ctrlName);
+  box.SetFontColor(LS_GUI_TEXT);
+  box.SetCaption(labelText);
+  if checked then
+    box.CheckBox.SetChecked(True);
+end;
+
+procedure TConfig.AddEdit(
+  parent: TWinControl;
+  var box: TLabeledEdit;
+  ctrlName, labelText, text: String;
+  left, top, width: Int32
+);
+begin
+  box.Create(parent);
+  box.SetLeft(TControl.AdjustToDPI(left));
+  box.SetTop(TControl.AdjustToDPI(top));
+  box.SetWidth(TControl.AdjustToDPI(width));
+  box.SetName(ctrlName);
+  box.SetCaption(labelText);
+  box.SetText(text);
+  box.SetFontColor(LS_GUI_TEXT);
+end;
+
+procedure TConfig.AddCombo(
+  parent: TWinControl;
+  var box: TLabeledComboBox;
+  ctrlName, labelText: String;
+  left, top: Int32;
+  items: TStringArray;
+  itemIndex: Int32
+);
+begin
+  box.Create(parent);
+  box.SetLeft(TControl.AdjustToDPI(left));
+  box.SetTop(TControl.AdjustToDPI(top));
+  box.SetWidth(TControl.AdjustToDPI(LS_GUI_COMBO_W));
+  box.SetHeight(TControl.AdjustToDPI(LS_GUI_COMBO_H));
+  box.SetName(ctrlName);
+  box.SetCaption(labelText);
+  box.AddItemArray(items);
+  if (itemIndex >= 0) and (itemIndex <= High(items)) then
+    box.SetItemIndex(itemIndex)
+  else
+    box.SetItemIndex(0);
+  box.SetFontColor(LS_GUI_TEXT);
+  box.SetStyle(csDropDownList);
+  box.SetFontSize(LS_GUI_COMBO_FONT);
+  box.ComboBox.SetFontColor(LS_GUI_TEXT);
+  box.ComboBox.GetFont().SetSize(LS_GUI_COMBO_FONT);
+end;
+
+procedure TConfig.AddHeader(parent: TPanel; titleText, subtitleText: String);
+var
+  header: TPanel;
+  headerW: Int32;
+begin
+  headerW := parent.GetWidth();
+  if headerW <= 0 then
+    headerW := TControl.AdjustToDPI(LS_GUI_W - LS_GUI_NAV_W - 2);
+
+  header := Self.MakePanel(parent, 0, 0, 1, 88, LS_GUI_CARD);
+  header.SetWidth(headerW);
+  header.SetHeight(TControl.AdjustToDPI(88));
+  Self.MakeLabel(header, titleText, 24, 18, 18, LS_GUI_TEXT, True);
+  Self.MakeLabel(header, subtitleText, 24, 52, 10, LS_GUI_MUTED, False);
+end;
+
+procedure TConfig.StyleNav(selected: TImage);
+begin
+  Self.ActiveNav := selected;
+  Self.PaintRoundChip(Self.ScriptNav, Self.ScriptNav.GetHint(), LS_GUI_NAV_IDLE, LS_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AccountsNav, Self.AccountsNav.GetHint(), LS_GUI_NAV_IDLE, LS_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AntibanNav, Self.AntibanNav.GetHint(), LS_GUI_NAV_IDLE, LS_GUI_NAV, False);
+  Self.PaintRoundChip(Self.BirdhouseNav, Self.BirdhouseNav.GetHint(), LS_GUI_NAV_IDLE, LS_GUI_NAV, False);
+  Self.PaintRoundChip(selected, selected.GetHint(), LS_GUI_ACCENT, LS_GUI_NAV, True);
+end;
+
+procedure TConfig.ShowSection(section: TPanel; selected: TImage);
+begin
+  Self.ScriptSection.SetVisible(False);
+  Self.AccountsSection.SetVisible(False);
+  Self.AntibanSection.SetVisible(False);
+  Self.BirdhouseSection.SetVisible(False);
+  section.SetVisible(True);
+  Self.StyleNav(selected);
+end;
+
+procedure TConfig.ShowScript({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.ScriptSection, Self.ScriptNav);
+end;
+
+procedure TConfig.ShowAccounts({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AccountsSection, Self.AccountsNav);
+end;
+
+procedure TConfig.ShowAntiban({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AntibanSection, Self.AntibanNav);
+end;
+
+procedure TConfig.ShowBirdhouse({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.BirdhouseSection, Self.BirdhouseNav);
+end;
+
+procedure TConfig.OpenURL(Sender: TObject);
+begin
+  if Sender = Self.WebhookInfo then
+    OpenWebPage('https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks')
+  else if Sender = Self.DiscordUIDInfo then
+    OpenWebPage('https://support.discord.com/hc/en-us/articles/206346498-Where-can-I-find-my-User-Server-Message-ID');
+end;
+
+procedure TConfig.WebhooksCheckboxChanged(Sender: TObject);
+begin
+  if Sender = nil then;
+  Self.WebhookInfo.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
+  Self.DiscordUIDInfo.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
+  Self.DiscordUIDInput.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
+  Self.WebHookInput.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
+  Self.PingOnTerminatedCheckBox.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
+end;
+
+procedure TConfig.BUYRAWMATERIALSCheckboxChanged(Sender: TObject);
+begin
+  if Sender = nil then;
+  Self.QuantityInputBox.SetVisible(Self.BUYRAWMATERIALSCheckbox.IsChecked());
+end;
+
+procedure TConfig.BankFillersCheckBoxChanged(Sender: TObject);
+begin
+  if Sender = nil then;
+  Self.Message2.SetVisible(Self.BankFillersCheckBox.IsChecked());
+end;
+
+procedure TConfig.UpdateReturnMethodOptions({$H-}Sender: TObject); {$H+}
+var
+  selectedBank: String;
+begin
+  selectedBank := Self.BankSelector.GetText();
+  Self.returnMethodSelector.Clear();
+
+  case selectedBank of
+    'Grand Exchange':
+      Self.returnMethodSelector.AddItemArray(['Varrock Teleport Tablet', 'Ring of Wealth']);
+    'Ardougne':
+      Self.returnMethodSelector.AddItemArray(['Ardougne Teleport Tablet']);
+    'Castle Wars':
+      Self.returnMethodSelector.AddItemArray(['Castle Wars Mini-Game Teleport', 'Ring of dueling']);
+    'Catherby':
+      Self.returnMethodSelector.AddItemArray(['Camelot Teleport Tablet']);
+    'Draynor Village':
+      Self.returnMethodSelector.AddItemArray(['Amulet of glory']);
+    'Edgeville':
+      Self.returnMethodSelector.AddItemArray(['Amulet of glory']);
+    'Falador':
+      Self.returnMethodSelector.AddItemArray(['Falador Teleport Tablet']);
+    'Lunar Isle':
+      Self.returnMethodSelector.AddItemArray(['Home Teleport']);
+    'Prifddinas':
+      Self.returnMethodSelector.AddItemArray(['Eternal Teleport Crystal', 'Construction Cape', 'Construction Cape(t)']);
+    'Seers'' Village':
+      Self.returnMethodSelector.AddItemArray(['Camelot Teleport Tablet']);
+    'Varrock':
+      Self.returnMethodSelector.AddItemArray(['Varrock Teleport Tablet']);
+    'Wintertodt':
+      Self.returnMethodSelector.AddItemArray(['Games Necklace']);
+  end;
+
+  if Self.returnMethodSelector.ComboBox.getItems().getCount() > 0 then
+    Self.returnMethodSelector.SetItemIndex(0);
+end;
+
+procedure TConfig.BankSelectorOnChange(Sender: TObject);
+begin
+  if Sender = nil then;
+  WLSettings.Put('bank_map', Self.BankSelector.GetItemIndex());
+  WLSettings.SaveConfig();
+  Self.UpdateReturnMethodOptions(Sender);
+end;
+
+procedure TConfig.BirdhouseEnabledChanged({$H-}Sender: TObject); {$H+}
+var
+  enabled: Boolean;
+begin
+  enabled := Self.BirdHouseSettingsCheckbox.IsChecked();
+
+  if Assigned(Self.LogTypeCombo) then Self.LogTypeCombo.SetVisible(enabled);
+  if Assigned(Self.SeedInput) then Self.SeedInput.SetVisible(enabled);
+  if Assigned(Self.UseBestLogCheckBox) then Self.UseBestLogCheckBox.SetVisible(enabled);
+  if Assigned(Self.CraftWhileNavCheckBox) then Self.CraftWhileNavCheckBox.SetVisible(enabled);
+  if Assigned(Self.BirdhouseIntervalLabel) then Self.BirdhouseIntervalLabel.SetVisible(enabled);
+  if Assigned(Self.RunNowRadio) then Self.RunNowRadio.SetVisible(enabled);
+  if Assigned(Self.RunLaterRadio) then Self.RunLaterRadio.SetVisible(enabled);
+  if Assigned(Self.returnMethodSelector) then Self.returnMethodSelector.SetVisible(enabled);
+
+  if Assigned(Self.BirdhouseInfoLabel) then
+  begin
+    if enabled then
+      Self.BirdhouseInfoLabel.SetCaption('Birdhouse runs will interrupt casting when due. Configure bank return method on Action.')
+    else
+      Self.BirdhouseInfoLabel.SetCaption('Enable birdhouse runs above to configure options.');
+  end;
+end;
+
+procedure TConfig.BirdhouseLogTypeChanged({$H-}Sender: TObject); {$H+}
+begin
+  if Assigned(Self.LogTypeCombo) then
+    BirdHouseRunner.LogType := ERSLogType(Self.LogTypeCombo.GetItemIndex());
+end;
+
+procedure TConfig.BirdhouseSeedChanged(Sender: TObject);
+var
+  ed: TEdit;
+begin
+  ed := TEdit(Sender);
+  if ed <> nil then
+    BirdHouseRunner.Seed := ed.GetText();
+end;
+
+procedure TConfig.BirdhouseBestLogChanged({$H-}Sender: TObject); {$H+}
+begin
+  if Assigned(Self.UseBestLogCheckBox) then
+    BirdHouseRunner.AlwaysUseBestLog := Self.UseBestLogCheckBox.IsChecked();
+end;
+
+procedure TConfig.BirdhouseCraftWhileNavChanged({$H-}Sender: TObject); {$H+}
+begin
+  if Assigned(Self.CraftWhileNavCheckBox) then
+    BirdHouseRunner.NeedClockworks := Self.CraftWhileNavCheckBox.IsChecked();
+end;
+
+procedure TConfig.BirdhouseRunNowChanged({$H-}Sender: TObject); {$H+}
+begin
+  BirdHouseRunner.TaskInterval := 0;
+  if Assigned(Self.RunLaterRadio) then
+    Self.RunLaterRadio.SetState(TCheckBoxState.cbUnchecked);
+end;
+
+procedure TConfig.BirdhouseRunLaterChanged({$H-}Sender: TObject); {$H+}
+begin
+  BirdHouseRunner.TaskInterval := 50 * ONE_MINUTE;
+  if Assigned(Self.RunNowRadio) then
+    Self.RunNowRadio.SetState(TCheckBoxState.cbUnchecked);
+end;
+
+procedure TConfig.LunarSpellSelectorOnChange(Sender: TObject);
+var
+  selectedSpell: String;
+begin
+  if Sender = nil then;
+  selectedSpell := Self.LunarSpellSelector.GetText();
+  Self.ItemSelector.Clear();
+
+  if selectedSpell = 'Bake Pie' then
+    Self.ItemSelector.AddItemArray(['Berry Pie', 'Meat Pie', 'Mud Pie', 'Apple Pie', 'Garden Pie', 'Fish Pie', 'Admiral Pie', 'Wild Pie', 'Summer Pie'])
+  else if selectedSpell = 'Humidify' then
+    Self.ItemSelector.AddItemArray(['Bowl', 'Bucket', 'Clay', 'Cup', 'Jug', 'Vial', 'Waterskin'])
+  else if selectedSpell = 'Spin Flax' then
+    Self.ItemSelector.AddItemArray(['Bow String'])
+  else if selectedSpell = 'Superglass Make' then
+    Self.ItemSelector.AddItemArray(['Soda Ash', 'Seaweed', 'Giant Seaweed', 'Swamp Weed'])
+  else if selectedSpell = 'Tan Leather' then
+    Self.ItemSelector.AddItemArray(['Cowhide', 'Snake Hide', 'Green Dragonhide', 'Blue Dragonhide', 'Red Dragonhide', 'Black Dragonhide'])
+  else if selectedSpell = 'String Jewellery' then
+    Self.ItemSelector.AddItemArray(['Unstrung Symbol', 'Unstrung Emblem', 'Gold Amulet U', 'Opal Amulet U', 'Jade Amulet U', 'Topaz Amulet U', 'Sapphire Amulet U', 'Emerald Amulet U', 'Ruby Amulet U', 'Diamond Amulet U', 'Dragonstone Amulet U'])
+  else if selectedSpell = 'Plank Make' then
+    Self.ItemSelector.AddItemArray(['Logs', 'Oak Logs', 'Teak Logs', 'Mahogany Logs', 'Camphor Logs', 'Ironwood Logs', 'Rosewood Logs'])
+  else if selectedSpell = 'Recharge Dragonstone' then
+    Self.ItemSelector.AddItemArray(['Amulet of Glory', 'Combat Bracelet', 'Skills Necklace']);
+
+  if Self.ItemSelector.ComboBox.getItems().getCount() > 0 then
+    Self.ItemSelector.SetItemIndex(0);
+end;
+
+procedure TConfig.StartScript(Sender: TObject); override;
 var
   Username: String;
 begin
+  if Sender = nil then;
+
   if Self.BirdHouseSettingsCheckbox.IsChecked() and (Self.returnMethodSelector.GetItemIndex() = -1) then
   begin
     ShowMessage('No return method is selected, You must select a return method.');
     Exit;
   end;
+
+  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
+    Username := 'NoUserNameSelected'
+  else
+    Username := Login.Players[Login.PlayerIndex].User;
 
   SELECTEDITEM := Self.ItemSelector.GetText();
   CHOSENSPELL := ELunarSpell(Self.LunarSpellSelector.GetItemIndex());
@@ -2249,16 +2699,30 @@ begin
   BUYRUNESCHECK := Self.BUYRUNESCHECKBox.IsChecked();
   BUYRAWMATERIALS := Self.BUYRAWMATERIALSCheckbox.IsChecked();
   BANKFILLERSCHECK := Self.BankFillersCheckBox.IsChecked();
-  QUANTITYINPUT := StrToInt(Self.QuantityInputBox.GetText);
-  STOP_AT_LEVEL := StrToInt(Self.StopAtLevelInputBox.GetText);
-  DiscordUID := Self.DiscordUIDInput.GetText;
-  WEBHOOKURL := Self.WebHookInput.GetText;
-  BHOPENNESTS := Self.OpenNestsCheckBox.IsChecked();
+  QUANTITYINPUT := StrToIntDef(Self.QuantityInputBox.GetText(), 0);
+  STOP_AT_LEVEL := StrToIntDef(Self.StopAtLevelInputBox.GetText(), -1);
+  DiscordUID := Self.DiscordUIDInput.GetText();
+  WEBHOOKURL := Self.WebHookInput.GetText();
   ENABLEWEBHOOKS := Self.EnableWebhooksCheckBox.IsChecked();
   PINGONTERMINATED := Self.PingOnTerminatedCheckBox.IsChecked();
   BIRDHOUSEENABLED := Self.BirdHouseSettingsCheckbox.IsChecked();
-  SELECTEDBANKTOUSE := Self.bankSelector.GetText();
+  SELECTEDBANKTOUSE := Self.BankSelector.GetText();
   SELECTEDRETURNMETHOD := Self.returnMethodSelector.GetText();
+
+  if Assigned(Self.LogTypeCombo) then
+    BirdHouseRunner.LogType := ERSLogType(Self.LogTypeCombo.GetItemIndex());
+  if Assigned(Self.SeedInput) then
+    BirdHouseRunner.Seed := Self.SeedInput.GetText();
+  if Assigned(Self.UseBestLogCheckBox) then
+    BirdHouseRunner.AlwaysUseBestLog := Self.UseBestLogCheckBox.IsChecked();
+  if Assigned(Self.CraftWhileNavCheckBox) then
+    BirdHouseRunner.NeedClockworks := Self.CraftWhileNavCheckBox.IsChecked();
+
+  WLSettings.Put('bank_map', Self.BankSelector.GetItemIndex());
+  WLSettings.Put('max_actions', StrToIntDef(Self.MaxActionsInput.GetText(), 0));
+  WLSettings.Put('max_time', StrToIntDef(Self.MaxTimeInput.GetText(), 0));
+  WLSettings.SaveConfig();
+
   WriteINI(Username + ' Webhook Settings', 'DiscordUID', DiscordUID, 'Configs/BASettings.ini');
   WriteINI(Username + ' Webhook Settings', 'WebhookURL', WEBHOOKURL, 'Configs/BASettings.ini');
   WriteINI(Username + ' Webhook Settings', 'PingOnTerminated', BoolToStr(PINGONTERMINATED, 'true', 'false'), 'Configs/BASettings.ini');
@@ -2279,218 +2743,389 @@ begin
   WriteINI(Username + ' Birdhouse Settings', 'RunIntervalMinutes', ToStr(BirdHouseRunner.TaskInterval), 'Configs/BASettings.ini');
   WriteINI(Username + ' Birdhouse Settings', 'UseBestLog', BoolToStr(BirdHouseRunner.AlwaysUseBestLog, 'true', 'false'), 'Configs/BASettings.ini');
   WriteINI(Username + ' Birdhouse Settings', 'CraftWhileNav', BoolToStr(BirdHouseRunner.NeedClockworks, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI(Username + ' Birdhouse Settings', 'OpenNests', BoolToStr(BHOPENNESTS, 'true', 'false'), 'Configs/BASettings.ini');
-  inherited;
+
+  try
+    Self._WarmBuildCache();
+  except
+  end;
+  Self.Form.SetOnClose(nil);
+  Self.Form.Close();
 end;
 
-procedure TConfig.OpenURL(Sender: TObject);
+procedure TConfig.BuildScriptSection();
 begin
-  if Sender = Self.WebhookInfo then
-    OpenWebPage('https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks')
-  else if Sender = Self.DiscordUIDInfo then
-    OpenWebPage('https://support.discord.com/hc/en-us/articles/206346498-Where-can-I-find-my-User-Server-Message-ID');
+  Self.AddHeader(Self.ScriptSection, 'Action', 'Lunar spell casting, GE options, and bank return.');
+
+  Self.AddCombo(Self.ScriptSection, Self.LunarSpellSelector, 'lcb_ls_spell', 'Lunar spell to cast', 24, 110,
+    ['Bake Pie', 'Humidify', 'Spin Flax', 'Superglass Make', 'Tan Leather', 'String Jewellery', 'Plank Make', 'Recharge Dragonstone'],
+    Ord(CHOSENSPELL));
+  Self.LunarSpellSelector.SetHint('Select a Lunar Spell to cast.');
+  Self.LunarSpellSelector.ComboBox.SetOnChange(@Self.LunarSpellSelectorOnChange);
+
+  Self.AddCombo(Self.ScriptSection, Self.ItemSelector, 'lcb_ls_item', 'Item to process', LS_GUI_COL2, 110, ['Berry Pie'], 0);
+  Self.ItemSelector.SetHint('Select what item to process.');
+  Self.LunarSpellSelectorOnChange(nil);
+
+  Self.AddCombo(Self.ScriptSection, Self.ScriptSpeedSelector, 'lcb_ls_speed', 'Script speed', 24, 185,
+    ['Slow', 'Normal', 'Fast', 'Turbo'], Ord(SCRIPTSPEED));
+  Self.ScriptSpeedSelector.SetHint('This affects wait times and mouse speed.');
+
+  Self.AddEdit(Self.ScriptSection, Self.StopAtLevelInputBox, 'le_ls_stop_level', 'Stop at Magic Level', IntToStr(STOP_AT_LEVEL), LS_GUI_COL2, 185, 120);
+  Self.StopAtLevelInputBox.SetHint('Enter 100+ to never stop.');
+  Self.StopAtLevelInputBox.Edit.SetOnKeyPress(@Self.StopAtLevelInputBox.Edit.NumberField);
+
+  Self.AddCheck(Self.ScriptSection, Self.BUYRAWMATERIALSCheckbox, 'cb_ls_buy_raw', 'Buy Raw Materials', 24, 260, BUYRAWMATERIALS);
+  Self.BUYRAWMATERIALSCheckbox.SetHint('Buy raw materials when we run out?');
+  Self.BUYRAWMATERIALSCheckbox.CheckBox.SetOnChange(@Self.BUYRAWMATERIALSCheckboxChanged);
+
+  Self.AddEdit(Self.ScriptSection, Self.QuantityInputBox, 'le_ls_quantity', 'Buy quantity', IntToStr(QUANTITYINPUT), LS_GUI_COL2, 260, LS_GUI_EDIT_W);
+  Self.QuantityInputBox.Edit.SetOnKeyPress(@Self.QuantityInputBox.Edit.NumberField);
+
+  Self.AddCheck(Self.ScriptSection, Self.SELLNOTEDITEMCHECKBox, 'cb_ls_sell_finished', 'Sell Finished Item', 24, 300, SELLNOTEDITEMCHECK);
+  Self.SELLNOTEDITEMCHECKBox.SetHint('Will sell all processed items.');
+
+  Self.AddCheck(Self.ScriptSection, Self.BUYRUNESCHECKBox, 'cb_ls_buy_runes', 'Buy Runes', LS_GUI_COL2, 300, BUYRUNESCHECK);
+  Self.BUYRUNESCHECKBox.SetHint('Will buy required runes for each spell. Does not work with Rune Pouch.');
+
+  Self.AddCheck(Self.ScriptSection, Self.BankFillersCheckBox, 'cb_ls_bank_fillers', 'Use Bank Fillers', 24, 340, BANKFILLERSCHECK);
+  Self.BankFillersCheckBox.SetHint('Enable this if you have bank fillers setup correctly.');
+  Self.BankFillersCheckBox.CheckBox.SetOnChange(@Self.BankFillersCheckBoxChanged);
+
+  Self.Message2 := Self.MakeLabel(Self.ScriptSection, 'You MUST have bank fillers setup correctly.', LS_GUI_COL2, 344, 10, clRed, False);
+  Self.Message2.SetVisible(BANKFILLERSCHECK);
+
+  Self.AddCombo(Self.ScriptSection, Self.BankSelector, 'lcb_ls_bank', 'Bank', 24, 390, RSBankRegions.GetStrings(), 0);
+  Self.BankSelector.SetHint('Bank used for casting and birdhouse return.');
+  if WLSettings.Has('bank_map') then
+    Self.BankSelector.SetItemIndex(WLSettings.GetInt('bank_map'));
+  Self.BankSelector.ComboBox.SetOnChange(@Self.BankSelectorOnChange);
+
+  Self.AddCombo(Self.ScriptSection, Self.returnMethodSelector, 'lcb_ls_return', 'Return method (birdhouse)', LS_GUI_COL2, 390, ['Home Teleport'], 0);
+  Self.returnMethodSelector.SetHint('Select the return method based on the selected bank.');
+  Self.UpdateReturnMethodOptions(nil);
 end;
 
-procedure TConfig.BankSelectorOnChange(sender: TObject);
-begin
-  // Call Tors 
-  Self._BankOnChange(sender);
-  // Call mine
-  Self.UpdateReturnMethodOptions(sender);
-end;
-
-procedure TConfig.UpdateReturnMethodOptions(Sender: TObject);
+procedure TConfig.BuildAccountsSection();
 var
-  selectedBank: String;
+  am: TPanel;
+  selectorPanel, userPanel, passPanel, pinPanel, worldsPanel: TPanel;
+  addBtn, deleteBtn, generateBtn: TButton;
+  leftColW, passW, pinW, worldsLeft, btnW, btnGap: Int32;
 begin
-  bankSelector := TComboBox(Sender);
-  selectedBank := bankSelector.GetText();
-  returnMethodSelector.Clear();
+  Self.AddHeader(Self.AccountsSection, 'Accounts', 'Login account and optional Discord webhook notifications.');
 
-  case selectedBank of
-    'Grand Exchange': // Varock Teleport Tab Tested, 
-      returnMethodSelector.AddItemArray(['Varrock Teleport Tablet', 'Ring of Wealth']);
-    'Ardougne': // Tested and working
-      returnMethodSelector.AddItemArray(['Ardougne Teleport Tablet']);
-    'Castle Wars': // Mini-game teleport and working
-      returnMethodSelector.AddItemArray(['Castle Wars Mini-Game Teleport', 'Ring of dueling']);
-    'Catherby': // Tested and working
-      returnMethodSelector.AddItemArray(['Camelot Teleport Tablet']);
-    'Draynor Village':
-      returnMethodSelector.AddItemArray(['Amulet of glory']);
-    'Edgeville': // Amulet of glory working
-      returnMethodSelector.AddItemArray(['Amulet of glory']);
-    'Falador':
-      returnMethodSelector.AddItemArray(['Falador Teleport Tablet']);
-    'Lunar Isle':
-      returnMethodSelector.AddItemArray(['Home Teleport']);
-    'Prifddinas':
-      returnMethodSelector.AddItemArray(['Eternal Teleport Crystal', 'Construction Cape', 'Construction Cape(t)']);
-    'Seers'' Village':
-      returnMethodSelector.AddItemArray(['Camelot Teleport Tablet']);
-    'Varrock':
-      returnMethodSelector.AddItemArray(['Varrock Teleport Tablet']);
-    'Wintertodt':
-      returnMethodSelector.AddItemArray(['Games Necklace']);
-  end;
-end;
+  am := Self.CreateAccountManager(Self.AccountsSection);
+  am.SetLeft(TControl.AdjustToDPI(16));
+  am.SetTop(TControl.AdjustToDPI(100));
+  am.SetColor(LS_GUI_BG);
 
-procedure TConfig.AddReturnMethodDropdown();
-var
-  bankSettingsTab: TTabSheet;
-begin
-  for bankSettingsTab in Self.Tabs do
-    if bankSettingsTab.GetCaption() = 'Bank Settings' then
-      Break;
+  leftColW := TControl.AdjustToDPI(280);
+  passW := Floor(leftColW * 0.6);
+  pinW := Floor(leftColW * 0.3);
 
-  with returnMethodSelector do
+  selectorPanel := Self.Form.GetChild('am_selector_panel');
+  userPanel := Self.Form.GetChild('am_user_panel');
+  passPanel := Self.Form.GetChild('am_pass_panel');
+  pinPanel := Self.Form.GetChild('am_pin_panel');
+  worldsPanel := Self.Form.GetChild('am_worlds_panel');
+
+  if selectorPanel <> nil then
+    selectorPanel.SetWidth(leftColW);
+  if userPanel <> nil then
+    userPanel.SetWidth(leftColW);
+  if passPanel <> nil then
+    passPanel.SetWidth(passW);
+  if (pinPanel <> nil) and (selectorPanel <> nil) then
   begin
-    Create(bankSettingsTab);
-    SetCaption('Return Method');
-    SetLeft(TControl.AdjustToDPI(240));
-    SetTop(TControl.AdjustToDPI(14));
-    SetHint('Select the return method based on the selected bank.');
-    SetStyle(csDropDownList); 
+    pinPanel.SetWidth(pinW);
+    pinPanel.SetLeft(selectorPanel.GetLeft() + leftColW - pinW);
   end;
 
-  bankSelector := TScriptForm.Form.GetChild('bank_selector_combobox');
-  if bankSelector <> nil then
+  if (worldsPanel <> nil) and (selectorPanel <> nil) then
   begin
-    bankSelector.SetOnChange(@Self.BankSelectorOnChange);
-    UpdateReturnMethodOptions(bankSelector);
-  end;
+    worldsLeft := selectorPanel.GetLeft() + leftColW + TControl.AdjustToDPI(48);
+    worldsPanel.SetLeft(worldsLeft);
 
-  for bankSettingsTab in Self.Tabs do
-    if bankSettingsTab.GetCaption() = 'Birdhouse Settings' then
+    addBtn := Self.Form.GetChild('am_add_button');
+    deleteBtn := Self.Form.GetChild('am_delete_button');
+    generateBtn := Self.Form.GetChild('am_generate_worlds_button');
+    btnGap := TControl.AdjustToDPI(8);
+    btnW := Floor((worldsPanel.GetWidth() - btnGap) / 2);
+
+    if generateBtn <> nil then
     begin
-      with Self.OpenNestsCheckBox do
-      begin
-        Create(bankSettingsTab);
-        SetCaption('Open Nests');
-        SetLeft(TControl.AdjustToDPI(570));
-        SetTop(TControl.AdjustToDPI(85));
-        SetChecked(BHOPENNESTS);
-        SetHint('Enable or disable opening nests after birdhouse run.');
-      end;
+      generateBtn.SetLeft(worldsLeft);
+      generateBtn.SetWidth(worldsPanel.GetWidth());
     end;
+    if addBtn <> nil then
+    begin
+      addBtn.SetLeft(worldsLeft);
+      addBtn.SetWidth(btnW);
+    end;
+    if deleteBtn <> nil then
+    begin
+      deleteBtn.SetLeft(worldsLeft + worldsPanel.GetWidth() - btnW - TControl.AdjustToDPI(1));
+      deleteBtn.SetWidth(btnW);
+    end;
+  end;
+
+  Self.MakeLabel(Self.AccountsSection, 'Discord', 24, 340, 11, LS_GUI_TEXT, True);
+
+  Self.AddCheck(Self.AccountsSection, Self.EnableWebhooksCheckBox, 'cb_ls_webhooks', 'Enable Discord Webhooks', 24, 370, ENABLEWEBHOOKS);
+  Self.EnableWebhooksCheckBox.SetHint('Enable or Disable Discord Webhooks notifications.');
+  Self.EnableWebhooksCheckBox.CheckBox.SetOnChange(@Self.WebhooksCheckboxChanged);
+
+  Self.WebhookInfo := Self.MakeLabel(Self.AccountsSection, 'Click here to learn how to generate your own Discord webhook URL', 24, 410, 10, LS_GUI_LINK, False);
+  Self.WebhookInfo.SetOnClick(@Self.OpenURL);
+  Self.WebhookInfo.SetCursor(crHandPoint);
+
+  Self.AddEdit(Self.AccountsSection, Self.DiscordUIDInput, 'le_ls_discord_uid', 'Discord UID (Optional)', DiscordUID, 24, 440, LS_GUI_EDIT_W);
+  Self.DiscordUIDInput.SetHint('This will mention you in the discord message.');
+
+  Self.DiscordUIDInfo := Self.MakeLabel(Self.AccountsSection, 'Click here to learn how to find your Discord User ID', LS_GUI_COL2, 458, 10, LS_GUI_LINK, False);
+  Self.DiscordUIDInfo.SetOnClick(@Self.OpenURL);
+  Self.DiscordUIDInfo.SetCursor(crHandPoint);
+
+  Self.AddEdit(Self.AccountsSection, Self.WebHookInput, 'le_ls_webhook', 'Discord Webhook URL', WEBHOOKURL, 24, 510, 520);
+  Self.WebHookInput.SetHint('Discord Webhook URL');
+
+  Self.AddCheck(Self.AccountsSection, Self.PingOnTerminatedCheckBox, 'cb_ls_ping_terminated', 'Ping on script termination', 24, 580, PINGONTERMINATED);
+  Self.PingOnTerminatedCheckBox.SetHint('Enable to ping when the script terminates cleanly');
 end;
 
-procedure TConfig.WebhooksCheckboxChanged(Sender: TObject);
+procedure TConfig.BuildAntibanSection(SavedMaxActions, SavedMaxTime: Integer);
 begin
-  Self.WebhookInfo.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
-  Self.DiscordUIDInfo.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
-  Self.DiscordUIDInput.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
-  Self.WebHookInput.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
-  Self.PingOnTerminatedCheckBox.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
+  Self.AddHeader(Self.AntibanSection, 'Antiban', 'Session limits.');
+
+  Self.AddEdit(Self.AntibanSection, Self.MaxActionsInput, 'le_ls_maxactions', 'Max actions (0 = unlimited)', IntToStr(SavedMaxActions), 24, 110, LS_GUI_EDIT_W);
+  Self.MaxActionsInput.Edit.SetOnKeyPress(@Self.MaxActionsInput.Edit.NumberField);
+  Self.AddEdit(Self.AntibanSection, Self.MaxTimeInput, 'le_ls_maxtime', 'Max time minutes (0 = unlimited)', IntToStr(SavedMaxTime), LS_GUI_COL2, 110, LS_GUI_EDIT_W);
+  Self.MaxTimeInput.Edit.SetOnKeyPress(@Self.MaxTimeInput.Edit.NumberField);
 end;
 
-function StringToSpell(const S: String): ELunarSpell;
+procedure TConfig.BuildBirdhouseSection();
 begin
-  if S = 'Bake Pie' then Result := BAKE_PIE
-  else if S = 'Humidify' then Result := HUMIDIFY
-  else if S = 'Spin Flax' then Result := SPIN_FLAX
-  else if S = 'Superglass Make' then Result := SUPERGLASS_MAKE
-  else if S = 'Tan Leather' then Result := TAN_LEATHER
-  else if S = 'String Jewellery' then Result := STRING_JEWELLERY
-  else if S = 'Plank Make' then Result := PLANK_MAKE
-  else if S = 'Recharge Dragonstone' then Result := RECHARGE_DRAGONSTONE
-  else Result := BAKE_PIE;
+  Self.AddHeader(Self.BirdhouseSection, 'Birdhouse', 'Birdhouse run configuration (thanks CanadianJames).');
+
+  Self.AddCheck(Self.BirdhouseSection, Self.BirdHouseSettingsCheckbox, 'cb_ls_birdhouse_enable', 'Enable Birdhouse Runs', 24, 110, BIRDHOUSEENABLED);
+  Self.BirdHouseSettingsCheckbox.SetHint('Enables CJ Birdhouse Runs between casting sessions.');
+  Self.BirdHouseSettingsCheckbox.CheckBox.SetOnChange(@Self.BirdhouseEnabledChanged);
+
+  with Self.LogTypeCombo do
+  begin
+    Create(Self.BirdhouseSection);
+    SetCaption('Log type to use');
+    SetLeft(TControl.AdjustToDPI(24));
+    SetTop(TControl.AdjustToDPI(160));
+    SetWidth(TControl.AdjustToDPI(LS_GUI_EDIT_W));
+    SetHeight(TControl.AdjustToDPI(LS_GUI_COMBO_H));
+    SetStyle(csDropDownList);
+    AddItemArray(['Regular', 'Oak', 'Willow', 'Teak', 'Maple', 'Mahogany', 'Yew', 'Magic tree', 'Redwood']);
+    SetItemIndex(Ord(BHIncludeGUILogType));
+    SetHint('Log type used to craft birdhouses.');
+    Combobox.SetOnChange(@Self.BirdhouseLogTypeChanged);
+  end;
+  BirdHouseRunner.LogType := BHIncludeGUILogType;
+
+  Self.AddEdit(Self.BirdhouseSection, Self.SeedInput, 'le_ls_bh_seed', 'Seed name (e.g. potato)', ToStr(BHIncludeGUISeed).Replace('Barely', 'Barley', [rfIgnoreCase]).Before(' '), LS_GUI_COL2, 160, LS_GUI_EDIT_W);
+  Self.SeedInput.SetHint('Just the seed name without the word "seed".');
+  Self.SeedInput.Edit.SetOnKeyPress(@Self.SeedInput.Edit.CJTextField);
+  Self.SeedInput.Edit.SetOnChange(@Self.BirdhouseSeedChanged);
+  BirdHouseRunner.Seed := Self.SeedInput.GetText();
+
+  Self.AddCheck(Self.BirdhouseSection, Self.UseBestLogCheckBox, 'cb_ls_bh_bestlog', 'Always use best log', 24, 235, BHIncludeGUIUseBestLog);
+  Self.UseBestLogCheckBox.SetHint('Match log used to your current Hunter level automatically.');
+  Self.UseBestLogCheckBox.CheckBox.SetOnChange(@Self.BirdhouseBestLogChanged);
+  BirdHouseRunner.AlwaysUseBestLog := BHIncludeGUIUseBestLog;
+
+  Self.AddCheck(Self.BirdhouseSection, Self.CraftWhileNavCheckBox, 'cb_ls_bh_craftnav', 'Craft while navigating', LS_GUI_COL2, 235, BHIncludeGUICraftWhileNav);
+  Self.CraftWhileNavCheckBox.SetHint('Craft clockworks while travelling when needed.');
+  Self.CraftWhileNavCheckBox.CheckBox.SetOnChange(@Self.BirdhouseCraftWhileNavChanged);
+  BirdHouseRunner.NeedClockworks := BHIncludeGUICraftWhileNav;
+
+  Self.BirdhouseIntervalLabel := Self.MakeLabel(Self.BirdhouseSection,
+    'When should the next run start? Runs continue every ~50-60 minutes automatically.',
+    24, 320, 10, LS_GUI_MUTED, False);
+  Self.BirdhouseIntervalLabel.SetWidth(TControl.AdjustToDPI(820));
+
+  Self.RunNowRadio.Create(Self.BirdhouseSection);
+  Self.RunNowRadio.SetName('bh_ls_now_radio');
+  Self.RunNowRadio.SetLeft(TControl.AdjustToDPI(24));
+  Self.RunNowRadio.SetTop(TControl.AdjustToDPI(345));
+  Self.RunNowRadio.SetCaption('Do a run now');
+  Self.RunNowRadio.SetFontSize(10);
+  Self.RunNowRadio.SetOnClick(@Self.BirdhouseRunNowChanged);
+
+  Self.RunLaterRadio.Create(Self.BirdhouseSection);
+  Self.RunLaterRadio.SetName('bh_ls_later_radio');
+  Self.RunLaterRadio.SetLeft(TControl.AdjustToDPI(24));
+  Self.RunLaterRadio.SetTop(TControl.AdjustToDPI(370));
+  Self.RunLaterRadio.SetCaption('Do a run later (in about 50-60 minutes)');
+  Self.RunLaterRadio.SetFontSize(10);
+  Self.RunLaterRadio.SetOnClick(@Self.BirdhouseRunLaterChanged);
+
+  if BHIncludeGUIRunIntervalMinutes > 0 then
+  begin
+    Self.RunLaterRadio.SetState(TCheckBoxState.cbChecked);
+    Self.RunNowRadio.SetState(TCheckBoxState.cbUnchecked);
+    BirdHouseRunner.TaskInterval := 50 * ONE_MINUTE;
+  end
+  else
+  begin
+    Self.RunLaterRadio.SetState(TCheckBoxState.cbUnchecked);
+    Self.RunNowRadio.SetState(TCheckBoxState.cbChecked);
+    BirdHouseRunner.TaskInterval := 0;
+  end;
+
+  Self.BirdhouseInfoLabel := Self.MakeLabel(Self.BirdhouseSection,
+    'Enable birdhouse runs above to configure options.',
+    24, 415, 10, LS_GUI_MUTED, False);
+  Self.BirdhouseInfoLabel.SetWidth(TControl.AdjustToDPI(820));
 end;
 
-procedure TConfig.LunarSpellSelectorOnChange(Sender: TObject);
+procedure TConfig.BuildShell(SavedMaxActions, SavedMaxTime: Integer);
 var
-  selectedSpell: string;
+  tab: TTabSheet;
+  contentH, startW, startH, shellW, shellH, statusTop, statusH, mainLeft, mainW, navW, bottomInset: Int32;
 begin
-  selectedSpell := Self.LunarSpellSelector.GetText;
+  Self.AddTab('AIO Lunar Spells');
+  tab := Self.Tabs[High(Self.Tabs)];
 
-  Self.ItemSelector.Clear();
+  Self.Start.SetAlign(alNone);
+  Self.Start.SetVisible(False);
+  Self.Start.SetHeight(0);
+  Self.Start.SetWidth(0);
 
-  if selectedSpell = 'Bake Pie' then
-  begin
-    Self.ItemSelector.AddItem('Berry Pie', nil);
-    Self.ItemSelector.AddItem('Meat Pie', nil);
-    Self.ItemSelector.AddItem('Mud Pie', nil);
-    Self.ItemSelector.AddItem('Apple Pie', nil);
-    Self.ItemSelector.AddItem('Garden Pie', nil);
-    Self.ItemSelector.AddItem('Fish Pie', nil);
-    Self.ItemSelector.AddItem('Admiral Pie', nil);
-    Self.ItemSelector.AddItem('Wild Pie', nil);
-    Self.ItemSelector.AddItem('Summer Pie', nil);
-  end
-  else if selectedSpell = 'Humidify' then
-  begin
-    Self.ItemSelector.AddItem('Bowl', nil);
-    Self.ItemSelector.AddItem('Bucket', nil);
-    Self.ItemSelector.AddItem('Clay', nil);
-    Self.ItemSelector.AddItem('Cup', nil);
-    Self.ItemSelector.AddItem('Jug', nil);
-    Self.ItemSelector.AddItem('Vial', nil);
-    Self.ItemSelector.AddItem('Waterskin', nil);
-  end
-  else if selectedSpell = 'Spin Flax' then
-  begin
-    Self.ItemSelector.AddItem('Bow String', nil);
-  end
-  else if selectedSpell = 'Superglass Make' then
-  begin
-    Self.ItemSelector.AddItem('Soda Ash', nil);
-    Self.ItemSelector.AddItem('Seaweed', nil);
-    Self.ItemSelector.AddItem('Giant Seaweed', nil);
-    Self.ItemSelector.AddItem('Swamp Weed', nil);
-  end
-  else if selectedSpell = 'Tan Leather' then
-  begin
-    Self.ItemSelector.AddItem('Cowhide', nil);
-    Self.ItemSelector.AddItem('Snake Hide', nil);
-    Self.ItemSelector.AddItem('Green Dragonhide', nil);
-    Self.ItemSelector.AddItem('Blue Dragonhide', nil);
-    Self.ItemSelector.AddItem('Red Dragonhide', nil);
-    Self.ItemSelector.AddItem('Black Dragonhide', nil);
-    //Self.ItemSelector.AddItem('Dragonhide Random', nil);  // Finish this later
-  end
-  else if selectedSpell = 'String Jewellery' then
-  begin
-    Self.ItemSelector.AddItem('Unstrung Symbol', nil);
-    Self.ItemSelector.AddItem('Unstrung Emblem', nil);
-    Self.ItemSelector.AddItem('Gold Amulet U', nil);
-    Self.ItemSelector.AddItem('Opal Amulet U', nil);
-    Self.ItemSelector.AddItem('Jade Amulet U', nil);
-    Self.ItemSelector.AddItem('Topaz Amulet U', nil);
-    Self.ItemSelector.AddItem('Sapphire Amulet U', nil);
-    Self.ItemSelector.AddItem('Emerald Amulet U', nil);
-    Self.ItemSelector.AddItem('Ruby Amulet U', nil);
-    Self.ItemSelector.AddItem('Diamond Amulet U', nil);
-    Self.ItemSelector.AddItem('Dragonstone Amulet U', nil);
-  end
-  else if selectedSpell = 'Plank Make' then
-  begin
-    Self.ItemSelector.AddItem('Logs', nil);
-    Self.ItemSelector.AddItem('Oak Logs', nil);
-    Self.ItemSelector.AddItem('Teak Logs', nil);
-    Self.ItemSelector.AddItem('Mahogany Logs', nil);
-    Self.ItemSelector.AddItem('Camphor Logs', nil);
-    Self.ItemSelector.AddItem('Ironwood Logs', nil);
-    Self.ItemSelector.AddItem('Rosewood Logs', nil);
-  end
-  else if selectedSpell = 'Recharge Dragonstone' then
-  begin
-    Self.ItemSelector.AddItem('Amulet of Glory', nil);
-    Self.ItemSelector.AddItem('Combat Bracelet', nil);
-    Self.ItemSelector.AddItem('Skills Necklace', nil);
-  end
-  Self.ItemSelector.SetItemIndex(0);
+  bottomInset := TControl.AdjustToDPI(LS_GUI_BOTTOM_INSET);
+  navW := TControl.AdjustToDPI(LS_GUI_NAV_W);
+  statusH := TControl.AdjustToDPI(LS_GUI_STATUS_H);
+  shellW := Self.Size.X;
+  shellH := Self.Size.Y;
+  mainLeft := navW + TControl.AdjustToDPI(2);
+  mainW := shellW - mainLeft;
+  statusTop := shellH - statusH - bottomInset;
+  contentH := statusTop;
+  startW := TControl.AdjustToDPI(132);
+  startH := TControl.AdjustToDPI(LS_GUI_BTN_H);
+
+  Self.NavPanel.Create(tab);
+  Self.NavPanel.SetLeft(0);
+  Self.NavPanel.SetTop(0);
+  Self.NavPanel.SetWidth(navW);
+  Self.NavPanel.SetHeight(shellH);
+  Self.NavPanel.SetColor(LS_GUI_NAV);
+  Self.NavPanel.SetBevelOuter(bvNone);
+
+  Self.DividerPanel.Create(tab);
+  Self.DividerPanel.SetLeft(navW);
+  Self.DividerPanel.SetTop(0);
+  Self.DividerPanel.SetWidth(TControl.AdjustToDPI(2));
+  Self.DividerPanel.SetHeight(shellH);
+  Self.DividerPanel.SetColor(LS_GUI_DIVIDER);
+  Self.DividerPanel.SetBevelOuter(bvNone);
+
+  Self.ContentPanel.Create(tab);
+  Self.ContentPanel.SetLeft(mainLeft);
+  Self.ContentPanel.SetTop(0);
+  Self.ContentPanel.SetWidth(mainW);
+  Self.ContentPanel.SetHeight(contentH);
+  Self.ContentPanel.SetColor(LS_GUI_BG);
+  Self.ContentPanel.SetBevelOuter(bvNone);
+
+  Self.StatusDivider.Create(tab);
+  Self.StatusDivider.SetLeft(mainLeft);
+  Self.StatusDivider.SetTop(statusTop);
+  Self.StatusDivider.SetWidth(mainW);
+  Self.StatusDivider.SetHeight(TControl.AdjustToDPI(2));
+  Self.StatusDivider.SetColor(LS_GUI_DIVIDER);
+  Self.StatusDivider.SetBevelOuter(bvNone);
+
+  Self.StatusPanel.Create(tab);
+  Self.StatusPanel.SetLeft(mainLeft);
+  Self.StatusPanel.SetTop(statusTop + Self.StatusDivider.GetHeight());
+  Self.StatusPanel.SetWidth(mainW);
+  Self.StatusPanel.SetHeight(statusH - Self.StatusDivider.GetHeight());
+  Self.StatusPanel.SetColor(LS_GUI_STATUS);
+  Self.StatusPanel.SetBevelOuter(bvNone);
+
+  Self.StatusPad.Create(tab);
+  Self.StatusPad.SetLeft(mainLeft);
+  Self.StatusPad.SetTop(Self.StatusPanel.GetTop() + Self.StatusPanel.GetHeight());
+  Self.StatusPad.SetWidth(mainW);
+  Self.StatusPad.SetHeight(shellH - Self.StatusPad.GetTop());
+  Self.StatusPad.SetColor(LS_GUI_STATUS);
+  Self.StatusPad.SetBevelOuter(bvNone);
+
+  Self.BrandLabel := Self.MakeLabel(Self.NavPanel, 'AIO Lunar Spells', 16, 28, 14, LS_GUI_TEXT, True);
+  Self.MakeLabel(Self.NavPanel, 'BigAussie', 16, 54, 9, LS_GUI_MUTED, False);
+
+  Self.ScriptNav := Self.MakeNavItem(Self.NavPanel, 'Action', 12, 100, True);
+  Self.AccountsNav := Self.MakeNavItem(Self.NavPanel, 'Accounts', 12, 152);
+  Self.AntibanNav := Self.MakeNavItem(Self.NavPanel, 'Antiban', 12, 204);
+  Self.BirdhouseNav := Self.MakeNavItem(Self.NavPanel, 'Birdhouse', 12, 256);
+
+  Self.ScriptSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, LS_GUI_BG);
+  Self.AccountsSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, LS_GUI_BG);
+  Self.AntibanSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, LS_GUI_BG);
+  Self.BirdhouseSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, LS_GUI_BG);
+
+  Self.ScriptSection.SetWidth(mainW);
+  Self.ScriptSection.SetHeight(contentH);
+  Self.AccountsSection.SetWidth(mainW);
+  Self.AccountsSection.SetHeight(contentH);
+  Self.AntibanSection.SetWidth(mainW);
+  Self.AntibanSection.SetHeight(contentH);
+  Self.BirdhouseSection.SetWidth(mainW);
+  Self.BirdhouseSection.SetHeight(contentH);
+
+  Self.BuildScriptSection();
+  Self.BuildAccountsSection();
+  Self.BuildAntibanSection(SavedMaxActions, SavedMaxTime);
+  Self.BuildBirdhouseSection();
+
+  Self.ScriptNav.SetOnClick(@Self.ShowScript);
+  Self.AccountsNav.SetOnClick(@Self.ShowAccounts);
+  Self.AntibanNav.SetOnClick(@Self.ShowAntiban);
+  Self.BirdhouseNav.SetOnClick(@Self.ShowBirdhouse);
+
+  Self.StartChip.Create(Self.StatusPanel);
+  Self.StartChip.SetLeft(mainW - startW - TControl.AdjustToDPI(24));
+  Self.StartChip.SetTop((Self.StatusPanel.GetHeight() - startH) div 2 + 2);
+  Self.StartChip.SetWidth(startW);
+  Self.StartChip.SetHeight(startH);
+  Self.StartChip.SetCursor(crHandPoint);
+  Self.PaintRoundChip(Self.StartChip, 'Start', LS_GUI_START, LS_GUI_STATUS, True, True);
+  Self.StartChip.SetOnClick(@Self.StartScript);
+
+  if SELECTEDITEM <> '' then
+    Self.ItemSelector.SetText(SELECTEDITEM);
+  if SELECTEDRETURNMETHOD <> '' then
+    Self.returnMethodSelector.SetText(SELECTEDRETURNMETHOD);
+
+  Self.BUYRAWMATERIALSCheckboxChanged(nil);
+  Self.BankFillersCheckBoxChanged(nil);
+  Self.WebhooksCheckboxChanged(nil);
+  Self.BirdhouseEnabledChanged(nil);
+  Self.ShowScript(Self.ScriptNav);
 end;
 
-procedure TConfig.Init();
+procedure TConfig.Run(); override;
 var
   Username: String;
-  BHIncludeGUIOpenNests: Boolean;
+  SavedMaxActions, SavedMaxTime: Integer;
 begin
+  BashPromptIfUpdateAvailable();
+
+  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
+    Username := 'NoUserNameSelected'
+  else
+    Username := Login.Players[Login.PlayerIndex].User;
+
   writeln('Reading previous settings.');
-  SavedDiscordUID := ReadINI(Username + ' Webhook Settings', 'DiscordUID', 'Configs/BASettings.ini');
-  SavedWebhookURL := ReadINI(Username + ' Webhook Settings', 'WebhookURL', 'Configs/BASettings.ini');
-  SavedEnableWebhooks := StrToBoolDef(ReadINI(Username + ' Webhook Settings', 'EnableWebhooks', 'Configs/BASettings.ini'), False);
-  SavedPingOnTerminated := StrToBoolDef(ReadINI(Username + ' Webhook Settings', 'PingOnTerminated', 'Configs/BASettings.ini'), True); 
+  DiscordUID := ReadINI(Username + ' Webhook Settings', 'DiscordUID', 'Configs/BASettings.ini');
+  WEBHOOKURL := ReadINI(Username + ' Webhook Settings', 'WebhookURL', 'Configs/BASettings.ini');
+  ENABLEWEBHOOKS := StrToBoolDef(ReadINI(Username + ' Webhook Settings', 'EnableWebhooks', 'Configs/BASettings.ini'), False);
+  PINGONTERMINATED := StrToBoolDef(ReadINI(Username + ' Webhook Settings', 'PingOnTerminated', 'Configs/BASettings.ini'), True);
   CHOSENSPELL := StringToSpell(ReadINI(Username + ' AIO Lunar Settings', 'CHOSENSPELL', 'Configs/BASettings.ini'));
   SELECTEDITEM := ReadINI(Username + ' AIO Lunar Settings', 'SELECTEDITEM', 'Configs/BASettings.ini');
   SCRIPTSPEED := StringToScriptSpeed(ReadINI(Username + ' AIO Lunar Settings', 'SCRIPTSPEED', 'Configs/BASettings.ini'));
@@ -2504,294 +3139,21 @@ begin
   BIRDHOUSEENABLED := StrToBoolDef(ReadINI(Username + ' Birdhouse Settings', 'Enabled', 'Configs/BASettings.ini'), True);
   BHIncludeGUILogType := ERSLogType(StrToIntDef(ReadINI(Username + ' Birdhouse Settings', 'LogType', 'Configs/BASettings.ini'), 0));
   BHIncludeGUISeed := ReadINI(Username + ' Birdhouse Settings', 'Seed', 'Configs/BASettings.ini');
-  BHIncludeGUIRunIntervalMinutes := StrToIntDef(ReadINI(Username + ' Birdhouse Settings', 'RunIntervalMinutes', 'Configs/BASettings.ini'), 0) div 60000; // We need to div because the read is MS
+  BHIncludeGUIRunIntervalMinutes := StrToIntDef(ReadINI(Username + ' Birdhouse Settings', 'RunIntervalMinutes', 'Configs/BASettings.ini'), 0) div 60000;
   BHIncludeGUIUseBestLog := StrToBoolDef(ReadINI(Username + ' Birdhouse Settings', 'UseBestLog', 'Configs/BASettings.ini'), False);
   BHIncludeGUICraftWhileNav := StrToBoolDef(ReadINI(Username + ' Birdhouse Settings', 'CraftWhileNav', 'Configs/BASettings.ini'), False);
-  BHIncludeGUIOpenNests := StrToBoolDef(ReadINI(Username + ' Birdhouse Settings', 'OpenNests', 'Configs/BASettings.ini'), False);
-end;
 
-// Thanks to Torwent for the help <3
-procedure TConfig.ToggleBirdhouseTabVisibility(Sender: TObject);
-var
-  i: Int32;
-  tab: TTabSheet;
-  isChecked: Boolean;
-begin
-  isChecked := TCheckbox(Sender).IsChecked();
+  if WLSettings.Has('max_actions') then
+    SavedMaxActions := WLSettings.GetInt('max_actions')
+  else
+    SavedMaxActions := 0;
+  if WLSettings.Has('max_time') then
+    SavedMaxTime := WLSettings.GetInt('max_time')
+  else
+    SavedMaxTime := 0;
 
-  for i := 0 to High(Self.Tabs) do
-  begin
-    if Self.Tabs[i].getCaption() = 'Birdhouse Settings' then
-    begin
-      Self.Tabs[i].SetTabVisible(isChecked);
-    end;
-  end;
-
-  returnMethodSelector.SetVisible(isChecked);
-end;
-
-procedure TConfig.BUYRAWMATERIALSCheckboxChanged(Sender: TObject);
-begin
-  Self.QuantityInputBox.SetVisible(Self.BUYRAWMATERIALSCheckbox.IsChecked());
-end;
-
-procedure TConfig.BankFillersCheckBoxChanged(Sender: TObject);
-begin
-  Self.Message2.SetVisible(Self.BankFillersCheckBox.IsChecked());
-end;
-
-procedure TConfig.Run(); override;
-var
-  tab: TTabSheet;
-  spells: array of string;
-  i: integer;
-begin
-  Self.Init();
-  Self.Setup("BigAussies AIO Lunar Spells");
-  Self.Start.SetOnClick(@Self.StartScript);
-
-  Self.AddTab('Script Settings');
-  tab := Self.Tabs[High(Self.Tabs)];
-
-  Self.CreateAccountManager(tab);
-
-  Self.ItemSelector.Create(tab);
-
-  with Self.LunarSpellLabel do
-  begin
-    Create(tab);
-    SetLeft(TControl.AdjustToDPI(37));
-    SetTop(TControl.AdjustToDPI(155));
-    SetCaption('Lunar spell to cast');
-    SetHint('Select a Lunar Spell to cast.');
-  end;
-
-  Self.LunarSpellSelector.Create(tab);
-  Self.LunarSpellSelector.SetLeft(TControl.AdjustToDPI(37));
-  Self.LunarSpellSelector.SetTop(Self.LunarSpellLabel.GetTop() + TControl.AdjustToDPI(15));
-  Self.LunarSpellSelector.SetWidth(130);
-  spells := ['Bake Pie', 'Humidify', 'Spin Flax', 'Superglass Make', 'Tan Leather', 'String Jewellery', 'Plank Make', 'Recharge Dragonstone'];
-  for i := 0 to High(spells) do
-    Self.LunarSpellSelector.AddItem(spells[i], nil);
-  Self.LunarSpellSelector.SetItemIndex(Ord(CHOSENSPELL));
-  Self.LunarSpellSelector.SetOnChange(@Self.LunarSpellSelectorOnChange);
-
-  with Self.ItemSelectorLabel do
-  begin
-    Create(tab);
-    SetLeft(Self.LunarSpellSelector.GetLeft() + Self.LunarSpellSelector.GetWidth() + TControl.AdjustToDPI(14));
-    SetTop(Self.LunarSpellLabel.GetTop());
-    SetCaption('Item to process');
-    SetHint('Select what item to process');
-  end;
-
-  Self.ItemSelector.SetLeft(Self.ItemSelectorLabel.GetLeft());
-  Self.ItemSelector.SetTop(Self.LunarSpellSelector.GetTop());
-  Self.ItemSelector.SetWidth(130);
-
-  Self.LunarSpellSelectorOnChange(Self.LunarSpellSelector);
-
-  with Self.ScriptSpeedSelector do
-  begin
-    Create(tab);
-    SetLeft(TControl.AdjustToDPI(37));
-    SetTop(Self.ItemSelector.GetTop() + TControl.AdjustToDPI(50));
-    AddItemArray(['Slow', 'Normal', 'Fast', 'Turbo']);
-    SetItemIndex(Ord(SCRIPTSPEED));
-    SetWidth(130);
-    SetHint('This affects wait times and mouse speed.');
-  end;
-
-  with Self.StopAtLevelInputBox do
-  begin
-    Create(tab);
-    SetLeft(Self.ScriptSpeedSelector.GetLeft() + Self.ScriptSpeedSelector.GetWidth() + TControl.AdjustToDPI(16));
-    SetTop(Self.ScriptSpeedSelector.GetTop());
-    SetWidth(50);
-    SetText('100');
-    SetHint('Enter 100+ to never stop.');
-    SetOnKeyPress(@NumberField);
-  end;
-
-  with Self.StopAtLevelLabel do
-  begin
-    Create(tab);
-    SetLeft(Self.StopAtLevelInputBox.GetLeft());
-    SetTop(Self.StopAtLevelInputBox.GetTop() - TControl.AdjustToDPI(16));
-    SetCaption('Stop at Magic Level');
-    SetHint('Enter 100 to never stop.');
-  end;
-
-  with Self.ScriptSpeedLabel do
-  begin
-    Create(tab);
-    SetLeft(Self.ScriptSpeedSelector.GetLeft());
-    SetTop(Self.ScriptSpeedSelector.GetTop() - TControl.AdjustToDPI(16));
-    SetCaption('Script Speed');
-    SetHint('This affects wait times and mouse speed.');
-  end;
-
-  with Self.BUYRAWMATERIALSCheckbox do
-  begin
-    Create(tab);
-    SetCaption("Buy Raw Materials");
-    SetLeft(TControl.AdjustToDPI(340));
-    SetTop(Self.LunarSpellLabel.GetTop() + TControl.AdjustToDPI(1));
-    SetHint('Buy raw materials when we run out?');
-    CheckBox.SetOnChange(@BUYRAWMATERIALSCheckboxChanged);
-  end;
-
-  with Self.QuantityInputBox do
-  begin
-    Create(tab);
-    SetLeft(Self.BUYRAWMATERIALSCheckbox.GetLeft() + Self.BUYRAWMATERIALSCheckbox.GetWidth() + TControl.AdjustToDPI(20));
-    SetTop(Self.LunarSpellLabel.GetTop() + TControl.AdjustToDPI(0));
-    SetWidth(100);
-    SetText('0');
-  end;
-
-  with Self.SELLNOTEDITEMCHECKBox do
-  begin
-    Create(tab);
-    SetCaption("Sell Finished Item");
-    SetLeft(TControl.AdjustToDPI(340));
-    SetTop(Self.BUYRAWMATERIALSCheckbox.GetTop() + TControl.AdjustToDPI(25));
-    SetHint('Will sell all processed items.');
-  end;
-
-  with Self.BUYRUNESCHECKBox do
-  begin
-    Create(tab);
-    SetCaption("Buy Runes");
-    SetLeft(TControl.AdjustToDPI(340));
-    SetTop(Self.SELLNOTEDITEMCHECKBox.GetTop() + TControl.AdjustToDPI(25));
-    SetHint('Will buy required runes for each spell, Does not work with Rune Pouch');
-  end;
-
-  with Self.BankFillersCheckBox do
-  begin
-    Create(tab);
-    SetCaption("Use Bank Fillers");
-    SetLeft(TControl.AdjustToDPI(340));
-    SetTop(Self.BUYRUNESCHECKBox.GetTop() + TControl.AdjustToDPI(24));
-    SetChecked(BANKFILLERSCHECK);
-    SetHint('Enable this if you have bank fillers setup correctly.');
-    CheckBox.SetOnChange(@BankFillersCheckBoxChanged);
-  end;
-
-  with Self.Message2 do
-  begin
-    Create(tab);
-    SetLeft(Self.BankFillersCheckBox.GetLeft() + Self.BankFillersCheckBox.GetWidth() + TControl.AdjustToDPI(6));
-    SetTop(Self.BankFillersCheckBox.GetTop());
-    SetCaption('You MUST have bank fillers setup correctly.');
-    SetFontColor(clRed);
-    SetVisible(BANKFILLERSCHECK);
-  end;
-
-  with BirdHouseSettingsCheckbox do
-  begin
-    Create(Self.Tabs[0]);
-    SetCaption('Enable Birdhouse Runs');
-    SetLeft(Self.ScriptSpeedSelector.GetLeft());
-    SetTop(Self.ScriptSpeedSelector.GetTop() + TControl.AdjustToDPI(35));
-    SetChecked(True);
-    SetHint('Enables CJ Birdhouse Runs, Settings are at the top of this tab when enabled..');
-    CheckBox.SetOnChange(@ToggleBirdhouseTabVisibility);
-  end;
-
-  with Self.EnableWebhooksCheckBox do
-  begin
-    Create(tab);
-    SetCaption('Enable Discord Webhooks');
-    SetLeft(Self.BirdHouseSettingsCheckbox.GetLeft());
-    SetTop(Self.BirdHouseSettingsCheckbox.GetTop() + TControl.AdjustToDPI(25));
-    SetHint('Enable or Disable Discord Webhooks notifications.');
-    SetChecked(SavedEnableWebhooks);
-    CheckBox.SetOnChange(@WebhooksCheckboxChanged);
-  end;
-
-  with Self.WebhookInfo do
-  begin
-    Create(tab);
-    SetLeft(Self.EnableWebhooksCheckBox.GetLeft());
-    SetTop(Self.EnableWebhooksCheckBox.GetTop() + TControl.AdjustToDPI(25));
-    SetCaption('Click here to learn how to generate your own Discord webhook URL');
-    SetHint('Click here to learn how to generate your own Discord webhook URL');
-    setOnClick(@OpenURL);
-    //SetFontSize(TControl.AdjustToDPI(7));
-  end;
-
-  with Self.DiscordUIDInput do
-  begin
-    Create(tab);
-    SetLeft(Self.WebhookInfo.GetLeft());
-    SetTop(Self.WebhookInfo.GetTop() + TControl.AdjustToDPI(18));
-    SetCaption('Discord UID (Optional)');
-    SetHint('This will mention you in the discord message.');
-    SetWidth(TControl.AdjustToDPI(140));
-    SetText(SavedDiscordUID);
-  end;
-
-  with Self.DiscordUIDInfo do
-  begin
-    Create(tab);
-    SetLeft(Self.DiscordUIDInput.GetLeft() + Self.DiscordUIDInput.GetWidth() + TControl.AdjustToDPI(10));
-    SetTop(Self.DiscordUIDInput.GetTop() + TControl.AdjustToDPI(18));
-    SetCaption('Click here to learn how to find your Discord User ID');
-    SetHint('Click here to learn how to find your Discord User ID');
-    setOnClick(@OpenURL);
-    //SetFontSize(TControl.AdjustToDPI(7));
-  end;
-
-  with Self.WebHookInput do
-  begin
-    Create(tab);
-    SetLeft(Self.DiscordUIDInput.GetLeft());
-    SetTop(Self.DiscordUIDInput.GetTop() + TControl.AdjustToDPI(45));
-    SetCaption('Discord Webhook URL');
-    SetHint('Discord Webhook URL');
-    SetWidth(TControl.AdjustToDPI(180));
-    SetText(savedWebhookURL);
-  end;
-
-  with Self.PingOnTerminatedCheckBox do
-  begin
-    Create(tab);
-    SetCaption("Ping on script termination");
-    SetLeft(Self.WebHookInput.GetLeft());
-    SetTop(Self.WebHookInput.GetTop() + TControl.AdjustToDPI(50));
-    SetHint('Enable to ping when the script terminates cleanly');
-    SetChecked(SavedPingOnTerminated);
-  end; 
-
-  Self.CreateBankSettings();
-
-  Self.CreateBirdhouseRunSettings();
-  Self.AddReturnMethodDropdown();
-
-  WebhooksCheckboxChanged(Self.EnableWebhooksCheckBox.CheckBox);
-
-  Self.CreateAntibanManager();
-
-  Self.CreateWaspLibSettings();
-
-  Self.CreateAPISettings();
-
-  // Reload GUI values if they are in the .ini
-  Self.ItemSelector.SetText(SELECTEDITEM);
-  Self.ScriptSpeedSelector.SetItemIndex(Ord(SCRIPTSPEED));
-  Self.StopAtLevelInputBox.SetText(IntToStr(STOP_AT_LEVEL));
-  Self.SELLNOTEDITEMCHECKBox.SetChecked(SELLNOTEDITEMCHECK);
-  Self.BUYRUNESCHECKBox.SetChecked(BUYRUNESCHECK);
-  Self.BUYRAWMATERIALSCheckbox.SetChecked(BUYRAWMATERIALS);
-  Self.BankFillersCheckBox.SetChecked(BANKFILLERSCHECK);
-  Self.QuantityInputBox.SetText(IntToStr(QUANTITYINPUT));
-  Self.BirdHouseSettingsCheckbox.SetChecked(BIRDHOUSEENABLED);
-  Self.returnMethodSelector.SetText(SELECTEDRETURNMETHOD);
-  
-  BUYRAWMATERIALSCheckboxChanged(Self.BUYRAWMATERIALSCheckbox.CheckBox);
-  Self.ToggleBirdhouseTabVisibility(Self.BirdHouseSettingsCheckbox.CheckBox);
+  Self.Setup('BigAussies AIO Lunar Spells', [LS_GUI_W, LS_GUI_H], False);
+  Self.BuildShell(SavedMaxActions, SavedMaxTime);
 
   inherited;
 end;

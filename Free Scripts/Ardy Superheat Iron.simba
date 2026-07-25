@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := '39927741-0778-4c59-ae4f-8f8463eda121'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '2'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '4'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -15,7 +15,7 @@ Github: https://github.com/BigAussie/BASH
 }
 
 begin
-  Login.PlayerIndex := 1;
+  Login.PlayerIndex := 0;
 end;
 
 const
@@ -53,7 +53,6 @@ end;
 
 var
   Timer: TStopWatch;
-  RSW: TRSWalker;
 
 procedure TAntiban.Setup(); override;
 begin
@@ -112,7 +111,7 @@ end;
 
 procedure ArdySuperIron.WALKTOBANK();
 begin
-  RSW.WebWalk([6004, 3312], 15);
+  Self.RSW.WebWalk([6004, 3312], 15);
 end;
 
 procedure ArdySuperIron.RETURNTOMINE();
@@ -294,14 +293,13 @@ procedure ArdySuperIron.Init(MaxActions: UInt32; MaxTime: UInt64); override;
 begin
   inherited;
   Self.RSW.SetupRegions([[5545, 3173, 6234, 3966]]);
-  RSW.AdaptiveWalk := True;
+  Self.RSW.AdaptiveWalk := True;
   Self.Setup();
-  RSW.OnWalkingEvent := @OnWalkEvent;
+  Self.RSW.OnWalkingEvent := @OnWalkEvent;
   Mouse.Speed := Random(22, 28);
   Options.SetZoomLevel(Random(25, 30));
   ArdyDiary := Achievements.GetDiaryLevel(ERSAchievementDiary.Ardougne);
   ArdyCape := 'Ardougne cloak ' + ToStr(ArdyDiary);
-
   StartXP := XPBar.Read();
 end;
 
@@ -323,10 +321,399 @@ end;
 var
   TArdySuperIron: ArdySuperIron;
 
+{$IFDEF SCRIPT_GUI}
+const
+  AS_GUI_NAV       = $F0EBE4;
+  AS_GUI_BG        = $FFFFFF;
+  AS_GUI_STATUS    = $F7F4F1;
+  AS_GUI_DIVIDER   = $D4C9BC;
+  AS_GUI_CARD      = $F7F4F1;
+  AS_GUI_ACCENT    = $E0C9AE;
+  AS_GUI_NAV_IDLE  = $E7DED4;
+  AS_GUI_START     = $C9B094;
+  AS_GUI_TEXT      = $1C1C1E;
+  AS_GUI_MUTED     = $6B6B70;
+  AS_GUI_W         = 1120;
+  AS_GUI_H         = 700;
+  AS_GUI_NAV_W     = 190;
+  AS_GUI_STATUS_H  = 56;
+  AS_GUI_BTN_H     = 42;
+  AS_GUI_EDIT_W    = 260;
+  AS_GUI_COL2      = 308;
+  AS_GUI_BOTTOM_INSET = 34;
+
+type
+  TConfig = record(TScriptForm)
+    NavPanel, ContentPanel, StatusPanel, DividerPanel, StatusDivider, StatusPad: TPanel;
+    BrandLabel: TLabel;
+    ScriptNav, AccountsNav, AntibanNav: TImage;
+    StartChip: TImage;
+    ActiveNav: TImage;
+    ScriptSection, AccountsSection, AntibanSection: TPanel;
+
+    MaxActionsInput, MaxTimeInput: TLabeledEdit;
+  end;
+
+function TConfig.MakePanel(
+  parent: TWinControl;
+  left, top, width, height, color: Int32
+): TPanel;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetWidth(TControl.AdjustToDPI(width));
+  Result.SetHeight(TControl.AdjustToDPI(height));
+  Result.SetColor(color);
+  Result.SetBevelOuter(bvNone);
+end;
+
+procedure TConfig.PaintRoundChip(
+  img: TImage;
+  labelText: String;
+  fill, parentBg: Int32;
+  selected: Boolean = False;
+  centered: Boolean = False
+);
+var
+  bmp: TBitmap;
+  c: TCanvas;
+  w, h, r, tw, th, tx: Int32;
+begin
+  w := img.GetWidth();
+  h := img.GetHeight();
+  if (w <= 0) or (h <= 0) then
+    Exit;
+
+  r := TControl.AdjustToDPI(6);
+  if r * 2 > h then
+    r := h div 2;
+  if r * 2 > w then
+    r := w div 2;
+
+  bmp := img.GetPicture().GetBitmap();
+  bmp.SetWidth(w);
+  bmp.SetHeight(h);
+  c := bmp.GetCanvas();
+
+  c.GetBrush().SetColor(parentBg);
+  c.GetPen().SetColor(parentBg);
+  c.FillRect(0, 0, w, h);
+
+  c.GetBrush().SetColor(fill);
+  c.GetPen().SetColor(fill);
+  c.RoundRect(0, 0, w - 1, h - 1, r * 2, r * 2);
+
+  c.GetBrush().SetColor(fill);
+  c.GetFont().SetColor(AS_GUI_TEXT);
+  c.GetFont().SetSize(11);
+  if selected then
+    c.GetFont().SetStyle([fsBold])
+  else
+    c.GetFont().SetStyle([]);
+
+  tw := c.TextWidth(labelText);
+  th := c.TextHeight(labelText);
+  if centered then
+    tx := (w - tw) div 2
+  else
+    tx := TControl.AdjustToDPI(16);
+  c.TextOut(tx, (h - th) div 2, labelText);
+
+  img.SetHint(labelText);
+  img.SetShowHint(False);
+  img.Invalidate();
+end;
+
+function TConfig.MakeNavItem(
+  parent: TWinControl;
+  labelText: String;
+  left, top: Int32;
+  selected: Boolean = False
+): TImage;
+var
+  fill: Int32;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetWidth(TControl.AdjustToDPI(AS_GUI_NAV_W - 28));
+  Result.SetHeight(TControl.AdjustToDPI(AS_GUI_BTN_H));
+  Result.SetCursor(crHandPoint);
+
+  if selected then
+    fill := AS_GUI_ACCENT
+  else
+    fill := AS_GUI_NAV_IDLE;
+
+  Self.PaintRoundChip(Result, labelText, fill, AS_GUI_NAV, selected);
+end;
+
+function TConfig.MakeLabel(
+  parent: TWinControl;
+  labelText: String;
+  left, top, fontSize, fontColor: Int32;
+  bold: Boolean = False
+): TLabel;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetCaption(labelText);
+  Result.GetFont().SetSize(fontSize);
+  Result.GetFont().SetColor(fontColor);
+  if bold then
+    Result.GetFont().SetStyle([fsBold]);
+end;
+
+procedure TConfig.AddEdit(
+  parent: TWinControl;
+  var box: TLabeledEdit;
+  ctrlName, labelText, text: String;
+  left, top, width: Int32
+);
+begin
+  box.Create(parent);
+  box.SetLeft(TControl.AdjustToDPI(left));
+  box.SetTop(TControl.AdjustToDPI(top));
+  box.SetWidth(TControl.AdjustToDPI(width));
+  box.SetName(ctrlName);
+  box.SetCaption(labelText);
+  box.SetText(text);
+  box.SetFontColor(AS_GUI_TEXT);
+end;
+
+procedure TConfig.AddHeader(parent: TPanel; titleText, subtitleText: String);
+var
+  header: TPanel;
+  headerW: Int32;
+begin
+  headerW := parent.GetWidth();
+  if headerW <= 0 then
+    headerW := TControl.AdjustToDPI(AS_GUI_W - AS_GUI_NAV_W - 2);
+
+  header := Self.MakePanel(parent, 0, 0, 1, 88, AS_GUI_CARD);
+  header.SetWidth(headerW);
+  header.SetHeight(TControl.AdjustToDPI(88));
+  Self.MakeLabel(header, titleText, 24, 18, 18, AS_GUI_TEXT, True);
+  Self.MakeLabel(header, subtitleText, 24, 52, 10, AS_GUI_MUTED, False);
+end;
+
+procedure TConfig.StyleNav(selected: TImage);
+begin
+  Self.ActiveNav := selected;
+  Self.PaintRoundChip(Self.ScriptNav, Self.ScriptNav.GetHint(), AS_GUI_NAV_IDLE, AS_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AccountsNav, Self.AccountsNav.GetHint(), AS_GUI_NAV_IDLE, AS_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AntibanNav, Self.AntibanNav.GetHint(), AS_GUI_NAV_IDLE, AS_GUI_NAV, False);
+  Self.PaintRoundChip(selected, selected.GetHint(), AS_GUI_ACCENT, AS_GUI_NAV, True);
+end;
+
+procedure TConfig.ShowSection(section: TPanel; selected: TImage);
+begin
+  Self.ScriptSection.SetVisible(False);
+  Self.AccountsSection.SetVisible(False);
+  Self.AntibanSection.SetVisible(False);
+  section.SetVisible(True);
+  Self.StyleNav(selected);
+end;
+
+procedure TConfig.ShowScript({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.ScriptSection, Self.ScriptNav);
+end;
+
+procedure TConfig.ShowAccounts({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AccountsSection, Self.AccountsNav);
+end;
+
+procedure TConfig.ShowAntiban({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AntibanSection, Self.AntibanNav);
+end;
+
+procedure TConfig.StartScript(Sender: TObject); override;
+begin
+  if Sender = nil then;
+
+  WLSettings.Put('max_actions', StrToIntDef(Self.MaxActionsInput.GetText(), 0));
+  WLSettings.Put('max_time', StrToIntDef(Self.MaxTimeInput.GetText(), 0));
+  WLSettings.SaveConfig();
+
+  inherited;
+end;
+
+procedure TConfig.BuildScriptSection();
+var
+  hint: TLabel;
+begin
+  Self.AddHeader(Self.ScriptSection, 'Action', 'Mine iron near Ardougne and superheat into bars.');
+
+  hint := Self.MakeLabel(Self.ScriptSection, 'Mines iron ore, casts Superheat Item, and banks iron bars.', 24, 110, 10, AS_GUI_MUTED, False);
+  hint.SetWidth(TControl.AdjustToDPI(820));
+  hint := Self.MakeLabel(Self.ScriptSection, 'Configure your account and antiban options in the other tabs, then press Start.', 24, 140, 10, AS_GUI_MUTED, False);
+  hint.SetWidth(TControl.AdjustToDPI(820));
+end;
+
+procedure TConfig.BuildAccountsSection();
+var
+  am: TPanel;
+begin
+  Self.AddHeader(Self.AccountsSection, 'Accounts', 'Login account and hop worlds list.');
+
+  am := Self.CreateAccountManager(Self.AccountsSection);
+  am.SetLeft(TControl.AdjustToDPI(16));
+  am.SetTop(TControl.AdjustToDPI(100));
+  am.SetColor(AS_GUI_BG);
+end;
+
+procedure TConfig.BuildAntibanSection(SavedMaxActions, SavedMaxTime: Integer);
+begin
+  Self.AddHeader(Self.AntibanSection, 'Antiban', 'Session limits.');
+
+  Self.AddEdit(Self.AntibanSection, Self.MaxActionsInput, 'le_as_maxactions', 'Max actions (0 = unlimited)', IntToStr(SavedMaxActions), 24, 110, AS_GUI_EDIT_W);
+  Self.MaxActionsInput.Edit.SetOnKeyPress(@Self.MaxActionsInput.Edit.NumberField);
+  Self.AddEdit(Self.AntibanSection, Self.MaxTimeInput, 'le_as_maxtime', 'Max time minutes (0 = unlimited)', IntToStr(SavedMaxTime), AS_GUI_COL2, 110, AS_GUI_EDIT_W);
+  Self.MaxTimeInput.Edit.SetOnKeyPress(@Self.MaxTimeInput.Edit.NumberField);
+end;
+
+procedure TConfig.BuildShell(SavedMaxActions, SavedMaxTime: Integer);
+var
+  tab: TTabSheet;
+  contentH, startW, startH, shellW, shellH, statusTop, statusH, mainLeft, mainW, navW, bottomInset: Int32;
+begin
+  Self.AddTab('Ardy Superheat Iron');
+  tab := Self.Tabs[High(Self.Tabs)];
+
+  Self.Start.SetAlign(alNone);
+  Self.Start.SetVisible(False);
+  Self.Start.SetHeight(0);
+  Self.Start.SetWidth(0);
+
+  bottomInset := TControl.AdjustToDPI(AS_GUI_BOTTOM_INSET);
+  navW := TControl.AdjustToDPI(AS_GUI_NAV_W);
+  statusH := TControl.AdjustToDPI(AS_GUI_STATUS_H);
+  shellW := Self.Size.X;
+  shellH := Self.Size.Y;
+  mainLeft := navW + TControl.AdjustToDPI(2);
+  mainW := shellW - mainLeft;
+  statusTop := shellH - statusH - bottomInset;
+  contentH := statusTop;
+  startW := TControl.AdjustToDPI(132);
+  startH := TControl.AdjustToDPI(AS_GUI_BTN_H);
+
+  Self.NavPanel.Create(tab);
+  Self.NavPanel.SetLeft(0);
+  Self.NavPanel.SetTop(0);
+  Self.NavPanel.SetWidth(navW);
+  Self.NavPanel.SetHeight(shellH);
+  Self.NavPanel.SetColor(AS_GUI_NAV);
+  Self.NavPanel.SetBevelOuter(bvNone);
+
+  Self.DividerPanel.Create(tab);
+  Self.DividerPanel.SetLeft(navW);
+  Self.DividerPanel.SetTop(0);
+  Self.DividerPanel.SetWidth(TControl.AdjustToDPI(2));
+  Self.DividerPanel.SetHeight(shellH);
+  Self.DividerPanel.SetColor(AS_GUI_DIVIDER);
+  Self.DividerPanel.SetBevelOuter(bvNone);
+
+  Self.ContentPanel.Create(tab);
+  Self.ContentPanel.SetLeft(mainLeft);
+  Self.ContentPanel.SetTop(0);
+  Self.ContentPanel.SetWidth(mainW);
+  Self.ContentPanel.SetHeight(contentH);
+  Self.ContentPanel.SetColor(AS_GUI_BG);
+  Self.ContentPanel.SetBevelOuter(bvNone);
+
+  Self.StatusDivider.Create(tab);
+  Self.StatusDivider.SetLeft(mainLeft);
+  Self.StatusDivider.SetTop(statusTop);
+  Self.StatusDivider.SetWidth(mainW);
+  Self.StatusDivider.SetHeight(TControl.AdjustToDPI(2));
+  Self.StatusDivider.SetColor(AS_GUI_DIVIDER);
+  Self.StatusDivider.SetBevelOuter(bvNone);
+
+  Self.StatusPanel.Create(tab);
+  Self.StatusPanel.SetLeft(mainLeft);
+  Self.StatusPanel.SetTop(statusTop + Self.StatusDivider.GetHeight());
+  Self.StatusPanel.SetWidth(mainW);
+  Self.StatusPanel.SetHeight(statusH - Self.StatusDivider.GetHeight());
+  Self.StatusPanel.SetColor(AS_GUI_STATUS);
+  Self.StatusPanel.SetBevelOuter(bvNone);
+
+  Self.StatusPad.Create(tab);
+  Self.StatusPad.SetLeft(mainLeft);
+  Self.StatusPad.SetTop(Self.StatusPanel.GetTop() + Self.StatusPanel.GetHeight());
+  Self.StatusPad.SetWidth(mainW);
+  Self.StatusPad.SetHeight(shellH - Self.StatusPad.GetTop());
+  Self.StatusPad.SetColor(AS_GUI_STATUS);
+  Self.StatusPad.SetBevelOuter(bvNone);
+
+  Self.BrandLabel := Self.MakeLabel(Self.NavPanel, 'Ardy Superheat', 16, 28, 14, AS_GUI_TEXT, True);
+  Self.MakeLabel(Self.NavPanel, 'BigAussie', 16, 54, 9, AS_GUI_MUTED, False);
+
+  Self.ScriptNav := Self.MakeNavItem(Self.NavPanel, 'Action', 12, 100, True);
+  Self.AccountsNav := Self.MakeNavItem(Self.NavPanel, 'Accounts', 12, 152);
+  Self.AntibanNav := Self.MakeNavItem(Self.NavPanel, 'Antiban', 12, 204);
+
+  Self.ScriptSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, AS_GUI_BG);
+  Self.AccountsSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, AS_GUI_BG);
+  Self.AntibanSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, AS_GUI_BG);
+
+  Self.ScriptSection.SetWidth(mainW);
+  Self.ScriptSection.SetHeight(contentH);
+  Self.AccountsSection.SetWidth(mainW);
+  Self.AccountsSection.SetHeight(contentH);
+  Self.AntibanSection.SetWidth(mainW);
+  Self.AntibanSection.SetHeight(contentH);
+
+  Self.BuildScriptSection();
+  Self.BuildAccountsSection();
+  Self.BuildAntibanSection(SavedMaxActions, SavedMaxTime);
+
+  Self.ScriptNav.SetOnClick(@Self.ShowScript);
+  Self.AccountsNav.SetOnClick(@Self.ShowAccounts);
+  Self.AntibanNav.SetOnClick(@Self.ShowAntiban);
+
+  Self.StartChip.Create(Self.StatusPanel);
+  Self.StartChip.SetLeft(mainW - startW - TControl.AdjustToDPI(24));
+  Self.StartChip.SetTop((Self.StatusPanel.GetHeight() - startH) div 2 + 2);
+  Self.StartChip.SetWidth(startW);
+  Self.StartChip.SetHeight(startH);
+  Self.StartChip.SetCursor(crHandPoint);
+  Self.PaintRoundChip(Self.StartChip, 'Start', AS_GUI_START, AS_GUI_STATUS, True, True);
+  Self.StartChip.SetOnClick(@Self.StartScript);
+
+  Self.ShowScript(nil);
+end;
+
+procedure TConfig.Run(); override;
+var
+  SavedMaxActions, SavedMaxTime: Integer;
+begin
+  if WLSettings.Has('max_actions') then
+    SavedMaxActions := WLSettings.GetInt('max_actions')
+  else
+    SavedMaxActions := 0;
+  if WLSettings.Has('max_time') then
+    SavedMaxTime := WLSettings.GetInt('max_time')
+  else
+    SavedMaxTime := 0;
+
+  Self.Setup('BigAussies Ardougne Iron Superheat', [AS_GUI_W, AS_GUI_H], False);
+  Self.BuildShell(SavedMaxActions, SavedMaxTime);
+
+  inherited;
+end;
+
+var
+  Config: TConfig;
+{$ENDIF}
+
 begin
   {$IFDEF SCRIPT_GUI}
-//  if ENABLE_GUI then
-//    Sync(@Config.Run);
+  Sync(@Config.Run);
   {$ENDIF}
   TArdySuperIron.Run(WLSettings.MaxActions, WLSettings.MaxTime);
 end.
