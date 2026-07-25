@@ -1,18 +1,20 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'c4e8b2a1-9f3d-4c7e-a6b5-1d2e3f4a5b6c'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '36'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '38'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
-{$I SRL-T/osr.simba}
-{$I WaspLib/osr.simba}
+{$I SRL-B/osr.simba}
+{$I BashLib/osr.simba}
 
 {
 ----------------------------------------------------------------------------------
 [Free] Cannonball Smelter
 This is the stripped down free version of the Cannonball Smelter.
 For the more premium version, check out the AIO Smelter.
-Need Support? Contact Me
+----------------------------------------------------------------------------------
+~~~ Need Support? Contact Me ~~~
 Discord ID: big.aussie
+Discord Server: https://discord.gg/qsmKs5uKfR
 Email: thebigaussie@proton.me
-Github: https://github.com/BigAussie
+Github: https://github.com/BigAussie/BASH
 ----------------------------------------------------------------------------------
 }
 
