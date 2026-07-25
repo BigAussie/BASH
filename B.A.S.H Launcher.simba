@@ -5622,7 +5622,6 @@ begin
     except
     end;
 
-    // Cache-bust raw.githubusercontent.com so we do not keep an old revision.
     url := BASH_LAUNCHER_GITHUB_RAW + '?t=' + ToStr(GetTickCount());
     Result := GetHTTPPage(http, url);
     code := GetHTTPResponseCode(http);
@@ -5747,7 +5746,6 @@ begin
   selfRev := StrToIntDef({$MACRO SCRIPT_REVISION}, 1);
   installedRev := ReadScriptRevisionFromFile(dest);
 
-  // Prefer the running copy whenever we can read it (Simba often runs from a .tmp).
   body := '';
   if FileExists(ScriptFile) then
   begin
@@ -5772,7 +5770,7 @@ begin
 
   body := DownloadBashLauncherBody();
   bodyRev := ParseScriptRevisionFromText(body);
-  // Install remote only when it is newer than what is already installed.
+
   if (Length(body) >= 500) and (bodyRev > installedRev) then
   begin
     if WriteBashLauncherFile(dest, body) then
@@ -5857,7 +5855,6 @@ begin
           TMsgDlgType.mtWarning,
           []
         );
-      // Still continue into the UI when a usable launcher is already installed.
       if not FileExists(dest) then
         Exit;
     end;
@@ -5943,8 +5940,6 @@ begin
       ', GitHub ', githubRev
     );
 
-    // Compare remotes against the installed file, not the running copy.
-    // Otherwise a Drive/tmp rev 12 with GitHub 12 never updates installed 11.
     if remoteRev <= installedRev then
     begin
       EnsureBashLauncherOnDefaultPath();
