@@ -5610,6 +5610,7 @@ end;
 function DownloadBashLauncherBody(): String;
 var
   http, code: Int32;
+  url: String;
 begin
   Result := '';
   http := InitializeHTTPClient(True);
@@ -5621,7 +5622,9 @@ begin
     except
     end;
 
-    Result := GetHTTPPage(http, BASH_LAUNCHER_GITHUB_RAW);
+    // Cache-bust raw.githubusercontent.com so we do not keep an old revision.
+    url := BASH_LAUNCHER_GITHUB_RAW + '?t=' + ToStr(GetTickCount());
+    Result := GetHTTPPage(http, url);
     code := GetHTTPResponseCode(http);
     if (code = 200) and (Length(Result) >= 500) then
       Exit;
@@ -5664,7 +5667,7 @@ begin
     end;
 
     WriteLn('[B.A.S.H] Downloading launcher from GitHub...');
-    code := GetHTTPPageEx(http, BASH_LAUNCHER_GITHUB_RAW, tmp);
+    code := GetHTTPPageEx(http, BASH_LAUNCHER_GITHUB_RAW + '?t=' + ToStr(GetTickCount()), tmp);
     if (code <> 200) or (not FileExists(tmp)) then
     begin
       WriteLn('[B.A.S.H] GitHub download failed (HTTP ', code, ').');
@@ -5729,29 +5732,48 @@ function InstallBashLauncherToDefaultPath(): Boolean;
 var
   dest, body: String;
   selfRev, installedRev, bodyRev: Int32;
+
+  function LooksLikeLauncherBody(const content: String): Boolean;
+  begin
+    Result :=
+      (Length(content) >= 500) and
+      (content.Contains({$MACRO SCRIPT_ID}) or content.Contains('BASH_LAUNCHER') or
+       content.Contains('B.A.S.H'));
+  end;
+
 begin
   Result := False;
   dest := BashLauncherPath();
   selfRev := StrToIntDef({$MACRO SCRIPT_REVISION}, 1);
   installedRev := ReadScriptRevisionFromFile(dest);
 
-  if IsBashLauncherFile(ScriptFile) then
+  // Prefer the running copy whenever we can read it (Simba often runs from a .tmp).
+  body := '';
+  if FileExists(ScriptFile) then
   begin
     try
       body := ReadFileContents(ScriptFile);
     except
       body := '';
     end;
+  end;
+
+  if LooksLikeLauncherBody(body) then
+  begin
     if WriteBashLauncherFile(dest, body) then
     begin
-      WriteLn('[B.A.S.H] Installed launcher to ', dest, ' from running file');
+      WriteLn('[B.A.S.H] Installed launcher to ', dest, ' from running file (rev ', selfRev, ')');
       Exit(True);
     end;
-  end;
+    WriteLn('[B.A.S.H] Could not write running launcher copy to ', dest);
+  end
+  else
+    WriteLn('[B.A.S.H] Running file is not a readable launcher source: ', ScriptFile);
 
   body := DownloadBashLauncherBody();
   bodyRev := ParseScriptRevisionFromText(body);
-  if (Length(body) >= 500) and (bodyRev >= Max(selfRev, installedRev)) then
+  // Install remote only when it is newer than what is already installed.
+  if (Length(body) >= 500) and (bodyRev > installedRev) then
   begin
     if WriteBashLauncherFile(dest, body) then
     begin
@@ -5759,7 +5781,9 @@ begin
       Exit(True);
     end;
   end
-  else if (bodyRev > 0) and (bodyRev < selfRev) then
+  else if (bodyRev > 0) and (bodyRev <= installedRev) then
+    WriteLn('[B.A.S.H] Skipping remote install (remote rev ', bodyRev, ' <= installed ', installedRev, ')')
+  else if (bodyRev > 0) and (bodyRev < selfRev) and (bodyRev <= installedRev) then
     WriteLn('[B.A.S.H] Skipping remote install (remote rev ', bodyRev, ' < local ', selfRev, ')');
 end;
 
@@ -5808,11 +5832,20 @@ begin
       if FileExists(dest + '.new') then
         MessageDlg(
           'B.A.S.H',
-          'Downloaded launcher but could not replace the open file.' + LineEnding + LineEnding +
+          'Could not replace the open launcher file.' + LineEnding + LineEnding +
             'Close every tab for bash-launcher.simba, then either:' + LineEnding +
             '1) Run this script again, or' + LineEnding +
             '2) Rename:' + LineEnding + dest + '.new' + LineEnding +
             '   to bash-launcher.simba',
+          TMsgDlgType.mtWarning,
+          []
+        )
+      else if installedRev < selfRev then
+        MessageDlg(
+          'B.A.S.H',
+          'Could not copy this newer launcher into:' + LineEnding + dest + LineEnding + LineEnding +
+            'Close any open bash-launcher.simba tabs and run again.' + LineEnding +
+            'If that fails, copy your launcher file over bash-launcher.simba manually.',
           TMsgDlgType.mtWarning,
           []
         )
@@ -5824,7 +5857,9 @@ begin
           TMsgDlgType.mtWarning,
           []
         );
-      Exit;
+      // Still continue into the UI when a usable launcher is already installed.
+      if not FileExists(dest) then
+        Exit;
     end;
   end;
 
@@ -5836,8 +5871,8 @@ end;
 
 procedure CheckBashLauncherUpdate();
 var
-  http, code, remoteRev, localRev, apiRev, githubRev: Int32;
-  response, body, githubBody, dest, source: String;
+  http, code, remoteRev, runningRev, installedRev, apiRev, githubRev: Int32;
+  response, body, githubBody, dest, source, githubUrl: String;
   json: TJSONObject;
 begin
   {$IFDEF DEVELOPER_MODE}
@@ -5845,10 +5880,11 @@ begin
   Exit;
   {$ENDIF}
 
-  localRev := StrToIntDef({$MACRO SCRIPT_REVISION}, 1);
+  runningRev := StrToIntDef({$MACRO SCRIPT_REVISION}, 1);
   dest := BashLauncherPath();
-  if IsBashLauncherFile(dest) then
-    localRev := Max(localRev, ReadScriptRevisionFromFile(dest));
+  installedRev := 0;
+  if FileExists(dest) and IsBashLauncherFile(dest) then
+    installedRev := ReadScriptRevisionFromFile(dest);
 
   apiRev := 0;
   githubRev := 0;
@@ -5887,7 +5923,8 @@ begin
 
     SetHTTPHeader(http, 'Accept', '*/*');
     try
-      githubBody := GetHTTPPage(http, BASH_LAUNCHER_GITHUB_RAW);
+      githubUrl := BASH_LAUNCHER_GITHUB_RAW + '?t=' + ToStr(GetTickCount());
+      githubBody := GetHTTPPage(http, githubUrl);
       code := GetHTTPResponseCode(http);
       if (code = 200) and (Length(githubBody) >= 500) then
         githubRev := ParseScriptRevisionFromText(githubBody)
@@ -5899,9 +5936,16 @@ begin
     end;
 
     remoteRev := Max(apiRev, githubRev);
-    WriteLn('[B.A.S.H] Launcher revs — local ', localRev, ', API ', apiRev, ', GitHub ', githubRev);
+    WriteLn(
+      '[B.A.S.H] Launcher revs - running ', runningRev,
+      ', installed ', installedRev,
+      ', API ', apiRev,
+      ', GitHub ', githubRev
+    );
 
-    if remoteRev <= localRev then
+    // Compare remotes against the installed file, not the running copy.
+    // Otherwise a Drive/tmp rev 12 with GitHub 12 never updates installed 11.
+    if remoteRev <= installedRev then
     begin
       EnsureBashLauncherOnDefaultPath();
       Exit;
@@ -5945,7 +5989,7 @@ begin
       Exit;
     end;
 
-    WriteLn('[B.A.S.H] Remote launcher update ', localRev, ' -> ', remoteRev, ' from ', source);
+    WriteLn('[B.A.S.H] Remote launcher update installed ', installedRev, ' -> ', remoteRev, ' from ', source);
     if not WriteBashLauncherFile(dest, body) then
     begin
       WriteLn('[B.A.S.H] Remote write failed. Falling back to local install...');
