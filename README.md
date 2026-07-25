@@ -14,7 +14,7 @@ All scripts use Simba and are color scripts — no custom plugins, injection, or
 
 Easiest way to get set up:
 
-1. Download **[bash-setup.exe](https://github.com/BigWaspBackup/bash-setup/releases/download/v0.1.0/bash-setup.exe)**
+1. Download **[bash-setup.exe](https://github.com/BigWaspBackup/bash-setup/releases/download/v0.1.1/bash-setup.exe)**
 2. Run the installer and follow the prompts (Simba + B.A.S.H launcher)
 3. Open Simba and run `bash-launcher.simba`
 
