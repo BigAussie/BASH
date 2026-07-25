@@ -1,5 +1,5 @@
 {$DEFINE SCRIPT_ID := 'bfde3085-80dc-4bd6-870a-8cb3186a938c'}
-{$DEFINE SCRIPT_REVISION := '11'}
+{$DEFINE SCRIPT_REVISION := '12'}
 
 {.$DEFINE DEVELOPER_MODE}
 
@@ -24,10 +24,11 @@ const
   SRLB_INSTALL_DIR     = 'SRL-B';
   BASHLIB_INSTALL_DIR  = 'BashLib';
 
-  BASH_SCRIPTS_REPO   = 'BigAussie/BigAussie-Simba-Scripts';
+  BASH_SCRIPTS_REPO   = 'BigAussie/BASH';
   BASH_SCRIPTS_BRANCH = 'main';
+  BASH_FREE_SCRIPTS_DIR = 'Free Scripts';
   BASH_LAUNCHER_GITHUB_RAW =
-    'https://raw.githubusercontent.com/BigAussie/BigAussie-Simba-Scripts/main/B.A.S.H%20Launcher.simba';
+    'https://raw.githubusercontent.com/BigAussie/BASH/main/B.A.S.H%20Launcher.simba';
   WASPSCRIPTS_DIR     = ScriptPath + 'waspscripts.com' + DirectorySeparator;
   BASH_PREMIUM_API    = 'https://bash-premium-api.cdn-gate.workers.dev';
   BASH_DISCORD_URL    = 'https://discord.gg/qsmKs5uKfR';
@@ -1151,6 +1152,7 @@ type
     Source: EScriptSource;
     Revision: Int32;
     Activities: TStringArray;
+    Features: TStringArray;
   end;
 
   TScriptDataArray = array of TScriptData;
@@ -1329,6 +1331,162 @@ begin
   if (Length(Result) = 0) and (hay.Contains('crab') or hay.Contains('kill') or hay.Contains('fight') or
      hay.Contains('nmz') or hay.Contains('nightmare zone')) then
     Result += 'combat';
+end;
+
+function NormalizeFeatureId(const value: String): String;
+var
+  id: String;
+begin
+  id := LowerCase(Trim(value)).Replace('-', '_').Replace(' ', '_');
+  if (id = 'farm') or (id = 'farming') or (id = 'farm_run') or (id = 'farmruns') or
+     (id = 'farming_runs') or (id = 'farming_run') then
+    Exit('farm_runs');
+  if (id = 'bird') or (id = 'birds') or (id = 'birdhouse') or (id = 'birdhouses') or
+     (id = 'birdhouse_run') or (id = 'birdhouse_runs') or (id = 'bh') or (id = 'bh_runs') then
+    Exit('birdhouses');
+  if (id = 'farm_runs') or (id = 'birdhouses') then
+    Exit(id);
+  Result := '';
+end;
+
+function ParseFeaturesText(const raw: String): TStringArray;
+var
+  parts: TStringArray;
+  i: Int32;
+  id: String;
+begin
+  Result := [];
+  if Trim(raw) = '' then
+    Exit;
+  parts := raw.Replace(';', ',').Replace('|', ',').Replace('/', ',').Split(',');
+  for i := 0 to High(parts) do
+  begin
+    id := NormalizeFeatureId(parts[i]);
+    if (id <> '') and (not Result.Contains(id)) then
+      Result += id;
+  end;
+end;
+
+function ParseFeaturesJSON(item: TJSONObject): TStringArray;
+var
+  arr: TJSONArray;
+  raw: String;
+begin
+  Result := [];
+  if item = nil then
+    Exit;
+
+  arr := item.optJSONArray('features');
+  if arr <> nil then
+  begin
+    raw := arr.toString();
+    raw := raw.Replace('[', '').Replace(']', '').Replace('"', '').Replace('''', '');
+    Result := ParseFeaturesText(raw);
+  end;
+
+  if Length(Result) = 0 then
+  begin
+    raw := item.optString('features', '');
+    Result := ParseFeaturesText(raw);
+  end;
+end;
+
+function InferScriptFeatures(const name, path, description: String; existing: TStringArray): TStringArray;
+var
+  hay: String;
+begin
+  Result := existing;
+  hay := LowerCase(name + ' ' + path + ' ' + description);
+
+  // Known scripts with run addons (until catalog features are fully set).
+  if hay.Contains('gemstone crab') or hay.Contains('gemstonecrab') or hay.Contains('crab slayer') then
+  begin
+    if not Result.Contains('farm_runs') then
+      Result += 'farm_runs';
+    if not Result.Contains('birdhouses') then
+      Result += 'birdhouses';
+  end;
+
+  if hay.Contains('prifddinas') or hay.Contains('prif agility') then
+  begin
+    if not Result.Contains('birdhouses') then
+      Result += 'birdhouses';
+  end;
+
+  if hay.Contains('aio lunar') or hay.Contains('lunar spells') then
+  begin
+    if not Result.Contains('birdhouses') then
+      Result += 'birdhouses';
+  end;
+
+  if hay.Contains('farmbhruns') or (hay.Contains('farm') and hay.Contains('birdhouse') and hay.Contains('mhome')) then
+  begin
+    if not Result.Contains('farm_runs') then
+      Result += 'farm_runs';
+    if not Result.Contains('birdhouses') then
+      Result += 'birdhouses';
+  end;
+end;
+
+procedure ApplyRunFeatureActivities(var script: TScriptData);
+begin
+  if script.Features.Contains('farm_runs') and (not script.Activities.Contains('farming')) then
+    script.Activities += 'farming';
+  if script.Features.Contains('birdhouses') and (not script.Activities.Contains('hunter')) then
+    script.Activities += 'hunter';
+end;
+
+procedure FinalizeScriptMetadata(var script: TScriptData);
+begin
+  script.Features := InferScriptFeatures(script.Name, script.URL, script.Description, script.Features);
+  ApplyRunFeatureActivities(script);
+end;
+
+function ScriptHasFarmRuns(const script: TScriptData): Boolean;
+begin
+  Result := script.Features.Contains('farm_runs');
+end;
+
+function ScriptHasBirdhouses(const script: TScriptData): Boolean;
+begin
+  Result := script.Features.Contains('birdhouses');
+end;
+
+function ScriptRunFeaturesCaption(const script: TScriptData; longForm: Boolean = False): String;
+var
+  farm, birds: Boolean;
+begin
+  farm := ScriptHasFarmRuns(script);
+  birds := ScriptHasBirdhouses(script);
+  if farm and birds then
+  begin
+    if longForm then
+      Exit('Supports Integrated Farm and Birdhouse Runs');
+    Exit('(Farm & Birdhouse Support)');
+  end;
+  if farm then
+  begin
+    if longForm then
+      Exit('Supports Integrated Farm Runs');
+    Exit('(Farm Support)');
+  end;
+  if birds then
+  begin
+    if longForm then
+      Exit('Supports Integrated Birdhouse Runs');
+    Exit('(Birdhouse Support)');
+  end;
+  Result := '';
+end;
+
+function ScriptListCaption(const script: TScriptData): String;
+var
+  features: String;
+begin
+  Result := script.Name;
+  features := ScriptRunFeaturesCaption(script, False);
+  if features <> '' then
+    Result += ' ' + features;
 end;
 
 function MigrateLegacyLibIncludes(const filepath: String): Boolean;
@@ -1546,6 +1704,8 @@ begin
     script.Content := '';
     script.LocalPath := '';
     script.Activities := InferScriptActivities(script.Name, script.URL, ParseActivitiesJSON(item));
+    script.Features := ParseFeaturesJSON(item);
+    FinalizeScriptMetadata(script);
 
     tier := LowerCase(item.optString('type', 'premium'));
     if tier = 'free' then
@@ -1986,6 +2146,37 @@ begin
   Result := path.Replace('\', '/').Replace(' ', '%20');
 end;
 
+function IsBashLauncherRepoPath(const path: String): Boolean;
+var
+  name: String;
+begin
+  name := ExtractFileName(path.Replace('/', DirectorySeparator));
+  Result :=
+    SameText(name, 'B.A.S.H Launcher.simba') or
+    SameText(name, 'bash-launcher.simba') or
+    name.Contains('BigAussieLauncher') or
+    name.Contains('B.A.S.HLauncher');
+end;
+
+function IsBashFreeScriptRepoPath(const path: String): Boolean;
+var
+  normalized, prefix: String;
+begin
+  normalized := path.Replace('\', '/');
+  if not normalized.EndsWith('.simba') then
+    Exit(False);
+  if IsBashLauncherRepoPath(normalized) then
+    Exit(False);
+
+  prefix := BASH_FREE_SCRIPTS_DIR + '/';
+  // Preferred layout: Free Scripts/<script>.simba
+  if normalized.StartsWith(prefix) then
+    Exit(True);
+
+  // Transition: allow root-level free scripts until the move is complete.
+  Result := (Pos('/', normalized) = 0);
+end;
+
 function TBashScriptClient.FetchRawHeader(path: String): String;
 var
   http: Int32;
@@ -2061,6 +2252,7 @@ begin
   Result.Status := EScriptStatus.OFFICIAL;
   Result.Source := EScriptSource.BASH;
   Result.Activities := [];
+  Result.Features := [];
 
   if header.Contains('SCRIPT_ID') then
   begin
@@ -2086,11 +2278,20 @@ begin
     Result.Activities := ParseActivitiesText(actsStr);
   end;
 
+  if header.Contains('SCRIPT_FEATURES') then
+  begin
+    actsStr := header.After('SCRIPT_FEATURES := ''').Before('''}');
+    if actsStr = '' then
+      actsStr := header.After('SCRIPT_FEATURES := "').Before('"}');
+    Result.Features := ParseFeaturesText(actsStr);
+  end;
+
   description := ExtractScriptDescription(header);
   if description <> '' then
     Result.Description := description;
 
-  Result.Activities := InferScriptActivities(Result.Name, path, Result.Activities);
+  Result.Activities := InferScriptActivities(Result.Name, path, Result.Activities, Result.Description);
+  FinalizeScriptMetadata(Result);
 end;
 
 function TBashScriptClient.ScriptsFromCatalogArray(scriptsArr: TJSONArray): TScriptDataArray;
@@ -2123,6 +2324,8 @@ begin
     else
       script.Name := item.optString('name', '');
     script.Activities := InferScriptActivities(script.Name, script.URL, ParseActivitiesJSON(item));
+    script.Features := ParseFeaturesJSON(item);
+    FinalizeScriptMetadata(script);
 
     case LowerCase(item.optString('type', 'free')) of
       'premium': script.Typ := EScriptType.PREMIUM;
@@ -2156,14 +2359,28 @@ var
   url, response: String;
   json: TJSONObject;
   scriptsArr: TJSONArray;
+  candidates: TStringArray;
+  i: Int32;
 begin
   Result := [];
-  url := 'https://raw.githubusercontent.com/' + Self.Repo + '/' + Self.Branch + '/catalog.json';
+  candidates := [
+    'https://raw.githubusercontent.com/' + Self.Repo + '/' + Self.Branch + '/catalog.json',
+    'https://raw.githubusercontent.com/' + Self.Repo + '/' + Self.Branch + '/' +
+      EncodeGitHubPath(BASH_FREE_SCRIPTS_DIR + '/catalog.json')
+  ];
+
   http := InitializeHTTPClient(True);
   try
     SetHTTPHeader(http, 'User-Agent', 'B.A.S.H-Launcher');
-    response := GetHTTPPage(http, url);
-    if GetHTTPResponseCode(http) <> 200 then
+    for i := 0 to High(candidates) do
+    begin
+      url := candidates[i];
+      response := GetHTTPPage(http, url);
+      if GetHTTPResponseCode(http) = 200 then
+        Break;
+      response := '';
+    end;
+    if response = '' then
       Exit;
   finally
     FreeHTTPClient(http);
@@ -2217,8 +2434,7 @@ begin
           begin
             if getString('type') <> 'blob' then Continue;
             path := getString('path');
-            if not path.EndsWith('.simba') then Continue;
-            if path.Contains('BigAussieLauncher') then Continue;
+            if not IsBashFreeScriptRepoPath(path) then Continue;
           end;
 
           header := Self.FetchRawHeader(path);
@@ -2238,6 +2454,8 @@ begin
             script.Description := '';
             script.Content := '';
             script.Activities := InferScriptActivities(script.Name, path, []);
+            script.Features := [];
+            FinalizeScriptMetadata(script);
           end;
           Result += script;
         end;
@@ -2296,8 +2514,12 @@ begin
           script.Revision := entitled[e].Revision;
         if (Length(script.Activities) = 0) and (Length(entitled[e].Activities) > 0) then
           script.Activities := entitled[e].Activities;
+        if (Length(script.Features) = 0) and (Length(entitled[e].Features) > 0) then
+          script.Features := entitled[e].Features;
         Break;
       end;
+
+    FinalizeScriptMetadata(script);
 
     if owned then
     begin
@@ -3741,7 +3963,7 @@ begin
 
   for i := 0 to High(Self.VisibleScripts) do
   begin
-    listBox.getItems().Add(Self.VisibleScripts[i].Name);
+    listBox.getItems().Add(ScriptListCaption(Self.VisibleScripts[i]));
     if Self.VisibleScripts[i].ID = lastKey then
       idx := i;
   end;
@@ -3868,25 +4090,57 @@ begin
   OpenWebPage(BASH_DISCORD_URL);
 end;
 
+procedure TWaspForm._SetScriptFeaturesCaption(const script: TScriptData);
+var
+  panel: TPanel;
+  features: TLabel;
+  caption: String;
+begin
+  panel := Self.Form.GetChild('script_panel');
+  if panel = nil then
+    Exit;
+  features := panel.GetChild('script_features_label');
+  if features = nil then
+    Exit;
+
+  caption := ScriptRunFeaturesCaption(script, True);
+  features.setCaption(caption);
+  features.setVisible(caption <> '');
+end;
+
 procedure TWaspForm._SetDiscordCtaVisible(visible: Boolean);
 var
   panel, memoOuter, memoInner: TPanel;
-  cta: TLabel;
+  cta, features: TLabel;
   memo: TMemo;
   memoTop: Int32;
+  showFeatures: Boolean;
 begin
   panel := Self.Form.GetChild('script_panel');
   if panel = nil then Exit;
 
+  features := panel.GetChild('script_features_label');
+  showFeatures := (features <> nil) and features.getVisible();
+
   cta := panel.GetChild('script_discord_cta_label');
   if cta <> nil then
+  begin
     cta.setVisible(visible);
+    if showFeatures then
+      cta.SetTop(TControl.AdjustToDPI(40))
+    else
+      cta.SetTop(TControl.AdjustToDPI(28));
+  end;
 
   memoOuter := panel.GetChild('script_omemo_panel');
   if memoOuter = nil then Exit;
 
-  if visible then
+  if visible and showFeatures then
+    memoTop := TControl.AdjustToDPI(58)
+  else if visible then
     memoTop := TControl.AdjustToDPI(48)
+  else if showFeatures then
+    memoTop := TControl.AdjustToDPI(42)
   else
     memoTop := TControl.AdjustToDPI(36);
 
@@ -4138,6 +4392,8 @@ begin
   if list.getItemIndex() < 0 then
   begin
     Self._SetDescriptionVisible(not BashScriptClient.IsLocalSource());
+    scriptData.Features := [];
+    Self._SetScriptFeaturesCaption(scriptData);
     Self._SetDiscordCtaVisible(False);
     if open <> nil then
     begin
@@ -4167,6 +4423,7 @@ begin
       localPath := scriptData.URL;
 
     Self._SetDescriptionVisible(False);
+    Self._SetScriptFeaturesCaption(scriptData);
     Self._SetDiscordCtaVisible(False);
 
     if panel <> nil then
@@ -4204,6 +4461,7 @@ begin
   end;
 
   Self._SetDescriptionVisible(True);
+  Self._SetScriptFeaturesCaption(scriptData);
   Self._SetDiscordCtaVisible(scriptData.Typ <> EScriptType.FREE);
 
   scriptFile := WaspUpdater.GetScriptFile(scriptData.ID);
@@ -4617,6 +4875,15 @@ begin
   text.SetTop(TControl.AdjustToDPI(4));
 
   text.Create(panel);
+  text.setName('script_features_label');
+  text.setCaption('');
+  text.SetFontSize(9);
+  text.SetFontColor($D4A017);
+  text.setLeft(TControl.AdjustToDPI(4));
+  text.SetTop(TControl.AdjustToDPI(24));
+  text.setVisible(False);
+
+  text.Create(panel);
   text.setName('script_category_label');
   text.SetFontSize(10);
   text.SetFontColor($D4A017);
@@ -4627,7 +4894,7 @@ begin
   text.setName('script_discord_cta_label');
   text.setCaption('Click here to join the Discord to see availability');
   text.setLeft(TControl.AdjustToDPI(4));
-  text.SetTop(TControl.AdjustToDPI(28));
+  text.SetTop(TControl.AdjustToDPI(40));
   text.SetFontSize(9);
   text.SetFontColor($D4A017);
   text.setHint('Open the B.A.S.H Discord');
