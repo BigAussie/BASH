@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := '8dc108d0-7e16-472e-839e-dfd7f64e9f08'}
-{$DEFINE SCRIPT_REVISION := '1'}
+{$DEFINE SCRIPT_REVISION := '2'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-T/osr.simba}
 {$I WaspLib/osr.simba}
@@ -30,8 +30,6 @@ var
   PREFERPOPULATEDTREES: Boolean = True;
   PLAYER_DETECT_RADIUS: Int32 = 25;
 
-  PICKNESTS: Boolean = True;
-
   POWERCUT: Boolean = False;
 
 type
@@ -39,7 +37,6 @@ type
     CHOP_TREE,
     WAIT_CHOPPING,
     USE_SPEC,
-    PICKUP_NEST,
     DROP_LOGS,
     BANK_LOGS,
     END_SCRIPT
@@ -59,7 +56,6 @@ type
     LogsBanked: Int32;
     TotalLogsProfit: Int64;
     PreviousProfit: Int64;
-    NestsPicked: Int32;
     BankItemList: TRSItemArray;
 
     PrevXP: Int32;
@@ -356,13 +352,7 @@ begin
       SetupEx([2, 2, 12], [[TreeCoords[I].X, TreeCoords[I].Y]]);
       SetupUpText('Chop');
     end;
-
-    RSGroundItems.BirdNest.Coordinates += TreeCoords[I];
-    RSGroundItems.BirdNest.DotFilter.SetupCircle([TreeCoords[I].X, TreeCoords[I].Y, 16], True);
   end;
-
-  RSGroundItems.BirdNest.ShapeArray.SetShape([1, 1, 1]);
-  RSGroundItems.BirdNest.Filter.Walker := True;
 
   BankChestCoords := [[4728, 41182]];
   with Self.BankChest do
@@ -403,34 +393,6 @@ begin
       Dist := TreeMM.DistanceTo(PlayerDots[J]);
       if Dist <= PLAYER_DETECT_RADIUS then
         Inc(Counts[I]);
-    end;
-  end;
-end;
-
-function TIronwoodChopper.CheckNest(): Boolean;
-var
-  atpa: T2DPointArray;
-begin
-  Result := PICKNESTS and RSGroundItems.BirdNest.Find(atpa);
-end;
-
-function TIronwoodChopper.PickNest(): Boolean;
-var
-  InvCount: Int32;
-begin
-  InvCount := Inventory.Count();
-  if InvCount >= 28 then
-    Exit;
-
-  if RSGroundItems.BirdNest.Click(True, 1) then
-  begin
-    Self.TreeTimer.Timeout := GetTickCount();
-    Minimap.WaitMoving();
-    Result := WaitUntil(InvCount < Inventory.Count(), 300, 8000);
-    if Result then
-    begin
-      Inc(Self.NestsPicked);
-      WriteLn('[NESTS] Picked up bird nest! (Total: ', Self.NestsPicked, ')');
     end;
   end;
 end;
@@ -580,15 +542,11 @@ begin
   Self.CurrentTreeIndex := Self.GetWeightedTreeIndex(-1);
   Self.IsChopping := False;
   Self.LogsBanked := 0;
-  Self.NestsPicked := 0;
   Self.TotalLogsProfit := 0;
   Self.PreviousProfit := 0;
 
   Self.BankItemList := [
     Self.LogItem,
-    'Bird nest',
-    'Clue nest (beginner)', 'Clue nest (easy)', 'Clue nest (medium)',
-    'Clue nest (hard)', 'Clue nest (elite)',
     'Clue scroll (beginner)', 'Clue scroll (easy)', 'Clue scroll (medium)',
     'Clue scroll (hard)', 'Clue scroll (elite)'
   ];
@@ -624,11 +582,6 @@ begin
   else
     WriteLn('[IRONWOOD] Forestry mode: DISABLED - using standard tree weights');
 
-  if PICKNESTS then
-    WriteLn('[IRONWOOD] Bird nest picking: ENABLED')
-  else
-    WriteLn('[IRONWOOD] Bird nest picking: DISABLED');
-
   if POWERCUT then
     WriteLn('[IRONWOOD] Power cutting: ENABLED - logs will be dropped')
   else
@@ -652,12 +605,7 @@ begin
   end;
 
   if Self.IsChopping then
-  begin
-    if Self.CheckNest() then
-      Exit(EIronwoodState.PICKUP_NEST);
-
     Exit(EIronwoodState.WAIT_CHOPPING);
-  end;
 
   if Minimap.IsSpecWeapon() and (Minimap.GetSpecLevel() = 100) then
     Exit(EIronwoodState.USE_SPEC);
@@ -907,7 +855,6 @@ begin
     EIronwoodState.CHOP_TREE: Result := 'Finding Tree';
     EIronwoodState.WAIT_CHOPPING: Result := 'Chopping Tree';
     EIronwoodState.USE_SPEC: Result := 'Using Spec';
-    EIronwoodState.PICKUP_NEST: Result := 'Picking Nest';
     EIronwoodState.DROP_LOGS: Result := 'Dropping Logs';
     EIronwoodState.BANK_LOGS: Result := 'Banking';
     else Result := 'Unknown';
@@ -1033,7 +980,6 @@ begin
   else
     WriteLn(' Logs Banked: ' + ToStr(Self.LogsBanked));
 
-  WriteLn(' Nests Picked: ' + ToStr(Self.NestsPicked));
   WriteLn(' XP Gain (session): ' + ToStr(XPGained));
   WriteLn(' XP/hr: ' + ToStr(XPPerHour));
   WriteLn(' Logs/hr: ' + ToStr(LogsPerHour));
@@ -1176,7 +1122,6 @@ begin
       EIronwoodState.CHOP_TREE: Self.ChopTree();
       EIronwoodState.WAIT_CHOPPING: Self.WaitChopping();
       EIronwoodState.USE_SPEC: Minimap.EnableSpec(100);
-      EIronwoodState.PICKUP_NEST: Self.PickNest();
       EIronwoodState.DROP_LOGS: Self.DropLogs();
       EIronwoodState.BANK_LOGS: Self.BankLogs();
       EIronwoodState.END_SCRIPT: Break;
@@ -1220,7 +1165,6 @@ type
     WorldHopIntervalInput: TLabeledEdit;
     
     PreferPopulatedTreesCheckBox: TLabeledCheckBox;
-    PickNestsCheckBox: TLabeledCheckBox;
     PowerCutCheckBox: TLabeledCheckBox;
     
     OverrideBreaksCheckBox: TLabeledCheckBox;
@@ -1251,9 +1195,6 @@ begin
   if Assigned(Self.PreferPopulatedTreesCheckBox) then
     PREFERPOPULATEDTREES := Self.PreferPopulatedTreesCheckBox.IsChecked();
   
-  if Assigned(Self.PickNestsCheckBox) then
-    PICKNESTS := Self.PickNestsCheckBox.IsChecked();
-  
   if Assigned(Self.PowerCutCheckBox) then
     POWERCUT := Self.PowerCutCheckBox.IsChecked();
   
@@ -1273,7 +1214,6 @@ begin
   WriteINI(Username + ' Ironwood Script Settings', 'EnableWorldHopping', BoolToStr(ENABLEWORLDHOPPING, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
   WriteINI(Username + ' Ironwood Script Settings', 'WorldHopInterval', IntToStr(WORLDHOPINTERVAL), 'Configs/BAIronwoodSettings.ini');
   WriteINI(Username + ' Ironwood Script Settings', 'PreferPopulatedTrees', BoolToStr(PREFERPOPULATEDTREES, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
-  WriteINI(Username + ' Ironwood Script Settings', 'PickNests', BoolToStr(PICKNESTS, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
   WriteINI(Username + ' Ironwood Script Settings', 'PowerCut', BoolToStr(POWERCUT, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
   WriteINI(Username + ' Ironwood Antiban Manager', 'OverrideBreaks', BoolToStr(OVERRIDEBREAKS, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
   WriteINI(Username + ' Ironwood Antiban Manager', 'CustomBreakInterval', IntToStr(CUSTOMBREAKINTERVAL), 'Configs/BAIronwoodSettings.ini');
@@ -1344,7 +1284,6 @@ var
   SavedEnableWorldHopping: Boolean;
   SavedWorldHopInterval: Integer;
   SavedPreferPopulatedTrees: Boolean;
-  SavedPickNests: Boolean;
   SavedPowerCut: Boolean;
   SavedOverrideBreaks: Boolean;
   SavedCustomBreakInterval, SavedCustomBreakDuration: Integer;
@@ -1371,7 +1310,6 @@ begin
   SavedEnableWorldHopping := StrToBoolDef(ReadINI(Username + ' Ironwood Script Settings', 'EnableWorldHopping', 'Configs/BAIronwoodSettings.ini'), False);
   SavedWorldHopInterval := StrToIntDef(ReadINI(Username + ' Ironwood Script Settings', 'WorldHopInterval', 'Configs/BAIronwoodSettings.ini'), 45);
   SavedPreferPopulatedTrees := StrToBoolDef(ReadINI(Username + ' Ironwood Script Settings', 'PreferPopulatedTrees', 'Configs/BAIronwoodSettings.ini'), True);
-  SavedPickNests := StrToBoolDef(ReadINI(Username + ' Ironwood Script Settings', 'PickNests', 'Configs/BAIronwoodSettings.ini'), True);
   SavedPowerCut := StrToBoolDef(ReadINI(Username + ' Ironwood Script Settings', 'PowerCut', 'Configs/BAIronwoodSettings.ini'), False);
   SavedOverrideBreaks := StrToBoolDef(ReadINI(Username + ' Ironwood Antiban Manager', 'OverrideBreaks', 'Configs/BAIronwoodSettings.ini'), False);
   SavedCustomBreakInterval := StrToIntDef(ReadINI(Username + ' Ironwood Antiban Manager', 'CustomBreakInterval', 'Configs/BAIronwoodSettings.ini'), 60);
@@ -1410,24 +1348,14 @@ begin
     SetHint('Prefer chopping trees that other players are already at for forestry worlds.');
   end;
 
-  with Self.PickNestsCheckBox do
-  begin
-    Create(tab);
-    SetCaption('Pick Up Bird Nests');
-    SetLeft(TControl.AdjustToDPI(40));
-    SetTop(Self.PreferPopulatedTreesCheckBox.GetTop() + TControl.AdjustToDPI(25));
-    SetChecked(SavedPickNests);
-    SetHint('Pick up bird nests that fall from trees while chopping.');
-  end;
-
   with Self.PowerCutCheckBox do
   begin
     Create(tab);
     SetCaption('Power Cut (Drop Logs)');
     SetLeft(TControl.AdjustToDPI(40));
-    SetTop(Self.PickNestsCheckBox.GetTop() + TControl.AdjustToDPI(25));
+    SetTop(Self.PreferPopulatedTreesCheckBox.GetTop() + TControl.AdjustToDPI(25));
     SetChecked(SavedPowerCut);
-    SetHint('Drop logs instead of banking. Nests and clue scrolls will still be kept.');
+    SetHint('Drop logs instead of banking. Clue scrolls will still be kept.');
   end;
 
   with Self.EnableWebhooksCheckBox do

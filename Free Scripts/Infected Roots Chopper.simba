@@ -1,0 +1,1148 @@
+{$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := '48c08e37-258c-49c4-88be-a0098fb14948'}
+{$DEFINE SCRIPT_REVISION := '5'}
+{$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
+{$I SRL-B/osr.simba}
+{$I BashLib/osr.simba}
+
+{
+----------------------------------------------------------------------------------
+~~~ Need Support? Contact Me ~~~
+Discord Server: https://discord.gg/qsmKs5uKfR
+Discord ID: big.aussie
+Email: thebigaussie@proton.me
+Github: https://github.com/BigAussie
+----------------------------------------------------------------------------------
+}
+
+
+var
+  ENABLEWORLDHOPPING: Boolean = False;
+  WORLDHOPINTERVAL: Integer = 45;
+
+type
+  ERootsState = (
+    CHOP_ROOT,
+    WAIT_CHOPPING,
+    DROP_LOGS,
+    END_SCRIPT
+  );
+
+  TInfectedRootsChopper = record(TBaseScript)
+    State: ERootsState;
+    
+    InfectedRoots: array[0..5] of TRSObjectV2;
+    CurrentRootIndex: Int32;
+    RootSwitchTimer: TCountDown;
+    
+    IsChopping: Boolean;
+    LastXPTime: UInt64;
+    PrevXP: Int32;
+    
+    RootTimer: TCountDown;
+    
+    StartingTears: Int32;
+    TearsCollected: Int32;
+    LastImageClear: UInt64;
+    
+    StartXP: Int32;
+    LastReportTime: UInt64;
+    
+    NextWorldHopTime: UInt64;
+    WorldHopsCompleted: Int32;
+    LastWorldHopTime: Int64;
+    
+    ConsecutiveFailures: Int32;
+    MaxFailuresBeforeSwitch: Int32;
+  end;
+  
+procedure TAntiban.RandomChatTask(); override;
+begin
+  Exit;
+end;
+
+function TRSLogout.ClickLogout(attempts: Int32 = 5; tryTime: Int32 = 20000): Boolean; override;
+var
+  interval: UInt64;
+  i: Int32;
+begin
+  if (not Self.Open()) or (not Self.CloseWorldSwitcher()) then
+    Exit;
+
+  interval := tryTime div attempts;
+
+  for i := 1 to attempts do
+  begin
+    Self.ClearEnter();
+    if Self.GetButton(ERSLogoutButton.CLICK_HERE).Click() and WaitUntil(not RSClient.IsLoggedIn(), 500, Interval + SRL.NormalRange(-2000, 2000)) then
+      Exit(True);
+  end;
+end;     
+
+procedure TAntiban.Setup(); override;
+begin
+  Self.Skills := [ERSSkill.WOODCUTTING, ERSSkill.TOTAL];
+  Self.MinZoom := 15;
+  Self.MaxZoom := 60;
+
+  inherited;
+end;
+
+procedure TInfectedRootsChopper.SetupObjects();
+var
+  I: Int32;
+  RootCoords: TPointArray;
+begin
+  WriteLn('Setting up infected root objects...');
+
+  RootCoords := [[14264, 12362], [14248, 12390], [14292, 12394], [14164, 12390], [14144, 12362], [14120, 12366]];
+  
+  for I := 0 to 5 do
+  begin
+    with Self.InfectedRoots[I] do
+    begin
+      Walker := @Map.Walker;
+      Finder.Colors := [CTS2(3444448, 18, 0.07, 1.30)];
+      SetupEx([3, 3, 2], [[RootCoords[I].X, RootCoords[I].Y]]);
+      SetupUpText('Chop');
+    end;
+  end;
+
+  WriteLn('Objects setup complete');
+end;
+
+procedure TInfectedRootsChopper.Init(MaxActions: UInt32; MaxTime: UInt64); override;
+begin
+  inherited;
+  Map.SetupChunkEx([19,149, 21,147], [1]);
+
+  Self.SetupObjects();
+  Objects.Setup(Map.Objects(), @Map.Walker);
+  
+  Self.IsChopping := False;
+  Self.LastXPTime := 0;
+  Self.PrevXP := XPBar.Read();
+  Self.RootTimer.Setup(15000);
+  
+  Self.CurrentRootIndex := Random(6);
+  Self.RootSwitchTimer.Setup(Random(2 * 60 * 60 * 1000, 4 * 60 * 60 * 1000));
+  WriteLn('[INFO] Starting with root index: ', Self.CurrentRootIndex);
+  
+  Self.StartingTears := Inventory.CountItemStack('Demon tear');
+  Self.TearsCollected := 0;
+  Self.LastImageClear := GetTickCount();
+  WriteLn('[TEARS] Starting tears count: ', Self.StartingTears);
+  
+  Self.StartXP := XPBar.Read();
+  Self.LastReportTime := 0;
+  
+  Self.ConsecutiveFailures := 0;
+  Self.MaxFailuresBeforeSwitch := 3;
+  
+  Self.SetupWorldHopping();
+end;
+
+procedure TInfectedRootsChopper.SwitchToNewRoot();
+var
+  OldIndex, NewIndex: Int32;
+begin
+  OldIndex := Self.CurrentRootIndex;
+  
+  repeat
+    NewIndex := Random(6);
+  until NewIndex <> OldIndex;
+  
+  Self.CurrentRootIndex := NewIndex;
+  Self.RootSwitchTimer.Restart(Random(2 * 60 * 60 * 1000, 4 * 60 * 60 * 1000)); // 2-4 hours to pick a new rnadom root
+  Self.ConsecutiveFailures := 0;
+  
+  WriteLn('[INFO] Switched from root ', OldIndex, ' to root ', NewIndex);
+end;
+
+function TInfectedRootsChopper.GetRandomWorldHopTime(): UInt64;
+var
+  BaseInterval: UInt64;
+  RandomVariation: Integer;
+begin
+  BaseInterval := WORLDHOPINTERVAL * 60000;
+  
+  RandomVariation := Random(-10, 10);
+  Result := BaseInterval + Round(BaseInterval * (RandomVariation / 100.0));
+  
+  WriteLn('[WORLDHOP] Next world hop scheduled in: ' + SRL.MsToTime(Result, Time_Short) +
+          ' (Base: ' + IntToStr(WORLDHOPINTERVAL) + 'min, Variation: ' + IntToStr(RandomVariation) + '%)');
+end;
+
+procedure TInfectedRootsChopper.SetupWorldHopping();
+begin
+  WriteLn('[WORLDHOP] Setting up world hopping...');
+  
+  if not ENABLEWORLDHOPPING then
+  begin
+    WriteLn('[WORLDHOP] World hopping is disabled.');
+    Exit;
+  end;
+  
+  if Length(Login.GetPlayer().Worlds) < 2 then
+  begin
+    WriteLn('[WORLDHOP] ERROR: World hopping is enabled but you have less than 2 worlds configured!');
+    WriteLn('[WORLDHOP] Please configure at least 2 worlds in your player setup or disable world hopping.');
+    Logout.ClickLogout();
+    TerminateScript();
+  end;
+  
+  Self.NextWorldHopTime := GetTickCount() + Self.GetRandomWorldHopTime();
+  WriteLn('[WORLDHOP] World hopping enabled. Next hop in: ' + SRL.MsToTime(Self.NextWorldHopTime - GetTickCount(), Time_Short));
+end;
+
+function TInfectedRootsChopper.ShouldHopWorld(): Boolean;
+begin
+  if not ENABLEWORLDHOPPING then
+    Exit(False);
+  
+  if GetTickCount() < Self.NextWorldHopTime then
+    Exit(False);
+  
+  Result := True;
+end;
+
+procedure TInfectedRootsChopper.DoWorldHop();
+var
+  currentWorld: Int32;
+  playerWorlds: TIntegerArray;
+  targetWorld: Int32;
+  availableWorlds: TIntegerArray;
+  i: Int32;
+begin
+  if not ENABLEWORLDHOPPING then
+    Exit;
+  
+  WriteLn('[WORLDHOP] Time to hop worlds!');
+  
+  playerWorlds := Login.GetPlayer().Worlds;
+  
+  if not Logout.Open() then
+  begin
+    WriteLn('[WORLDHOP] Failed to open logout menu');
+    Self.NextWorldHopTime := GetTickCount() + 120000;
+    Exit;
+  end;
+  
+  if not Logout.IsWorldSwitcherOpen() then
+    Logout.GetButton(ERSLogoutButton.WORLD_SWITCHER).Click(MOUSE_LEFT);
+  WaitUntil((currentWorld := WorldHopper.GetCurrentWorld()) <> 0, 65, 20000);
+  
+  WriteLn('[WORLDHOP] Current world: ' + ToStr(currentWorld));
+  WriteLn('[WORLDHOP] Available worlds: ' + ToStr(playerWorlds));
+  
+  availableWorlds := [];
+  for i := 0 to High(playerWorlds) do
+  begin
+    if playerWorlds[i] <> currentWorld then
+      availableWorlds += playerWorlds[i];
+  end;
+  
+  if Length(availableWorlds) = 0 then
+  begin
+    WriteLn('[WORLDHOP] No other worlds available to hop to, disabling world hopping!');
+    ENABLEWORLDHOPPING := False;
+    Exit;
+  end;
+  
+  targetWorld := availableWorlds[Random(Length(availableWorlds))];
+  WriteLn('[WORLDHOP] Randomly selected target world: ' + ToStr(targetWorld));
+  
+  if WorldHopper.Hop([targetWorld]) then
+  begin
+    WriteLn('[WORLDHOP] Successfully hopped to world ' + ToStr(targetWorld) + '!');
+    
+    Inc(Self.WorldHopsCompleted);
+    Self.LastWorldHopTime := GetTickCount();
+    
+    Self.NextWorldHopTime := GetTickCount() + Self.GetRandomWorldHopTime();
+    WriteLn('[WORLDHOP] Next world hop in: ' + SRL.MsToTime(Self.NextWorldHopTime - GetTickCount(), Time_Short));
+  end
+  else
+  begin
+    WriteLn('[WORLDHOP] World hop to ' + ToStr(targetWorld) + ' failed, trying again in 2 minutes');
+    Self.NextWorldHopTime := GetTickCount() + 120000;
+  end;
+end;
+
+function TInfectedRootsChopper.ChopRoot(): Boolean;
+var
+  TargetRoot: TRSObjectV2;
+  TargetCoord: TPoint;
+begin
+  Result := False;
+  
+  if Self.RootSwitchTimer.IsFinished() then
+  begin
+    Self.SwitchToNewRoot();
+  end;
+  
+  if Self.ConsecutiveFailures >= Self.MaxFailuresBeforeSwitch then
+  begin
+    WriteLn('[FAILSAFE] Too many consecutive failures (', Self.ConsecutiveFailures, '), switching to different root');
+    Self.SwitchToNewRoot();
+    Self.ConsecutiveFailures := 0;
+  end;
+  
+  WriteLn('[INFO] Attempting to chop infected root at index: ', Self.CurrentRootIndex);
+  
+  TargetRoot := Self.InfectedRoots[Self.CurrentRootIndex];
+  
+  if TargetRoot.IsVisible() then
+  begin
+    if TargetRoot.Click() then
+    begin
+      WriteLn('[SUCCESS] Clicked targeted root #', Self.CurrentRootIndex, ', waiting for XP...');
+      
+      if XPBar.WaitXP(12000) then
+      begin
+        WriteLn('[SUCCESS] Started chopping infected root!');
+        Self.IsChopping := True;
+        Self.LastXPTime := GetTickCount();
+        Self.PrevXP := XPBar.Read();
+        Self.RootTimer.Restart();
+        Self.ConsecutiveFailures := 0;
+        WL.Activity.Restart();
+        Result := True;
+      end
+      else
+      begin
+        WriteLn('[WARN] Clicked root but no XP gained within 12 seconds');
+        Inc(Self.ConsecutiveFailures);
+      end;
+    end
+    else
+    begin
+      WriteLn('[WARN] Failed to click visible root');
+      Inc(Self.ConsecutiveFailures);
+      
+      TargetCoord := TargetRoot.Coordinates[0];
+      WriteLn('[FAILSAFE] Attempting to walk closer to root at [', TargetCoord.X, ', ', TargetCoord.Y, ']');
+      
+      if Map.Walker.WalkBlind(TargetCoord, 20) then
+      begin
+        WriteLn('[FAILSAFE] Walked closer to root, waiting before retry...');
+        Wait(1000, 2000);
+      end
+    end;
+  end
+  else
+  begin
+    TargetCoord := TargetRoot.Coordinates[0];
+    WriteLn('[INFO] Target root #', Self.CurrentRootIndex, ' not visible, walking blind to [', TargetCoord.X, ', ', TargetCoord.Y, ']');
+    WL.Activity.Restart();
+    
+    if Map.Walker.WalkBlind(TargetCoord, 30) then
+    begin
+      WriteLn('[SUCCESS] Walked blind to root location');
+    end
+    else
+    begin
+      WriteLn('[WARN] Failed to walk blind to root');
+      Inc(Self.ConsecutiveFailures);
+    end;
+  end;
+end;
+
+function TInfectedRootsChopper.IsStillChopping(): Boolean;
+var
+  CurrentXP: Int32;
+  TimeSinceXP: UInt64;
+  IsAnimating: Boolean;
+  TimeoutMS: Int32;
+begin
+  CurrentXP := XPBar.Read();
+  if CurrentXP > Self.PrevXP then
+  begin
+    Self.PrevXP := CurrentXP;
+    Self.LastXPTime := GetTickCount();
+    Self.RootTimer.Restart();
+    WL.Activity.Restart();
+    Result := True;
+    Exit;
+  end;
+  
+  if Self.RootTimer.IsFinished() or Inventory.IsFull() then
+  begin
+    Self.IsChopping := False;
+    Result := False;
+    Exit;
+  end;
+  
+  IsAnimating := SRL.IsAnimating(MainScreen.GetPlayerBox(), MainScreen.NormalizeDistance(100), 350, 3);
+  
+  if IsAnimating then
+    TimeoutMS := 20000
+  else
+    TimeoutMS := 4000;
+
+  TimeSinceXP := GetTickCount() - Self.LastXPTime;
+  if TimeSinceXP > TimeoutMS then
+  begin
+    WriteLn('[INFO] No XP for ', TimeoutMS div 1000, ' seconds (Animating: ', IsAnimating, ')');
+    Self.IsChopping := False;
+    Result := False;
+    Exit;
+  end;
+  
+  Result := True;
+end;
+
+function TInfectedRootsChopper.WaitChopping(): Boolean;
+begin
+  while Self.IsStillChopping() do
+  begin
+    if Minimap.EnableSpec(100) then
+      exit;
+
+    Self.DoAntiban();
+    
+    Self.UpdateTearsCount();
+    
+    if (GetTimeRunning() mod 1000) < 500 then
+      Self.DrawStatusDisplay();
+
+    if (GetTimeRunning() mod 10000) < 1000 then
+      Self.Report();
+  end;
+  
+  Result := True;
+end;
+
+function TInfectedRootsChopper.DropLogs(): Boolean;
+var
+  Logs: TRSItem;
+begin
+  Logs := 'Logs';
+  
+  if not Inventory.ContainsItem(Logs) then
+  begin
+    WriteLn('[INFO] No logs to drop');
+    Exit(True);
+  end;
+  
+  WriteLn('[INFO] Dropping logs...');
+  Result := Inventory.ShiftDrop([Logs], Inventory.RandomPattern());
+  Self.IsChopping := False;
+  
+  if Result then
+    WriteLn('[SUCCESS] Dropped all logs')
+  else
+    WriteLn('[WARN] Failed to drop logs');
+end;
+
+function TInfectedRootsChopper.ShouldDropLogs(): Boolean;
+begin
+  if Inventory.IsFull() then
+    Exit(True);
+  
+  if Inventory.ContainsItem('Logs') and (Random(5) = 0) then
+    Exit(True);
+  
+  Result := False;
+end;
+
+function TInfectedRootsChopper.GetState(): ERootsState;
+begin
+  if WL.Activity.IsFinished() then
+    Exit(ERootsState.END_SCRIPT);
+  
+  // If we need to drop logs
+  if Self.ShouldDropLogs() then
+  begin
+    Self.IsChopping := False;
+    Exit(ERootsState.DROP_LOGS);
+  end;
+  
+  // If we're currently chopping
+  if Self.IsChopping then
+    Exit(ERootsState.WAIT_CHOPPING);
+  
+  // chop root
+  Exit(ERootsState.CHOP_ROOT);
+end;
+
+function TInfectedRootsChopper.GetCurrentActivity(): String;
+begin
+  case Self.State of
+    ERootsState.CHOP_ROOT: Result := 'Finding Root';
+    ERootsState.WAIT_CHOPPING: Result := 'Chopping Root';
+    ERootsState.DROP_LOGS: Result := 'Dropping Logs';
+    ERootsState.END_SCRIPT: Result := 'Ending';
+    else Result := 'Unknown';
+  end;
+end;
+
+procedure TInfectedRootsChopper.UpdateTearsCount();
+var
+  CurrentTotalTears: Int32;
+  NewSessionTears: Int32;
+begin 
+  CurrentTotalTears := Inventory.CountItemStack('Demon tear');
+  NewSessionTears := CurrentTotalTears - Self.StartingTears;
+  
+  Self.TearsCollected := NewSessionTears;
+end;
+
+procedure TInfectedRootsChopper.DrawUIOverlay(drawBox: TBox; title, status, runtime, tears: String);
+var
+  yPos: Int32;
+begin
+  {$IFNDEF SRL_DISABLE_REMOTEINPUT}
+  RSClient.Image().DrawBoxFilled(drawBox, False, $2D2D30);
+  RSClient.Image().DrawBoxFilled(drawBox.Expand(1), False, $FFFFFF);
+  RSClient.Image().DrawBoxFilled(drawBox, False, $2D2D30);
+
+  RSClient.Image().SetFontName('Arial');
+  RSClient.Image().SetFontSize(10);
+
+  yPos := drawBox.Y1 + 6;
+
+  RSClient.Image().SetFontSize(13);
+  RSClient.Image().DrawText(title, Point(drawBox.X1 + 3, yPos), $00D4FF);
+  yPos += 14;
+
+  RSClient.Image().SetFontSize(11);
+  RSClient.Image().DrawText('Status: ' + status, Point(drawBox.X1 + 3, yPos), $FFFFFF);
+  yPos += 12;
+  RSClient.Image().DrawText('Runtime: ' + runtime, Point(drawBox.X1 + 3, yPos), $FFFFFF);
+  yPos += 12;
+  RSClient.Image().DrawText('Tears: ' + tears, Point(drawBox.X1 + 3, yPos), $FFFFFF);
+  {$ENDIF}
+end;
+
+procedure TInfectedRootsChopper.DrawStatusDisplay();
+var
+  statusBox: TBox;
+  currentActivity, runtime, tears: String;
+begin
+  statusBox := Box(10, 260, 150, 320);
+
+  currentActivity := Self.GetCurrentActivity();
+  runtime := SRL.MsToTime(GetTimeRunning(), Time_Short);
+  tears := ToStr(Self.TearsCollected);
+
+  Self.DrawUIOverlay(statusBox, 'Infected Roots Chopper', currentActivity, runtime, tears);
+end;
+
+procedure TInfectedRootsChopper.Report();
+var
+  Runtime: Int64;
+  CurrentXP, XPGained: Int32;
+  XPPerHour, TearsPerHour: Int32;
+  CurrentTime: UInt64;
+begin
+  CurrentTime := GetTickCount();
+  
+  if (CurrentTime - Self.LastReportTime) < 10000 then
+    Exit;
+  
+  Self.LastReportTime := CurrentTime;
+  
+  Runtime := GetTimeRunning();
+  CurrentXP := XPBar.Read();
+  XPGained := CurrentXP - Self.StartXP;
+  
+  if Runtime > 0 then
+  begin
+    XPPerHour := Round(XPGained / (Runtime / 3600000));
+    TearsPerHour := Round(Self.TearsCollected / (Runtime / 3600000));
+  end
+  else
+  begin
+    XPPerHour := 0;
+    TearsPerHour := 0;
+  end;
+  
+  WriteLn('========================================');
+  WriteLn('   Infected Roots Chopper');
+  WriteLn('========================================');
+  WriteLn('   Runtime: ' + SRL.MsToTime(Runtime, Time_Short));
+  WriteLn('   XP Gained: ' + ToStr(XPGained));
+  WriteLn('   XP/Hour: ' + ToStr(XPPerHour));
+  WriteLn('   Tears Collected: ' + ToStr(Self.TearsCollected));
+  WriteLn('   Tears/Hour: ' + ToStr(TearsPerHour));
+  if ENABLEWORLDHOPPING then
+  begin
+    WriteLn('   World Hops: ' + ToStr(Self.WorldHopsCompleted));
+    WriteLn('   Next Hop: ' + SRL.MsToTime(Self.NextWorldHopTime - GetTickCount(), Time_Short));
+  end;
+  WriteLn('========================================');
+end;
+
+procedure TInfectedRootsChopper.Run(MaxActions: UInt32; MaxTime: UInt64);
+begin
+  Self.Init(MaxActions, MaxTime);
+  
+  try
+    if RSClient.RemoteInput.IsSetup() then
+      RSClient.Image().Clear();
+  except
+  end;
+  
+  Self.DrawStatusDisplay();
+  
+  repeat
+    if Self.ShouldHopWorld() then
+    begin
+      Self.DoWorldHop();
+      Wait(2000, 4000);
+    end;
+    
+    Self.State := Self.GetState();
+    Self.SetAction(ToStr(Self.State));
+    
+    case Self.State of
+      ERootsState.CHOP_ROOT: Self.ChopRoot();
+      ERootsState.WAIT_CHOPPING: Self.WaitChopping();
+      ERootsState.DROP_LOGS: Self.DropLogs();
+      ERootsState.END_SCRIPT: Break;
+    end;
+    
+    Self.UpdateTearsCount();
+    
+    if (GetTickCount() - Self.LastImageClear) >= 30000 then
+    begin
+      try
+        RSClient.Image.Clear;
+      except
+      end;
+      Self.DrawStatusDisplay();
+      Self.LastImageClear := GetTickCount();
+    end;
+    
+    if (GetTimeRunning() mod 1000) < 500 then
+      Self.DrawStatusDisplay();
+    
+    if (GetTimeRunning() mod 10000) < 1000 then
+      Self.Report();
+    
+  until Self.ShouldStop();
+  
+  Self.Report();
+end;
+
+{$IFDEF SCRIPT_GUI}
+const
+  IR_GUI_NAV       = $F0EBE4;
+  IR_GUI_BG        = $FFFFFF;
+  IR_GUI_STATUS    = $F7F4F1;
+  IR_GUI_DIVIDER   = $D4C9BC;
+  IR_GUI_CARD      = $F7F4F1;
+  IR_GUI_ACCENT    = $E0C9AE;
+  IR_GUI_NAV_IDLE  = $E7DED4;
+  IR_GUI_START     = $C9B094;
+  IR_GUI_TEXT      = $1C1C1E;
+  IR_GUI_MUTED     = $6B6B70;
+  IR_GUI_W         = 1120;
+  IR_GUI_H         = 700;
+  IR_GUI_NAV_W     = 190;
+  IR_GUI_STATUS_H  = 56;
+  IR_GUI_BTN_H     = 42;
+  IR_GUI_EDIT_W    = 260;
+  IR_GUI_COL2      = 308;
+  IR_GUI_BOTTOM_INSET = 34;
+
+type
+  TConfig = record(TScriptForm)
+    NavPanel, ContentPanel, StatusPanel, DividerPanel, StatusDivider, StatusPad: TPanel;
+    BrandLabel: TLabel;
+    ScriptNav, AccountsNav, AntibanNav: TImage;
+    StartChip: TImage;
+    ActiveNav: TImage;
+    ScriptSection, AccountsSection, AntibanSection: TPanel;
+
+    EnableWorldHoppingCheckBox: TLabeledCheckBox;
+    WorldHopIntervalInput, MaxActionsInput, MaxTimeInput: TLabeledEdit;
+  end;
+
+function TConfig.MakePanel(
+  parent: TWinControl;
+  left, top, width, height, color: Int32
+): TPanel;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetWidth(TControl.AdjustToDPI(width));
+  Result.SetHeight(TControl.AdjustToDPI(height));
+  Result.SetColor(color);
+  Result.SetBevelOuter(bvNone);
+end;
+
+procedure TConfig.PaintRoundChip(
+  img: TImage;
+  labelText: String;
+  fill, parentBg: Int32;
+  selected: Boolean = False;
+  centered: Boolean = False
+);
+var
+  bmp: TBitmap;
+  c: TCanvas;
+  w, h, r, tw, th, tx: Int32;
+begin
+  w := img.GetWidth();
+  h := img.GetHeight();
+  if (w <= 0) or (h <= 0) then
+    Exit;
+
+  r := TControl.AdjustToDPI(6);
+  if r * 2 > h then
+    r := h div 2;
+  if r * 2 > w then
+    r := w div 2;
+
+  bmp := img.GetPicture().GetBitmap();
+  bmp.SetWidth(w);
+  bmp.SetHeight(h);
+  c := bmp.GetCanvas();
+
+  c.GetBrush().SetColor(parentBg);
+  c.GetPen().SetColor(parentBg);
+  c.FillRect(0, 0, w, h);
+
+  c.GetBrush().SetColor(fill);
+  c.GetPen().SetColor(fill);
+  c.RoundRect(0, 0, w - 1, h - 1, r * 2, r * 2);
+
+  c.GetBrush().SetColor(fill);
+  c.GetFont().SetColor(IR_GUI_TEXT);
+  c.GetFont().SetSize(11);
+  if selected then
+    c.GetFont().SetStyle([fsBold])
+  else
+    c.GetFont().SetStyle([]);
+
+  tw := c.TextWidth(labelText);
+  th := c.TextHeight(labelText);
+  if centered then
+    tx := (w - tw) div 2
+  else
+    tx := TControl.AdjustToDPI(16);
+  c.TextOut(tx, (h - th) div 2, labelText);
+
+  img.SetHint(labelText);
+  img.SetShowHint(False);
+  img.Invalidate();
+end;
+
+function TConfig.MakeNavItem(
+  parent: TWinControl;
+  labelText: String;
+  left, top: Int32;
+  selected: Boolean = False
+): TImage;
+var
+  fill: Int32;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetWidth(TControl.AdjustToDPI(IR_GUI_NAV_W - 28));
+  Result.SetHeight(TControl.AdjustToDPI(IR_GUI_BTN_H));
+  Result.SetCursor(crHandPoint);
+
+  if selected then
+    fill := IR_GUI_ACCENT
+  else
+    fill := IR_GUI_NAV_IDLE;
+
+  Self.PaintRoundChip(Result, labelText, fill, IR_GUI_NAV, selected);
+end;
+
+function TConfig.MakeLabel(
+  parent: TWinControl;
+  labelText: String;
+  left, top, fontSize, fontColor: Int32;
+  bold: Boolean = False
+): TLabel;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetCaption(labelText);
+  Result.GetFont().SetSize(fontSize);
+  Result.GetFont().SetColor(fontColor);
+  if bold then
+    Result.GetFont().SetStyle([fsBold]);
+end;
+
+procedure TConfig.AddCheck(
+  parent: TWinControl;
+  var box: TLabeledCheckBox;
+  ctrlName, labelText: String;
+  left, top: Int32;
+  checked: Boolean
+);
+begin
+  box.Create(parent);
+  box.SetLeft(TControl.AdjustToDPI(left));
+  box.SetTop(TControl.AdjustToDPI(top));
+  box.SetName(ctrlName);
+  box.SetFontColor(IR_GUI_TEXT);
+  box.SetCaption(labelText);
+  if checked then
+    box.CheckBox.SetChecked(True);
+end;
+
+procedure TConfig.AddEdit(
+  parent: TWinControl;
+  var box: TLabeledEdit;
+  ctrlName, labelText, text: String;
+  left, top, width: Int32
+);
+begin
+  box.Create(parent);
+  box.SetLeft(TControl.AdjustToDPI(left));
+  box.SetTop(TControl.AdjustToDPI(top));
+  box.SetWidth(TControl.AdjustToDPI(width));
+  box.SetName(ctrlName);
+  box.SetCaption(labelText);
+  box.SetText(text);
+  box.SetFontColor(IR_GUI_TEXT);
+end;
+
+procedure TConfig.AddHeader(parent: TPanel; titleText, subtitleText: String);
+var
+  header: TPanel;
+  headerW: Int32;
+begin
+  headerW := parent.GetWidth();
+  if headerW <= 0 then
+    headerW := TControl.AdjustToDPI(IR_GUI_W - IR_GUI_NAV_W - 2);
+
+  header := Self.MakePanel(parent, 0, 0, 1, 88, IR_GUI_CARD);
+  header.SetWidth(headerW);
+  header.SetHeight(TControl.AdjustToDPI(88));
+  Self.MakeLabel(header, titleText, 24, 18, 18, IR_GUI_TEXT, True);
+  Self.MakeLabel(header, subtitleText, 24, 52, 10, IR_GUI_MUTED, False);
+end;
+
+procedure TConfig.StyleNav(selected: TImage);
+begin
+  Self.ActiveNav := selected;
+  Self.PaintRoundChip(Self.ScriptNav, Self.ScriptNav.GetHint(), IR_GUI_NAV_IDLE, IR_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AccountsNav, Self.AccountsNav.GetHint(), IR_GUI_NAV_IDLE, IR_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AntibanNav, Self.AntibanNav.GetHint(), IR_GUI_NAV_IDLE, IR_GUI_NAV, False);
+  Self.PaintRoundChip(selected, selected.GetHint(), IR_GUI_ACCENT, IR_GUI_NAV, True);
+end;
+
+procedure TConfig.ShowSection(section: TPanel; selected: TImage);
+begin
+  Self.ScriptSection.SetVisible(False);
+  Self.AccountsSection.SetVisible(False);
+  Self.AntibanSection.SetVisible(False);
+  section.SetVisible(True);
+  Self.StyleNav(selected);
+end;
+
+procedure TConfig.ShowScript({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.ScriptSection, Self.ScriptNav);
+end;
+
+procedure TConfig.ShowAccounts({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AccountsSection, Self.AccountsNav);
+end;
+
+procedure TConfig.ShowAntiban({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AntibanSection, Self.AntibanNav);
+end;
+
+procedure TConfig.WorldHoppingCheckboxChanged(Sender: TObject);
+begin
+  if Sender = nil then;
+  Self.WorldHopIntervalInput.SetVisible(Self.EnableWorldHoppingCheckBox.IsChecked());
+end;
+
+procedure TConfig.StartScript(Sender: TObject); override;
+var
+  Username: String;
+begin
+  if Sender = nil then;
+
+  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
+    Username := 'NoUserNameSelected'
+  else
+    Username := Login.Players[Login.PlayerIndex].User;
+
+  ENABLEWORLDHOPPING := Self.EnableWorldHoppingCheckBox.IsChecked();
+  WORLDHOPINTERVAL := StrToIntDef(Self.WorldHopIntervalInput.GetText(), 45);
+
+  WLSettings.Put('max_actions', StrToIntDef(Self.MaxActionsInput.GetText(), 0));
+  WLSettings.Put('max_time', StrToIntDef(Self.MaxTimeInput.GetText(), 0));
+  WLSettings.SaveConfig();
+
+  WriteINI(Username + ' Infected Roots Settings', 'EnableWorldHopping', BoolToStr(ENABLEWORLDHOPPING, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI(Username + ' Infected Roots Settings', 'WorldHopInterval', IntToStr(WORLDHOPINTERVAL), 'Configs/BASettings.ini');
+
+  try
+    Self._WarmBuildCache();
+  except
+  end;
+  Self.Form.SetOnClose(nil);
+  Self.Form.Close();
+end;
+
+procedure TConfig.BuildScriptSection();
+var
+  hint: TLabel;
+begin
+  Self.AddHeader(Self.ScriptSection, 'Action', 'Chop infected roots in the Ruins of Mokhaiotl.');
+
+  hint := Self.MakeLabel(Self.ScriptSection, 'Chops infected roots, drops logs, and rotates roots every 2-4 hours.', 24, 110, 10, IR_GUI_MUTED, False);
+  hint.SetWidth(TControl.AdjustToDPI(820));
+  hint := Self.MakeLabel(Self.ScriptSection, 'Configure your account and antiban options in the other tabs, then press Start.', 24, 140, 10, IR_GUI_MUTED, False);
+  hint.SetWidth(TControl.AdjustToDPI(820));
+end;
+
+procedure TConfig.BuildAccountsSection();
+var
+  am: TPanel;
+  selectorPanel, userPanel, passPanel, pinPanel, worldsPanel: TPanel;
+  addBtn, deleteBtn, generateBtn: TButton;
+  leftColW, passW, pinW, worldsLeft, btnW, btnGap: Int32;
+begin
+  Self.AddHeader(Self.AccountsSection, 'Accounts', 'Login account and hop worlds list.');
+
+  am := Self.CreateAccountManager(Self.AccountsSection);
+  am.SetLeft(TControl.AdjustToDPI(16));
+  am.SetTop(TControl.AdjustToDPI(100));
+  am.SetColor(IR_GUI_BG);
+
+  leftColW := TControl.AdjustToDPI(280);
+  passW := Floor(leftColW * 0.6);
+  pinW := Floor(leftColW * 0.3);
+
+  selectorPanel := Self.Form.GetChild('am_selector_panel');
+  userPanel := Self.Form.GetChild('am_user_panel');
+  passPanel := Self.Form.GetChild('am_pass_panel');
+  pinPanel := Self.Form.GetChild('am_pin_panel');
+  worldsPanel := Self.Form.GetChild('am_worlds_panel');
+
+  if selectorPanel <> nil then
+    selectorPanel.SetWidth(leftColW);
+  if userPanel <> nil then
+    userPanel.SetWidth(leftColW);
+  if passPanel <> nil then
+    passPanel.SetWidth(passW);
+  if (pinPanel <> nil) and (selectorPanel <> nil) then
+  begin
+    pinPanel.SetWidth(pinW);
+    pinPanel.SetLeft(selectorPanel.GetLeft() + leftColW - pinW);
+  end;
+
+  if (worldsPanel <> nil) and (selectorPanel <> nil) then
+  begin
+    worldsLeft := selectorPanel.GetLeft() + leftColW + TControl.AdjustToDPI(48);
+    worldsPanel.SetLeft(worldsLeft);
+
+    addBtn := Self.Form.GetChild('am_add_button');
+    deleteBtn := Self.Form.GetChild('am_delete_button');
+    generateBtn := Self.Form.GetChild('am_generate_worlds_button');
+    btnGap := TControl.AdjustToDPI(8);
+    btnW := Floor((worldsPanel.GetWidth() - btnGap) / 2);
+
+    // Match Generate/Add/Delete to the worlds box edges (tops come from BashLib).
+    if generateBtn <> nil then
+    begin
+      generateBtn.SetLeft(worldsLeft);
+      generateBtn.SetWidth(worldsPanel.GetWidth());
+    end;
+    if addBtn <> nil then
+    begin
+      addBtn.SetLeft(worldsLeft);
+      addBtn.SetWidth(btnW);
+    end;
+    if deleteBtn <> nil then
+    begin
+      deleteBtn.SetLeft(worldsLeft + worldsPanel.GetWidth() - btnW - TControl.AdjustToDPI(1));
+      deleteBtn.SetWidth(btnW);
+    end;
+  end;
+end;
+
+procedure TConfig.BuildAntibanSection(
+  SavedEnableWorldHopping: Boolean;
+  SavedWorldHopInterval, SavedMaxActions, SavedMaxTime: Integer
+);
+begin
+  Self.AddHeader(Self.AntibanSection, 'Antiban', 'World hopping and session limits.');
+
+  Self.AddEdit(Self.AntibanSection, Self.MaxActionsInput, 'le_ir_maxactions', 'Max actions (0 = unlimited)', IntToStr(SavedMaxActions), 24, 110, IR_GUI_EDIT_W);
+  Self.MaxActionsInput.Edit.SetOnKeyPress(@Self.MaxActionsInput.Edit.NumberField);
+  Self.AddEdit(Self.AntibanSection, Self.MaxTimeInput, 'le_ir_maxtime', 'Max time minutes (0 = unlimited)', IntToStr(SavedMaxTime), IR_GUI_COL2, 110, IR_GUI_EDIT_W);
+  Self.MaxTimeInput.Edit.SetOnKeyPress(@Self.MaxTimeInput.Edit.NumberField);
+
+  Self.AddCheck(Self.AntibanSection, Self.EnableWorldHoppingCheckBox, 'cb_ir_worldhop', 'Enable world hopping', 24, 200, SavedEnableWorldHopping);
+  Self.EnableWorldHoppingCheckBox.CheckBox.SetOnChange(@Self.WorldHoppingCheckboxChanged);
+
+  Self.AddEdit(Self.AntibanSection, Self.WorldHopIntervalInput, 'le_ir_hop_interval', 'World hop interval (minutes)', IntToStr(SavedWorldHopInterval), 24, 240, IR_GUI_EDIT_W);
+  Self.WorldHopIntervalInput.Edit.SetOnKeyPress(@Self.WorldHopIntervalInput.Edit.NumberField);
+end;
+
+procedure TConfig.BuildShell(
+  SavedEnableWorldHopping: Boolean;
+  SavedWorldHopInterval, SavedMaxActions, SavedMaxTime: Integer
+);
+var
+  tab: TTabSheet;
+  contentH, startW, startH, shellW, shellH, statusTop, statusH, mainLeft, mainW, navW, bottomInset: Int32;
+begin
+  Self.AddTab('Infected Roots Chopper');
+  tab := Self.Tabs[High(Self.Tabs)];
+
+  Self.Start.SetAlign(alNone);
+  Self.Start.SetVisible(False);
+  Self.Start.SetHeight(0);
+  Self.Start.SetWidth(0);
+
+  bottomInset := TControl.AdjustToDPI(IR_GUI_BOTTOM_INSET);
+  navW := TControl.AdjustToDPI(IR_GUI_NAV_W);
+  statusH := TControl.AdjustToDPI(IR_GUI_STATUS_H);
+  shellW := Self.Size.X;
+  shellH := Self.Size.Y;
+  mainLeft := navW + TControl.AdjustToDPI(2);
+  mainW := shellW - mainLeft;
+  statusTop := shellH - statusH - bottomInset;
+  contentH := statusTop;
+  startW := TControl.AdjustToDPI(132);
+  startH := TControl.AdjustToDPI(IR_GUI_BTN_H);
+
+  Self.NavPanel.Create(tab);
+  Self.NavPanel.SetLeft(0);
+  Self.NavPanel.SetTop(0);
+  Self.NavPanel.SetWidth(navW);
+  Self.NavPanel.SetHeight(shellH);
+  Self.NavPanel.SetColor(IR_GUI_NAV);
+  Self.NavPanel.SetBevelOuter(bvNone);
+
+  Self.DividerPanel.Create(tab);
+  Self.DividerPanel.SetLeft(navW);
+  Self.DividerPanel.SetTop(0);
+  Self.DividerPanel.SetWidth(TControl.AdjustToDPI(2));
+  Self.DividerPanel.SetHeight(shellH);
+  Self.DividerPanel.SetColor(IR_GUI_DIVIDER);
+  Self.DividerPanel.SetBevelOuter(bvNone);
+
+  Self.ContentPanel.Create(tab);
+  Self.ContentPanel.SetLeft(mainLeft);
+  Self.ContentPanel.SetTop(0);
+  Self.ContentPanel.SetWidth(mainW);
+  Self.ContentPanel.SetHeight(contentH);
+  Self.ContentPanel.SetColor(IR_GUI_BG);
+  Self.ContentPanel.SetBevelOuter(bvNone);
+
+  Self.StatusDivider.Create(tab);
+  Self.StatusDivider.SetLeft(mainLeft);
+  Self.StatusDivider.SetTop(statusTop);
+  Self.StatusDivider.SetWidth(mainW);
+  Self.StatusDivider.SetHeight(TControl.AdjustToDPI(2));
+  Self.StatusDivider.SetColor(IR_GUI_DIVIDER);
+  Self.StatusDivider.SetBevelOuter(bvNone);
+
+  Self.StatusPanel.Create(tab);
+  Self.StatusPanel.SetLeft(mainLeft);
+  Self.StatusPanel.SetTop(statusTop + Self.StatusDivider.GetHeight());
+  Self.StatusPanel.SetWidth(mainW);
+  Self.StatusPanel.SetHeight(statusH - Self.StatusDivider.GetHeight());
+  Self.StatusPanel.SetColor(IR_GUI_STATUS);
+  Self.StatusPanel.SetBevelOuter(bvNone);
+
+  Self.StatusPad.Create(tab);
+  Self.StatusPad.SetLeft(mainLeft);
+  Self.StatusPad.SetTop(Self.StatusPanel.GetTop() + Self.StatusPanel.GetHeight());
+  Self.StatusPad.SetWidth(mainW);
+  Self.StatusPad.SetHeight(shellH - Self.StatusPad.GetTop());
+  Self.StatusPad.SetColor(IR_GUI_STATUS);
+  Self.StatusPad.SetBevelOuter(bvNone);
+
+  Self.BrandLabel := Self.MakeLabel(Self.NavPanel, 'Infected Roots', 16, 28, 14, IR_GUI_TEXT, True);
+  Self.MakeLabel(Self.NavPanel, 'BigAussie', 16, 54, 9, IR_GUI_MUTED, False);
+
+  Self.ScriptNav := Self.MakeNavItem(Self.NavPanel, 'Action', 12, 100, True);
+  Self.AccountsNav := Self.MakeNavItem(Self.NavPanel, 'Accounts', 12, 152);
+  Self.AntibanNav := Self.MakeNavItem(Self.NavPanel, 'Antiban', 12, 204);
+
+  Self.ScriptSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, IR_GUI_BG);
+  Self.AccountsSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, IR_GUI_BG);
+  Self.AntibanSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, IR_GUI_BG);
+
+  Self.ScriptSection.SetWidth(mainW);
+  Self.ScriptSection.SetHeight(contentH);
+  Self.AccountsSection.SetWidth(mainW);
+  Self.AccountsSection.SetHeight(contentH);
+  Self.AntibanSection.SetWidth(mainW);
+  Self.AntibanSection.SetHeight(contentH);
+
+  Self.BuildScriptSection();
+  Self.BuildAccountsSection();
+  Self.BuildAntibanSection(SavedEnableWorldHopping, SavedWorldHopInterval, SavedMaxActions, SavedMaxTime);
+
+  Self.ScriptNav.SetOnClick(@Self.ShowScript);
+  Self.AccountsNav.SetOnClick(@Self.ShowAccounts);
+  Self.AntibanNav.SetOnClick(@Self.ShowAntiban);
+
+  Self.StartChip.Create(Self.StatusPanel);
+  Self.StartChip.SetLeft(mainW - startW - TControl.AdjustToDPI(24));
+  Self.StartChip.SetTop((Self.StatusPanel.GetHeight() - startH) div 2 + 2);
+  Self.StartChip.SetWidth(startW);
+  Self.StartChip.SetHeight(startH);
+  Self.StartChip.SetCursor(crHandPoint);
+  Self.PaintRoundChip(Self.StartChip, 'Start', IR_GUI_START, IR_GUI_STATUS, True, True);
+  Self.StartChip.SetOnClick(@Self.StartScript);
+
+  Self.WorldHoppingCheckboxChanged(nil);
+  Self.ShowScript(Self.ScriptNav);
+end;
+
+procedure TConfig.Run(); override;
+var
+  Username: String;
+  SavedEnableWorldHopping: Boolean;
+  SavedWorldHopInterval, SavedMaxActions, SavedMaxTime: Integer;
+begin
+  BashPromptIfUpdateAvailable();
+
+  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
+    Username := 'NoUserNameSelected'
+  else
+    Username := Login.Players[Login.PlayerIndex].User;
+
+  SavedEnableWorldHopping := StrToBoolDef(ReadINI(Username + ' Infected Roots Settings', 'EnableWorldHopping', 'Configs/BASettings.ini'), False);
+  SavedWorldHopInterval := StrToIntDef(ReadINI(Username + ' Infected Roots Settings', 'WorldHopInterval', 'Configs/BASettings.ini'), 45);
+
+  if WLSettings.Has('max_actions') then
+    SavedMaxActions := WLSettings.GetInt('max_actions')
+  else
+    SavedMaxActions := 0;
+  if WLSettings.Has('max_time') then
+    SavedMaxTime := WLSettings.GetInt('max_time')
+  else
+    SavedMaxTime := 0;
+
+  Self.Setup('BigAussies Infected Roots Chopper', [IR_GUI_W, IR_GUI_H], False);
+  Self.BuildShell(SavedEnableWorldHopping, SavedWorldHopInterval, SavedMaxActions, SavedMaxTime);
+
+  inherited;
+end;
+
+var
+  Config: TConfig;
+{$ENDIF}
+
+var
+  InfectedRootsBot: TInfectedRootsChopper;
+
+begin
+  {$IFDEF SCRIPT_GUI}
+  Sync(@Config.Run);
+  {$ENDIF}
+  InfectedRootsBot.Run(WLSettings.MaxActions, WLSettings.MaxTime);
+end.
