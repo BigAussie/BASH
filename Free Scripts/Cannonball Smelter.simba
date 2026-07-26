@@ -1,8 +1,9 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'c4e8b2a1-9f3d-4c7e-a6b5-1d2e3f4a5b6c'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '38'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '40'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
+{$I BashLib/optional/handlers/aichat.simba}
 
 {
 ----------------------------------------------------------------------------------
@@ -869,6 +870,15 @@ procedure BallSmelter.Init(MaxActions: UInt32; MaxTime: UInt64); override;
 begin
   inherited;
 
+  if AIChatbot.Enabled then
+  begin
+    WriteLn('[AI Chatbot] Enabled - initializing');
+    AIChatbot.Init();
+  end
+  else
+    WriteLn('[AI Chatbot] Disabled');
+
+
   if (RSClient.Mode <> ERSClientMode.FIXED) then
   begin
     WriteLn('[FAILSAFE] ERROR: You are not using the FIXED CLASSIC screen mode. FIXED CLASSIC mode is the only supported mode for this script.');
@@ -979,10 +989,10 @@ type
   TConfig = record(TScriptForm)
     NavPanel, ContentPanel, StatusPanel, DividerPanel, StatusDivider, StatusPad: TPanel;
     BrandLabel: TLabel;
-    ScriptNav, AccountsNav, AntibanNav: TImage;
+    ScriptNav, AccountsNav, AntibanNav, AIChatNav: TImage;
     StartChip: TImage;
     ActiveNav: TImage;
-    ScriptSection, AccountsSection, AntibanSection: TPanel;
+    ScriptSection, AccountsSection, AntibanSection, AIChatSection: TPanel;
 
     CannonBallTypeSelector: TLabeledCombobox;
     MaxActionsInput, MaxTimeInput: TLabeledEdit;
@@ -1167,6 +1177,7 @@ begin
   Self.PaintRoundChip(Self.ScriptNav, Self.ScriptNav.GetHint(), CB_GUI_NAV_IDLE, CB_GUI_NAV, False);
   Self.PaintRoundChip(Self.AccountsNav, Self.AccountsNav.GetHint(), CB_GUI_NAV_IDLE, CB_GUI_NAV, False);
   Self.PaintRoundChip(Self.AntibanNav, Self.AntibanNav.GetHint(), CB_GUI_NAV_IDLE, CB_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AIChatNav, Self.AIChatNav.GetHint(), CB_GUI_NAV_IDLE, CB_GUI_NAV, False);
   Self.PaintRoundChip(selected, selected.GetHint(), CB_GUI_ACCENT, CB_GUI_NAV, True);
 end;
 
@@ -1175,6 +1186,7 @@ begin
   Self.ScriptSection.SetVisible(False);
   Self.AccountsSection.SetVisible(False);
   Self.AntibanSection.SetVisible(False);
+  Self.AIChatSection.SetVisible(False);
   section.SetVisible(True);
   Self.StyleNav(selected);
 end;
@@ -1192,6 +1204,11 @@ end;
 procedure TConfig.ShowAntiban({$H-}sender: TObject); {$H+}
 begin
   Self.ShowSection(Self.AntibanSection, Self.AntibanNav);
+end;
+
+procedure TConfig.ShowAIChat({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AIChatSection, Self.AIChatNav);
 end;
 
 procedure TConfig.StartScript(Sender: TObject); override;
@@ -1218,6 +1235,8 @@ begin
     Self._WarmBuildCache();
   except
   end;
+  AIChatbot.ApplyFromGUI();
+
   Self.Form.SetOnClose(nil);
   Self.Form.Close();
 end;
@@ -1389,10 +1408,12 @@ begin
   Self.ScriptNav := Self.MakeNavItem(Self.NavPanel, 'Action', 12, 100, True);
   Self.AccountsNav := Self.MakeNavItem(Self.NavPanel, 'Accounts', 12, 152);
   Self.AntibanNav := Self.MakeNavItem(Self.NavPanel, 'Antiban', 12, 204);
+  Self.AIChatNav := Self.MakeNavItem(Self.NavPanel, 'AI Chat', 12, 256);
 
   Self.ScriptSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, CB_GUI_BG);
   Self.AccountsSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, CB_GUI_BG);
   Self.AntibanSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, CB_GUI_BG);
+  Self.AIChatSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, CB_GUI_BG);
 
   Self.ScriptSection.SetWidth(mainW);
   Self.ScriptSection.SetHeight(contentH);
@@ -1400,14 +1421,18 @@ begin
   Self.AccountsSection.SetHeight(contentH);
   Self.AntibanSection.SetWidth(mainW);
   Self.AntibanSection.SetHeight(contentH);
+  Self.AIChatSection.SetWidth(mainW);
+  Self.AIChatSection.SetHeight(contentH);
 
   Self.BuildScriptSection(SavedType);
   Self.BuildAccountsSection();
   Self.BuildAntibanSection(SavedMaxActions, SavedMaxTime);
+  AIChatbot.BuildSettings(Self.AIChatSection, mainW);
 
   Self.ScriptNav.SetOnClick(@Self.ShowScript);
   Self.AccountsNav.SetOnClick(@Self.ShowAccounts);
   Self.AntibanNav.SetOnClick(@Self.ShowAntiban);
+  Self.AIChatNav.SetOnClick(@Self.ShowAIChat);
 
   Self.StartChip.Create(Self.StatusPanel);
   Self.StartChip.SetLeft(mainW - startW - TControl.AdjustToDPI(24));
@@ -1448,6 +1473,11 @@ begin
     SavedMaxTime := WLSettings.GetInt('max_time')
   else
     SavedMaxTime := 0;
+
+  AIChatbot.Setup('Gemini', '');
+  AIChatbot.Enabled := False;
+  AIChatbot.LoadSettings();
+  AIChatbot.SetScriptDefaults('smelting cannonballs');
 
   Self.Setup('Free Cannonball Smelter', [CB_GUI_W, CB_GUI_H], False);
   Self.BuildShell(SavedType, SavedMaxActions, SavedMaxTime);

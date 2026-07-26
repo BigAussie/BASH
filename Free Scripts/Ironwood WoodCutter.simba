@@ -1,9 +1,10 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := '8dc108d0-7e16-472e-839e-dfd7f64e9f08'}
-{$DEFINE SCRIPT_REVISION := '4'}
+{$DEFINE SCRIPT_REVISION := '6'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
 {$I BashLib/optional/handlers/discord.simba}
+{$I BashLib/optional/handlers/aichat.simba}
 
 {
 ----------------------------------------------------------------------------------
@@ -76,9 +77,6 @@ type
     WorldHopsCompleted: Int32;
     LastWorldHopTime: Int64;
   end;
-
-var
-  Discord: TDiscordClient;
 
 const
   // Sneaky weight bias here because const roughly 35% chance to do the 1st array tree, the closest to the bank (17% for the others)
@@ -172,10 +170,6 @@ begin
     end;
 end;
 
-procedure TAntiban.RandomChatTask(); override;
-begin
-  Exit;
-end;
 
 procedure TAntiban.Setup(); override;
 begin
@@ -531,6 +525,15 @@ end;
 procedure TIronwoodChopper.Init(MaxActions: UInt32; MaxTime: UInt64); override;
 begin
   inherited;
+
+  if AIChatbot.Enabled then
+  begin
+    WriteLn('[AI Chatbot] Enabled - initializing');
+    AIChatbot.Init();
+  end
+  else
+    WriteLn('[AI Chatbot] Disabled');
+
 
   Map.SetupChunkEx([33, 37, 35, 35], [0]);
 
@@ -1176,10 +1179,10 @@ type
   TConfig = record(TScriptForm)
     NavPanel, ContentPanel, StatusPanel, DividerPanel, StatusDivider, StatusPad: TPanel;
     BrandLabel: TLabel;
-    ScriptNav, AccountsNav, AntibanNav: TImage;
+    ScriptNav, AccountsNav, AntibanNav, AIChatNav: TImage;
     StartChip: TImage;
     ActiveNav: TImage;
-    ScriptSection, AccountsSection, AntibanSection: TPanel;
+    ScriptSection, AccountsSection, AntibanSection, AIChatSection: TPanel;
 
     PreferPopulatedTreesCheckBox, PowerCutCheckBox: TLabeledCheckBox;
     EnableWebhooksCheckBox, HourlyReportsCheckBox, SessionSummaryCheckBox: TLabeledCheckBox;
@@ -1359,6 +1362,7 @@ begin
   Self.PaintRoundChip(Self.ScriptNav, Self.ScriptNav.GetHint(), IW_GUI_NAV_IDLE, IW_GUI_NAV, False);
   Self.PaintRoundChip(Self.AccountsNav, Self.AccountsNav.GetHint(), IW_GUI_NAV_IDLE, IW_GUI_NAV, False);
   Self.PaintRoundChip(Self.AntibanNav, Self.AntibanNav.GetHint(), IW_GUI_NAV_IDLE, IW_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AIChatNav, Self.AIChatNav.GetHint(), IW_GUI_NAV_IDLE, IW_GUI_NAV, False);
   Self.PaintRoundChip(selected, selected.GetHint(), IW_GUI_ACCENT, IW_GUI_NAV, True);
 end;
 
@@ -1367,6 +1371,7 @@ begin
   Self.ScriptSection.SetVisible(False);
   Self.AccountsSection.SetVisible(False);
   Self.AntibanSection.SetVisible(False);
+  Self.AIChatSection.SetVisible(False);
   section.SetVisible(True);
   Self.StyleNav(selected);
 end;
@@ -1384,6 +1389,11 @@ end;
 procedure TConfig.ShowAntiban({$H-}sender: TObject); {$H+}
 begin
   Self.ShowSection(Self.AntibanSection, Self.AntibanNav);
+end;
+
+procedure TConfig.ShowAIChat({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AIChatSection, Self.AIChatNav);
 end;
 
 procedure TConfig.WebhooksCheckboxChanged(Sender: TObject);
@@ -1483,6 +1493,8 @@ begin
     Self._WarmBuildCache();
   except
   end;
+  AIChatbot.ApplyFromGUI();
+
   Self.Form.SetOnClose(nil);
   Self.Form.Close();
 end;
@@ -1726,10 +1738,12 @@ begin
   Self.ScriptNav := Self.MakeNavItem(Self.NavPanel, 'Action', 12, 100, True);
   Self.AccountsNav := Self.MakeNavItem(Self.NavPanel, 'Accounts', 12, 152);
   Self.AntibanNav := Self.MakeNavItem(Self.NavPanel, 'Antiban', 12, 204);
+  Self.AIChatNav := Self.MakeNavItem(Self.NavPanel, 'AI Chat', 12, 256);
 
   Self.ScriptSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, IW_GUI_BG);
   Self.AccountsSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, IW_GUI_BG);
   Self.AntibanSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, IW_GUI_BG);
+  Self.AIChatSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, IW_GUI_BG);
 
   Self.ScriptSection.SetWidth(mainW);
   Self.ScriptSection.SetHeight(contentH);
@@ -1737,14 +1751,18 @@ begin
   Self.AccountsSection.SetHeight(contentH);
   Self.AntibanSection.SetWidth(mainW);
   Self.AntibanSection.SetHeight(contentH);
+  Self.AIChatSection.SetWidth(mainW);
+  Self.AIChatSection.SetHeight(contentH);
 
   Self.BuildScriptSection(SavedPreferPopulatedTrees, SavedPowerCut);
   Self.BuildAccountsSection(SavedWebhookURL, SavedEnableWebhooks, SavedHourly, SavedSessionSummary);
   Self.BuildAntibanSection(SavedEnableWorldHopping, SavedOverrideBreaks, SavedWorldHopInterval, SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime);
+  AIChatbot.BuildSettings(Self.AIChatSection, mainW);
 
   Self.ScriptNav.SetOnClick(@Self.ShowScript);
   Self.AccountsNav.SetOnClick(@Self.ShowAccounts);
   Self.AntibanNav.SetOnClick(@Self.ShowAntiban);
+  Self.AIChatNav.SetOnClick(@Self.ShowAIChat);
 
   Self.StartChip.Create(Self.StatusPanel);
   Self.StartChip.SetLeft(mainW - startW - TControl.AdjustToDPI(24));
@@ -1799,6 +1817,11 @@ begin
   else
     SavedMaxTime := 0;
 
+  AIChatbot.Setup('Gemini', '');
+  AIChatbot.Enabled := False;
+  AIChatbot.LoadSettings();
+  AIChatbot.SetScriptDefaults('chopping ironwood');
+
   Self.Setup('BigAussies Ironwood Chopper', [IW_GUI_W, IW_GUI_H], False);
   Self.BuildShell(
     SavedPreferPopulatedTrees, SavedPowerCut,
@@ -1816,6 +1839,7 @@ var
 
 var
   IronwoodBot: TIronwoodChopper;
+  Discord: TDiscordClient;
 
 begin
   Discord.Setup();

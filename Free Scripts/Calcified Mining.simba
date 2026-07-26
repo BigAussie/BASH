@@ -1,8 +1,9 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'cf2ed007-5328-4914-b6fc-cd521759f893'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '3'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '5'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
+{$I BashLib/optional/handlers/aichat.simba}
 
 
 {
@@ -491,6 +492,15 @@ procedure CalcifiedMiner.Init(MaxActions: UInt32; MaxTime: UInt64); override;
 begin
   inherited;
 
+  if AIChatbot.Enabled then
+  begin
+    WriteLn('[AI Chatbot] Enabled - initializing');
+    AIChatbot.Init();
+  end
+  else
+    WriteLn('[AI Chatbot] Disabled');
+
+
   RSW.AdaptiveWalk := True;
   RSW.Setup('CamTorumFull');
   CalcifiedDeposit := ('Calcified deposit');
@@ -553,10 +563,10 @@ type
   TConfig = record(TScriptForm)
     NavPanel, ContentPanel, StatusPanel, DividerPanel, StatusDivider, StatusPad: TPanel;
     BrandLabel: TLabel;
-    ScriptNav, AccountsNav, AntibanNav: TImage;
+    ScriptNav, AccountsNav, AntibanNav, AIChatNav: TImage;
     StartChip: TImage;
     ActiveNav: TImage;
-    ScriptSection, AccountsSection, AntibanSection: TPanel;
+    ScriptSection, AccountsSection, AntibanSection, AIChatSection: TPanel;
 
     PowerMineCheckbox: TLabeledCheckBox;
     IgnoreWaterfallsCheckBox, PingOnTerminatedCheckBox, EnableWebhooksCheckBox: TLabeledCheckBox;
@@ -734,6 +744,7 @@ begin
   Self.PaintRoundChip(Self.ScriptNav, Self.ScriptNav.GetHint(), CM_GUI_NAV_IDLE, CM_GUI_NAV, False);
   Self.PaintRoundChip(Self.AccountsNav, Self.AccountsNav.GetHint(), CM_GUI_NAV_IDLE, CM_GUI_NAV, False);
   Self.PaintRoundChip(Self.AntibanNav, Self.AntibanNav.GetHint(), CM_GUI_NAV_IDLE, CM_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AIChatNav, Self.AIChatNav.GetHint(), CM_GUI_NAV_IDLE, CM_GUI_NAV, False);
   Self.PaintRoundChip(selected, selected.GetHint(), CM_GUI_ACCENT, CM_GUI_NAV, True);
 end;
 
@@ -742,6 +753,7 @@ begin
   Self.ScriptSection.SetVisible(False);
   Self.AccountsSection.SetVisible(False);
   Self.AntibanSection.SetVisible(False);
+  Self.AIChatSection.SetVisible(False);
   section.SetVisible(True);
   Self.StyleNav(selected);
 end;
@@ -759,6 +771,11 @@ end;
 procedure TConfig.ShowAntiban({$H-}sender: TObject); {$H+}
 begin
   Self.ShowSection(Self.AntibanSection, Self.AntibanNav);
+end;
+
+procedure TConfig.ShowAIChat({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AIChatSection, Self.AIChatNav);
 end;
 
 procedure TConfig.OpenURL(Sender: TObject);
@@ -805,6 +822,8 @@ begin
     Self._WarmBuildCache();
   except
   end;
+  AIChatbot.ApplyFromGUI();
+
   Self.Form.SetOnClose(nil);
   Self.Form.Close();
 end;
@@ -1006,10 +1025,12 @@ begin
   Self.ScriptNav := Self.MakeNavItem(Self.NavPanel, 'Action', 12, 100, True);
   Self.AccountsNav := Self.MakeNavItem(Self.NavPanel, 'Accounts', 12, 152);
   Self.AntibanNav := Self.MakeNavItem(Self.NavPanel, 'Antiban', 12, 204);
+  Self.AIChatNav := Self.MakeNavItem(Self.NavPanel, 'AI Chat', 12, 256);
 
   Self.ScriptSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, CM_GUI_BG);
   Self.AccountsSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, CM_GUI_BG);
   Self.AntibanSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, CM_GUI_BG);
+  Self.AIChatSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, CM_GUI_BG);
 
   Self.ScriptSection.SetWidth(mainW);
   Self.ScriptSection.SetHeight(contentH);
@@ -1017,14 +1038,18 @@ begin
   Self.AccountsSection.SetHeight(contentH);
   Self.AntibanSection.SetWidth(mainW);
   Self.AntibanSection.SetHeight(contentH);
+  Self.AIChatSection.SetWidth(mainW);
+  Self.AIChatSection.SetHeight(contentH);
 
   Self.BuildScriptSection(SavedIgnoreWaterfalls, SavedPowerMining);
   Self.BuildAccountsSection(SavedEnableWebhooks, SavedPingOnTerminated, SavedDiscordUID, SavedWebhookURL);
   Self.BuildAntibanSection(SavedMaxActions, SavedMaxTime);
+  AIChatbot.BuildSettings(Self.AIChatSection, mainW);
 
   Self.ScriptNav.SetOnClick(@Self.ShowScript);
   Self.AccountsNav.SetOnClick(@Self.ShowAccounts);
   Self.AntibanNav.SetOnClick(@Self.ShowAntiban);
+  Self.AIChatNav.SetOnClick(@Self.ShowAIChat);
 
   Self.StartChip.Create(Self.StatusPanel);
   Self.StartChip.SetLeft(mainW - startW - TControl.AdjustToDPI(24));
@@ -1068,6 +1093,11 @@ begin
   else
     SavedMaxTime := 0;
 
+  AIChatbot.Setup('Gemini', '');
+  AIChatbot.Enabled := False;
+  AIChatbot.LoadSettings();
+  AIChatbot.SetScriptDefaults('calcified mining');
+
   Self.Setup('BigAussies Calcified Mining', [CM_GUI_W, CM_GUI_H], False);
   Self.BuildShell(
     SavedIgnoreWaterfalls, SavedPowerMining, SavedEnableWebhooks, SavedPingOnTerminated,
@@ -1082,10 +1112,10 @@ var
 {$ENDIF}
 
 begin
-  if (not FileExists(AppPath+'\Includes\WaspLib\osr\walker\maps\CamTorumFull.png')) then
+  if (not FileExists(AppPath+'\Includes\BashLib\osr\walker\maps\CamTorumFull.png')) then
   begin
     WriteLn('CamTorum Map not found. Downloading now........');
-    DownloadToFile('https://i.imgur.com/GwrnRhI.png', AppPath+'\Includes\WaspLib\osr\walker\maps\CamTorumFull.png');
+    DownloadToFile('https://i.imgur.com/GwrnRhI.png', AppPath+'\Includes\BashLib\osr\walker\maps\CamTorumFull.png');
   end
   else
   begin

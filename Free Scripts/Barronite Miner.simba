@@ -1,8 +1,9 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := '6201fd4a-a3b1-408e-a420-13cfc8c218f7'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '3'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '5'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
+{$I BashLib/optional/handlers/aichat.simba}
 
 {
 ----------------------------------------------------------------------------------
@@ -501,6 +502,15 @@ end;
 procedure BarroniteMiner.Init(MaxActions: UInt32; MaxTime: UInt64); override;
 begin
   inherited;
+
+  if AIChatbot.Enabled then
+  begin
+    WriteLn('[AI Chatbot] Enabled - initializing');
+    AIChatbot.Init();
+  end
+  else
+    WriteLn('[AI Chatbot] Disabled');
+
   RSW.Setup([[923, 3649, 1678, 4096]]);
   self.SetupObjects();
 
@@ -559,10 +569,10 @@ type
   TConfig = record(TScriptForm)
     NavPanel, ContentPanel, StatusPanel, DividerPanel, StatusDivider, StatusPad: TPanel;
     BrandLabel: TLabel;
-    ScriptNav, AccountsNav, AntibanNav: TImage;
+    ScriptNav, AccountsNav, AntibanNav, AIChatNav: TImage;
     StartChip: TImage;
     ActiveNav: TImage;
-    ScriptSection, AccountsSection, AntibanSection: TPanel;
+    ScriptSection, AccountsSection, AntibanSection, AIChatSection: TPanel;
 
     MaxActionsInput, MaxTimeInput: TLabeledEdit;
   end;
@@ -718,6 +728,7 @@ begin
   Self.PaintRoundChip(Self.ScriptNav, Self.ScriptNav.GetHint(), BM_GUI_NAV_IDLE, BM_GUI_NAV, False);
   Self.PaintRoundChip(Self.AccountsNav, Self.AccountsNav.GetHint(), BM_GUI_NAV_IDLE, BM_GUI_NAV, False);
   Self.PaintRoundChip(Self.AntibanNav, Self.AntibanNav.GetHint(), BM_GUI_NAV_IDLE, BM_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AIChatNav, Self.AIChatNav.GetHint(), BM_GUI_NAV_IDLE, BM_GUI_NAV, False);
   Self.PaintRoundChip(selected, selected.GetHint(), BM_GUI_ACCENT, BM_GUI_NAV, True);
 end;
 
@@ -726,6 +737,7 @@ begin
   Self.ScriptSection.SetVisible(False);
   Self.AccountsSection.SetVisible(False);
   Self.AntibanSection.SetVisible(False);
+  Self.AIChatSection.SetVisible(False);
   section.SetVisible(True);
   Self.StyleNav(selected);
 end;
@@ -745,6 +757,11 @@ begin
   Self.ShowSection(Self.AntibanSection, Self.AntibanNav);
 end;
 
+procedure TConfig.ShowAIChat({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AIChatSection, Self.AIChatNav);
+end;
+
 procedure TConfig.StartScript(Sender: TObject); override;
 begin
   if Sender = nil then;
@@ -757,6 +774,8 @@ begin
     Self._WarmBuildCache();
   except
   end;
+  AIChatbot.ApplyFromGUI();
+
   Self.Form.SetOnClose(nil);
   Self.Form.Close();
 end;
@@ -927,10 +946,12 @@ begin
   Self.ScriptNav := Self.MakeNavItem(Self.NavPanel, 'Action', 12, 100, True);
   Self.AccountsNav := Self.MakeNavItem(Self.NavPanel, 'Accounts', 12, 152);
   Self.AntibanNav := Self.MakeNavItem(Self.NavPanel, 'Antiban', 12, 204);
+  Self.AIChatNav := Self.MakeNavItem(Self.NavPanel, 'AI Chat', 12, 256);
 
   Self.ScriptSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, BM_GUI_BG);
   Self.AccountsSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, BM_GUI_BG);
   Self.AntibanSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, BM_GUI_BG);
+  Self.AIChatSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, BM_GUI_BG);
 
   Self.ScriptSection.SetWidth(mainW);
   Self.ScriptSection.SetHeight(contentH);
@@ -938,14 +959,18 @@ begin
   Self.AccountsSection.SetHeight(contentH);
   Self.AntibanSection.SetWidth(mainW);
   Self.AntibanSection.SetHeight(contentH);
+  Self.AIChatSection.SetWidth(mainW);
+  Self.AIChatSection.SetHeight(contentH);
 
   Self.BuildScriptSection();
   Self.BuildAccountsSection();
   Self.BuildAntibanSection(SavedMaxActions, SavedMaxTime);
+  AIChatbot.BuildSettings(Self.AIChatSection, mainW);
 
   Self.ScriptNav.SetOnClick(@Self.ShowScript);
   Self.AccountsNav.SetOnClick(@Self.ShowAccounts);
   Self.AntibanNav.SetOnClick(@Self.ShowAntiban);
+  Self.AIChatNav.SetOnClick(@Self.ShowAIChat);
 
   Self.StartChip.Create(Self.StatusPanel);
   Self.StartChip.SetLeft(mainW - startW - TControl.AdjustToDPI(24));
@@ -973,6 +998,11 @@ begin
     SavedMaxTime := WLSettings.GetInt('max_time')
   else
     SavedMaxTime := 0;
+
+  AIChatbot.Setup('Gemini', '');
+  AIChatbot.Enabled := False;
+  AIChatbot.LoadSettings();
+  AIChatbot.SetScriptDefaults('mining barronite');
 
   Self.Setup('BigAussies Barronite Miner', [BM_GUI_W, BM_GUI_H], False);
   Self.BuildShell(SavedMaxActions, SavedMaxTime);

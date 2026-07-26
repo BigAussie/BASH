@@ -1,8 +1,9 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := '48c08e37-258c-49c4-88be-a0098fb14948'}
-{$DEFINE SCRIPT_REVISION := '6'}
+{$DEFINE SCRIPT_REVISION := '8'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
+{$I BashLib/optional/handlers/aichat.simba}
 
 {
 ----------------------------------------------------------------------------------
@@ -55,10 +56,6 @@ type
     MaxFailuresBeforeSwitch: Int32;
   end;
   
-procedure TAntiban.RandomChatTask(); override;
-begin
-  Exit;
-end;
 
 function TRSLogout.ClickLogout(attempts: Int32 = 5; tryTime: Int32 = 20000): Boolean; override;
 var
@@ -113,6 +110,15 @@ end;
 procedure TInfectedRootsChopper.Init(MaxActions: UInt32; MaxTime: UInt64); override;
 begin
   inherited;
+
+  if AIChatbot.Enabled then
+  begin
+    WriteLn('[AI Chatbot] Enabled - initializing');
+    AIChatbot.Init();
+  end
+  else
+    WriteLn('[AI Chatbot] Disabled');
+
   Map.SetupChunkEx([19,149, 21,147], [1]);
 
   Self.SetupObjects();
@@ -650,10 +656,10 @@ type
   TConfig = record(TScriptForm)
     NavPanel, ContentPanel, StatusPanel, DividerPanel, StatusDivider, StatusPad: TPanel;
     BrandLabel: TLabel;
-    ScriptNav, AccountsNav, AntibanNav: TImage;
+    ScriptNav, AccountsNav, AntibanNav, AIChatNav: TImage;
     StartChip: TImage;
     ActiveNav: TImage;
-    ScriptSection, AccountsSection, AntibanSection: TPanel;
+    ScriptSection, AccountsSection, AntibanSection, AIChatSection: TPanel;
 
     EnableWorldHoppingCheckBox: TLabeledCheckBox;
     WorldHopIntervalInput, MaxActionsInput, MaxTimeInput: TLabeledEdit;
@@ -828,6 +834,7 @@ begin
   Self.PaintRoundChip(Self.ScriptNav, Self.ScriptNav.GetHint(), IR_GUI_NAV_IDLE, IR_GUI_NAV, False);
   Self.PaintRoundChip(Self.AccountsNav, Self.AccountsNav.GetHint(), IR_GUI_NAV_IDLE, IR_GUI_NAV, False);
   Self.PaintRoundChip(Self.AntibanNav, Self.AntibanNav.GetHint(), IR_GUI_NAV_IDLE, IR_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AIChatNav, Self.AIChatNav.GetHint(), IR_GUI_NAV_IDLE, IR_GUI_NAV, False);
   Self.PaintRoundChip(selected, selected.GetHint(), IR_GUI_ACCENT, IR_GUI_NAV, True);
 end;
 
@@ -836,6 +843,7 @@ begin
   Self.ScriptSection.SetVisible(False);
   Self.AccountsSection.SetVisible(False);
   Self.AntibanSection.SetVisible(False);
+  Self.AIChatSection.SetVisible(False);
   section.SetVisible(True);
   Self.StyleNav(selected);
 end;
@@ -853,6 +861,11 @@ end;
 procedure TConfig.ShowAntiban({$H-}sender: TObject); {$H+}
 begin
   Self.ShowSection(Self.AntibanSection, Self.AntibanNav);
+end;
+
+procedure TConfig.ShowAIChat({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AIChatSection, Self.AIChatNav);
 end;
 
 procedure TConfig.WorldHoppingCheckboxChanged(Sender: TObject);
@@ -886,6 +899,8 @@ begin
     Self._WarmBuildCache();
   except
   end;
+  AIChatbot.ApplyFromGUI();
+
   Self.Form.SetOnClose(nil);
   Self.Form.Close();
 end;
@@ -1069,10 +1084,12 @@ begin
   Self.ScriptNav := Self.MakeNavItem(Self.NavPanel, 'Action', 12, 100, True);
   Self.AccountsNav := Self.MakeNavItem(Self.NavPanel, 'Accounts', 12, 152);
   Self.AntibanNav := Self.MakeNavItem(Self.NavPanel, 'Antiban', 12, 204);
+  Self.AIChatNav := Self.MakeNavItem(Self.NavPanel, 'AI Chat', 12, 256);
 
   Self.ScriptSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, IR_GUI_BG);
   Self.AccountsSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, IR_GUI_BG);
   Self.AntibanSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, IR_GUI_BG);
+  Self.AIChatSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, IR_GUI_BG);
 
   Self.ScriptSection.SetWidth(mainW);
   Self.ScriptSection.SetHeight(contentH);
@@ -1080,14 +1097,18 @@ begin
   Self.AccountsSection.SetHeight(contentH);
   Self.AntibanSection.SetWidth(mainW);
   Self.AntibanSection.SetHeight(contentH);
+  Self.AIChatSection.SetWidth(mainW);
+  Self.AIChatSection.SetHeight(contentH);
 
   Self.BuildScriptSection();
   Self.BuildAccountsSection();
   Self.BuildAntibanSection(SavedEnableWorldHopping, SavedWorldHopInterval, SavedMaxActions, SavedMaxTime);
+  AIChatbot.BuildSettings(Self.AIChatSection, mainW);
 
   Self.ScriptNav.SetOnClick(@Self.ShowScript);
   Self.AccountsNav.SetOnClick(@Self.ShowAccounts);
   Self.AntibanNav.SetOnClick(@Self.ShowAntiban);
+  Self.AIChatNav.SetOnClick(@Self.ShowAIChat);
 
   Self.StartChip.Create(Self.StatusPanel);
   Self.StartChip.SetLeft(mainW - startW - TControl.AdjustToDPI(24));
@@ -1126,6 +1147,11 @@ begin
     SavedMaxTime := WLSettings.GetInt('max_time')
   else
     SavedMaxTime := 0;
+
+  AIChatbot.Setup('Gemini', '');
+  AIChatbot.Enabled := False;
+  AIChatbot.LoadSettings();
+  AIChatbot.SetScriptDefaults('chopping infected roots');
 
   Self.Setup('BigAussies Infected Roots Chopper', [IR_GUI_W, IR_GUI_H], False);
   Self.BuildShell(SavedEnableWorldHopping, SavedWorldHopInterval, SavedMaxActions, SavedMaxTime);

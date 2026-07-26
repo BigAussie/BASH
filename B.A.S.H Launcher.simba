@@ -1,5 +1,5 @@
 {$DEFINE SCRIPT_ID := 'bfde3085-80dc-4bd6-870a-8cb3186a938c'}
-{$DEFINE SCRIPT_REVISION := '14'}
+{$DEFINE SCRIPT_REVISION := '15'}
 
 {.$DEFINE DEVELOPER_MODE}
 
@@ -3578,6 +3578,1374 @@ begin
 end;
 
 
+function TWaspUpdater.GetProfileFileString(): String;
+begin
+  Result := 'worldhopper.worldTypeFilter=[]' + LineEnding +
+            'statusbars.rightBarMode=PRAYER' + LineEnding +
+            'chatfilter.filterGameChat=false' + LineEnding +
+            'grounditems.textOutline=false' + LineEnding +
+            'runelite.crowdsourcingplugin=false' + LineEnding +
+            'implings.showmagpie=NONE' + LineEnding +
+            'fishing.statTimeout=5' + LineEnding +
+            'interacthighlight.objectHoverHighlightColor=-1878982657' + LineEnding +
+            'groundMarker.markerColor=-256' + LineEnding +
+            'worldhopper.subscriptionFilter=BOTH' + LineEnding +
+            'worldmap.minigameTooltip=true' + LineEnding +
+            'banktags.useTabs=true' + LineEnding +
+            'itemCharge.showWaterskinCharges=true' + LineEnding +
+            'timers.showBurnDamageAccumulated=true' + LineEnding +
+            'runelite.trayIcon=true' + LineEnding +
+            'runelite.combatlevelplugin=false' + LineEnding +
+            'chatcommands.bh=true' + LineEnding +
+            'grandexchange.quickLookup=true' + LineEnding +
+            'boosts.compactDisplay=false' + LineEnding +
+            'hunterplugin.hexColorEmptyTrap=-65536' + LineEnding +
+            'chatcommands.ca=true' + LineEnding +
+            'runelite.hiscoreplugin=false' + LineEnding +
+            'screenshot.notifyWhenTaken=true' + LineEnding +
+            'groundMarker.drawOnMinimap=false' + LineEnding +
+            'runecraft.showFire=true' + LineEnding +
+            'idlenotifier.specNotification={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'poh.showRepairStand=true' + LineEnding +
+            'statusbars.hideAfterCombatDelay=0' + LineEnding +
+            'grandexchange.enableNotifications={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'agility.markHighlight=-65536' + LineEnding +
+            'xpglobes.showXpHour=true' + LineEnding +
+            'grounditems.deprioritizeHiddenItems=false' + LineEnding +
+            'timers.showTzhaarTimers=true' + LineEnding +
+            'xpglobes.Progress\ arc\ width=2' + LineEnding +
+            'fpscontrol.limitFpsUnfocused=false' + LineEnding +
+            'runecraft.showAir=true' + LineEnding +
+            'party.sounds=true' + LineEnding +
+            'itemidentification.showRepairKits=false' + LineEnding +
+            'wintertodt.notifyCold=INTERRUPT' + LineEnding +
+            'itemCharge.showAmuletOfChemistryCharges=true' + LineEnding +
+            'questhelpervars.rsprofile.6E69puls.payOrCutTree=false' + LineEnding +
+            'totem-fletching.notificationDecayTotem8={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'grounditems.notifyHighlightedDrops=false' + LineEnding +
+            'raids.layoutMessage=false' + LineEnding +
+            'runelite.runenergyplugin=false' + LineEnding +
+            'totem-fletching.totemCompleteColor=-6490763' + LineEnding +
+            'driftnet.showNetStatus=true' + LineEnding +
+            'nightmareZone.absorptionnotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'idlenotifier.sixHourLogout={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'totem-fletching.notificationDecayTotem4={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'totem-fletching.notificationDecayTotem5={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'totem-fletching.notificationDecayTotem6={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'totem-fletching.notificationDecayTotem7={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'corp.leftClickCore=true' + LineEnding +
+            'totem-fletching.notificationDecayTotem1={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'screenshot.ccKick=false' + LineEnding +
+            'totem-fletching.notificationDecayTotem2={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'totem-fletching.notificationDecayTotem3={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'screenshot.playerDeath=false' + LineEnding +
+            'xpdrop.meleePrayerColor=-15368019' + LineEnding +
+            'worldmap.mooringLocationShortcutIcon=true' + LineEnding +
+            'entityhider.hideProjectiles=false' + LineEnding +
+            'runelite.instancemapplugin=false' + LineEnding +
+            'runelite.questlistplugin=false' + LineEnding +
+            'puzzlesolver.movesToShow=4' + LineEnding +
+            'idlenotifier.highEnergyNotification={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'itemCharge.showBraceletOfSlaughterCharges=true' + LineEnding +
+            'chatfilter.collapseGameChat=false' + LineEnding +
+            'randomevents.notifyMoM={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'screenshot.includeFrame=true' + LineEnding +
+            'runelite.opponentinfoplugin=false' + LineEnding +
+            'kingdomofmiscellania.cofferThreshold=7500000' + LineEnding +
+            'runelite.notificationRequestFocus=OFF' + LineEnding +
+            'screenshot.combatAchievements=true' + LineEnding +
+            'teamCapes.minimumCapeCount=1' + LineEnding +
+            'idlenotifier.oxygen=1' + LineEnding +
+            'boosts.notifyOnBoost={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'implings.magpieColor=-7434733' + LineEnding +
+            'objectindicators.highlightTile=false' + LineEnding +
+            'party.statusOverlayPrayer=false' + LineEnding +
+            'entityhider.hideClanMates=false' + LineEnding +
+            'runecraft.showNature=true' + LineEnding +
+            'menuentryswapper.swapQuick=true' + LineEnding +
+            'totem-fletching.unbuiltOffset=160' + LineEnding +
+            'discord.showMainMenu=true' + LineEnding +
+            'playerindicators.highlightClanMembers=ENABLED' + LineEnding +
+            'runecraft.hightlightDarkMage=true' + LineEnding +
+            'menuentryswapper.shiftClickCustomization=true' + LineEnding +
+            'tearsofguthix.blueTearsColor=1677787135' + LineEnding +
+            'runelite.examineplugin=false' + LineEnding +
+            'chatcommands.lms=true' + LineEnding +
+            'menuentryswapper.swapTemporossLeave=false' + LineEnding +
+            'tileindicators.destinationTileBorderWidth=2.0' + LineEnding +
+            'grounditems.defaultColor=-1' + LineEnding +
+            'worldmap.fairyRingTooltips=true' + LineEnding +
+            'idlenotifier.hitpointsNotification={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'metronome.tickVolume=96' + LineEnding +
+            'prayer.prayerBarHideIfNotPraying=true' + LineEnding +
+            'worldmap.runecraftingAltarIcon=true' + LineEnding +
+            'entityhider.hidePlayers=true' + LineEnding +
+            'totem-fletching.entTrailColor=-1769482' + LineEnding +
+            'runecraft.showSoul=true' + LineEnding +
+            'timers.showSpellbookSwap=true' + LineEnding +
+            'motherlode.showOresFound=true' + LineEnding +
+            'clanchat.privateMessageIcons=false' + LineEnding +
+            'chatfilter.filterClan=false' + LineEnding +
+            'textrecolor.opaquePrivateMessageReceivedHighlight=-16767101' + LineEnding +
+            'xpTracker.progressBarTooltipLabel=TIME_TO_LEVEL' + LineEnding +
+            'gpu.uiScalingMode=HYBRID' + LineEnding +
+            'grounditems.hotkey=0\:512' + LineEnding +
+            'chatcommands.gc=true' + LineEnding +
+            'woodcutting.showRedwoods=true' + LineEnding +
+            'runelite.grounditemsplugin=false' + LineEnding +
+            'runelite.timetrackingplugin=false' + LineEnding +
+            'grounditems.menuHighlightMode=NAME' + LineEnding +
+            'entityhider.hideLocalPlayer=false' + LineEnding +
+            'tileindicators.highlightCurrentColor=-16711681' + LineEnding +
+            'entityhider.hideNPCs2D=false' + LineEnding +
+            'itemidentification.showAllotmentSeeds=false' + LineEnding +
+            'cannon.showEmptyCannonNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'pyramidplunder.highlightUrnsFloor=9' + LineEnding +
+            'timers.showBlessedCrystalScarab=true' + LineEnding +
+            'zoom.invertYaw=false' + LineEnding +
+            'screenshot.valuableDrop=false' + LineEnding +
+            'discord.showSkillActivity=true' + LineEnding +
+            'statusbars.barWidth=20' + LineEnding +
+            'worldmap.miningSiteTooltips=true' + LineEnding +
+            'menuentryswapper.swapHerbs=false' + LineEnding +
+            'itemstat.absolute=true' + LineEnding +
+            'screenshot.collectionLogEntries=true' + LineEnding +
+            'itemstat.colorBetterUncapped=-13373901' + LineEnding +
+            'idlenotifier.lowEnergyNotification={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'screenshot.kills=false' + LineEnding +
+            'implings.earthColor=-12691904' + LineEnding +
+            'menuentryswapper.bankDepositShiftClick=OFF' + LineEnding +
+            'runelite.bosstimersplugin=false' + LineEnding +
+            'party.statusOverlayVeng=true' + LineEnding +
+            'xpglobes.Orb\ duration=10' + LineEnding +
+            'textrecolor.transparentClanMessageHighlight=-1' + LineEnding +
+            'menuentryswapper.swapGEItemCollect=DEFAULT' + LineEnding +
+            'zoom.rightClickMovesCamera=false' + LineEnding +
+            'totem-fletching.carvingMaskColor=-868204480' + LineEnding +
+            'menuentryswapper.swapBait=false' + LineEnding +
+            'groundMarker.showImportExport=true' + LineEnding +
+            'attackIndicator.warnForStrength=false' + LineEnding +
+            'itemidentification.showBerrySeeds=false' + LineEnding +
+            'runelite.tearsofguthixplugin=false' + LineEnding +
+            'runelite.smeltingplugin=false' + LineEnding +
+            'npcindicators.fillColor=335609855' + LineEnding +
+            'itemCharge.veryLowWarningColor=-65536' + LineEnding +
+            'totem-fletching.showZeroPoints=true' + LineEnding +
+            'herbiboar.showClickboxes=false' + LineEnding +
+            'runecraft.showLaw=true' + LineEnding +
+            'runelite.fishingplugin=false' + LineEnding +
+            'itemCharge.braceletOfClayNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'timers.showAntiFire=true' + LineEnding +
+            'defaultworld.useLastWorld=false' + LineEnding +
+            'attackIndicator.warnForDefensive=false' + LineEnding +
+            'chatnotification.notifyOnPM={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'itemidentification.showPlanks=false' + LineEnding +
+            'woodcutting.showNestNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'slayer.weaknessPrompt=true' + LineEnding +
+            'implings.showname=false' + LineEnding +
+            'attackIndicator.warnForMagic=false' + LineEnding +
+            'mousehighlight.uiTooltip=true' + LineEnding +
+            'fishing.flyingFishNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'music.muteOwnAreaSounds=false' + LineEnding +
+            'chathistory.clearHistory=true' + LineEnding +
+            'textrecolor.transparentClanChatGuestMessageHighlight=-1' + LineEnding +
+            'attackIndicator.warnForRanged=false' + LineEnding +
+            'menuentryswapper.objectLeftClickCustomization=true' + LineEnding +
+            'grounditems.showHighlightedOnly=false' + LineEnding +
+            'itemidentification.showPyreLogs=false' + LineEnding +
+            'xpTracker.wiseOldManOpenOption=true' + LineEnding +
+            'party.recolorNames=true' + LineEnding +
+            'gpu.expandedMapLoadingChunks=3' + LineEnding +
+            'roofremoval.removePosition=true' + LineEnding +
+            'agility.highlightPortals=true' + LineEnding +
+            'driftnet.untaggedFishColor=-16711681' + LineEnding +
+            'combatlevel.wildernessAttackLevelRange=true' + LineEnding +
+            'runelite.worldmapplugin=false' + LineEnding +
+            'groundMarker.fillOpacity=50' + LineEnding +
+            'blastmine.hexWarningColor=-2542080' + LineEnding +
+            'timers.showFarmersAffinity=true' + LineEnding +
+            'screenshot.hotkey=0\:0' + LineEnding +
+            'poh.showXericsTalisman=true' + LineEnding +
+            'runelite.barrowsplugin=false' + LineEnding +
+            'worldmap.miscellaneousTeleportIcon=true' + LineEnding +
+            'menuentryswapper.swapJewelleryBox=false' + LineEnding +
+            'npcUnaggroArea.npcUnaggroAreaColor=-256' + LineEnding +
+            'worldhopper.showSidebar=true' + LineEnding +
+            'prayer.prayerFlickColor=-16711681' + LineEnding +
+            'dpscounter.showDamage=false' + LineEnding +
+            'runelite.barbarianassaultplugin=false' + LineEnding +
+            'gpu.fpsTarget=60' + LineEnding +
+            'idlenotifier.spec=1' + LineEnding +
+            'runelite.chatcommandsplugin=false' + LineEnding +
+            'wintertodt.showOverlay=true' + LineEnding +
+            'blastfurnace.showConveyorBelt=false' + LineEnding +
+            'runelite.musicplugin=false' + LineEnding +
+            'timers.showCannon=true' + LineEnding +
+            'herbiboar.showTrail=true' + LineEnding +
+            'menuentryswapper.bankWithdrawShiftClick=OFF' + LineEnding +
+            'runelite.raidsplugin=false' + LineEnding +
+            'timers.showPickpocketStun=true' + LineEnding +
+            'questhelpervars.rsprofile.6E69puls.treeSaplings=OAK' + LineEnding +
+            'prayer.showPrayerDoseIndicator=true' + LineEnding +
+            'bank.blockJagexAccountAd=false' + LineEnding +
+            'rsprofile.rsprofile.1QRW8beR.type=STANDARD' + LineEnding +
+            'grounditems.notifyTier=OFF' + LineEnding +
+            'xpglobes.Orb\ size=40' + LineEnding +
+            'timetracking.activeTab=CLOCK' + LineEnding +
+            'grounditems.recolorMenuHiddenItems=false' + LineEnding +
+            'itemstat.colorNoChange=-1118482' + LineEnding +
+            'menuentryswapper.swapMorytaniaLegs=WEAR' + LineEnding +
+            'wintertodt.notifyBrazierOut=true' + LineEnding +
+            'blastmine.showTimerOverlay=true' + LineEnding +
+            'music.muteOtherAreaEnvironmentSounds=false' + LineEnding +
+            'nightmareZone.moveoverlay=true' + LineEnding +
+            'dailytaskindicators.showStaves=true' + LineEnding +
+            'npcindicators.highlightOutline=false' + LineEnding +
+            'runelite.groundmarkerplugin=false' + LineEnding +
+            'implings.crystalColor=-10634030' + LineEnding +
+            'interfaceStyles.hdMenu=false' + LineEnding +
+            'inventorytags.fillOpacity=50' + LineEnding +
+            'music.muteOtherAreaSounds=false' + LineEnding +
+            'gpu.smoothBanding=true' + LineEnding +
+            'rsprofile.rsprofile.1QRW8beR.accountHash=-4789980934447954731' + LineEnding +
+            'xpglobes.showVirtualLevel=false' + LineEnding +
+            'grounditems.highlightValueCalculation=HIGHEST' + LineEnding +
+            'screenshot.displayDate=true' + LineEnding +
+            'questhelpervars.rsprofile.6E69puls.kandarin-easy-killed-earth=false' + LineEnding +
+            'textrecolor.transparentPublicChatHighlight=-1' + LineEnding +
+            'interfaceStyles.hdHealthBars=false' + LineEnding +
+            'chatcommands.duels=true' + LineEnding +
+            'roofremoval.overridePOH=false' + LineEnding +
+            'runelite.wintertodtplugin=false' + LineEnding +
+            'grounditems.dontHideUntradeables=true' + LineEnding +
+            'hunterplugin.hexColorOpenTrap=-256' + LineEnding +
+            'timers.showSurgePotion=true' + LineEnding +
+            'entityhider.hidePartyMembers=false' + LineEnding +
+            'randomevents.notifyQuiz={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'xpglobes.enableTooltips=true' + LineEnding +
+            'runelite.fairyringplugin=false' + LineEnding +
+            'runelite.notificationFocused=false' + LineEnding +
+            'poh.showSpellbook=true' + LineEnding +
+            'itemCharge.showBellowCharges=true' + LineEnding +
+            'loottracker.npcKillChatMessage=false' + LineEnding +
+            'inventoryViewer.toggleKeybind=0\:0' + LineEnding +
+            'itemCharge.showBindingNecklaceCharges=true' + LineEnding +
+            'interacthighlight.npcAttackHoverHighlightColor=-1862271232' + LineEnding +
+            'menuentryswapper.swapHarpoon=false' + LineEnding +
+            'stretchedmode.integerScaling=false' + LineEnding +
+            'gpu.brightTextures=false' + LineEnding +
+            'woodcutting.forestryEnchantmentRitualNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'runelite.fontType={"family"\:"RuneScape Small","size"\:16,"bold"\:false,"italic"\:false}' + LineEnding +
+            'kourendLibrary.showTargetHintArrow=true' + LineEnding +
+            'itemidentification.showYarn=false' + LineEnding +
+            'mining.statTimeout=5' + LineEnding +
+            'chatcommands.price=true' + LineEnding +
+            'specialcounter.bulwarkThreshold=0' + LineEnding +
+            'keyremapping.f10=48\:0' + LineEnding +
+            'textrecolor.transparentPrivateMessageReceivedHighlight=-1' + LineEnding +
+            'keyremapping.f12=61\:0' + LineEnding +
+            'keyremapping.f11=45\:0' + LineEnding +
+            'grounditems.showLootbeamForHighlighted=false' + LineEnding +
+            'menuentryswapper.swapBanker=true' + LineEnding +
+            'objectindicators.markerColor=-256' + LineEnding +
+            'worldhopper.quickhopOutOfDanger=true' + LineEnding +
+            'tileindicators.destinationTileFillColor=838860800' + LineEnding +
+            'worldmap.arceuusSpellbookIcon=true' + LineEnding +
+            'chatcommands.lvl=true' + LineEnding +
+            'fishing.overlayColor=-16711681' + LineEnding +
+            'specialcounter.infobox=true' + LineEnding +
+            'timers.showVengeance=true' + LineEnding +
+            'timers.showMenaphiteRemedy=true' + LineEnding +
+            'corp.showDamage=true' + LineEnding +
+            'playerindicators.nonClanMemberColor=-65536' + LineEnding +
+            'boosts.relativeBoost=false' + LineEnding +
+            'blastmine.showRockIconOverlay=true' + LineEnding +
+            'worldmap.agilityShortcutIcon=true' + LineEnding +
+            'screenshot.rewards=true' + LineEnding +
+            'xpTracker.skillTabOverlayMenuOptions=true' + LineEnding +
+            'grounditems.collapseEntries=false' + LineEnding +
+            'motherlode.showBrokenStruts=true' + LineEnding +
+            'poh.showPortals=true' + LineEnding +
+            'inventorytags.tagUnderline=false' + LineEnding +
+            'rsprofile.rsprofile.6E69puls.type=STANDARD' + LineEnding +
+            'raids.screenshotHotkey=0\:0' + LineEnding +
+            'worldmap.hunterAreaTooltips=true' + LineEnding +
+            'blastmine.hexTimerColor=-2542080' + LineEnding +
+            'menuentryswapper.npcShiftClickWalkHere=false' + LineEnding +
+            'xpglobes.enableCustomArcColor=false' + LineEnding +
+            'runelite.friendlistplugin=false' + LineEnding +
+            'npcindicators.ignorePets=true' + LineEnding +
+            'woodcutting.highlightGlowingRoots=true' + LineEnding +
+            'attackIndicator.alwaysShowStyle=true' + LineEnding +
+            'dailytaskindicators.showEssence=false' + LineEnding +
+            'itemidentification.showGems=false' + LineEnding +
+            'runelite.xpdropplugin=false' + LineEnding +
+            'screenshot.screenshotLeagueTasks=true' + LineEnding +
+            'playerindicators.highlightSelf=DISABLED' + LineEnding +
+            'fpscontrol.maxFpsUnfocused=50' + LineEnding +
+            'cooking.fermentTimer=true' + LineEnding +
+            'runenergy.ringOfEnduranceChargeMessage=true' + LineEnding +
+            'woodcutting.forestryFriendlyEntNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'tileindicators.highlightDestinationColor=-8355712' + LineEnding +
+            'npcindicators.highlightSouthWestTrueTile=false' + LineEnding +
+            'dailytaskindicators.showRunes=false' + LineEnding +
+            'wintertodt.notifySnowfall=INTERRUPT' + LineEnding +
+            'kourendLibrary.showTutorialOverlay=true' + LineEnding +
+            'questhelpervars.rsprofile.6E69puls.hardwoodTreeSaplings=TEAK' + LineEnding +
+            'mining.showMiningStats=true' + LineEnding +
+            'timetracking.sortOrder=NONE' + LineEnding +
+            'textrecolor.opaqueClanGuestInfoHighlight=-65536' + LineEnding +
+            'runelite.interfaceFontType={"family"\:"RuneScape","size"\:16,"bold"\:false,"italic"\:false}' + LineEnding +
+            'runelite.boostsplugin=false' + LineEnding +
+            'itemstat.colorWorse=-1166541' + LineEnding +
+            'fishing.harpoonfishOverlayColor=-16711936' + LineEnding +
+            'implings.youngColor=-5266296' + LineEnding +
+            'interfaceStyles.rsCrossSprites=false' + LineEnding +
+            'randomevents.notifyTurpentine={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'runelite.infoboxFontType={"family"\:"RuneScape","size"\:16,"bold"\:false,"italic"\:false}' + LineEnding +
+            'menuentryswapper.swapDesertAmulet=WEAR' + LineEnding +
+            'worldmap.standardSpellbookIcon=true' + LineEnding +
+            'playerindicators.highlightFriends=ENABLED' + LineEnding +
+            'chatfilter.collapsePlayerChat=false' + LineEnding +
+            'grandexchange.highlightSearchMatch=true' + LineEnding +
+            'interacthighlight.npcShowInteract=true' + LineEnding +
+            'playerindicators.highlightFriendsChat=ENABLED' + LineEnding +
+            'xpdrop.fakeXpDropDelay=0' + LineEnding +
+            'pyramidplunder.highlightDoors=true' + LineEnding +
+            'timers.showImbuedHeart=true' + LineEnding +
+            'slayer.targetColor=-65536' + LineEnding +
+            'itemprices.showGEPrice=true' + LineEnding +
+            'interacthighlight.itemHoverHighlightColor=-1878982657' + LineEnding +
+            'gpu.fogDepth=0' + LineEnding +
+            'pyramidplunder.showExactTimer=true' + LineEnding +
+            'chatfilter.filterClanChat=false' + LineEnding +
+            'clanchat.showJoinLeave=false' + LineEnding +
+            'agility.highlightSepulchreNpcs=true' + LineEnding +
+            'timers.showHealGroup=true' + LineEnding +
+            'regenmeter.showSpecial=true' + LineEnding +
+            'itemCharge.showDodgyCount=true' + LineEnding +
+            'mousehighlight.chatboxTooltip=true' + LineEnding +
+            'worldmap.fairyRingIcon=true' + LineEnding +
+            'keyremapping.esc=27\:0' + LineEnding +
+            'roofremoval.removeBetween=true' + LineEnding +
+            'keyremapping.left=65\:0' + LineEnding +
+            'party.pings=true' + LineEnding +
+            'randomevents.notifyDemon={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'bank.rightClickBankInventory=false' + LineEnding +
+            'barrows.showPrayerDrainTimer=true' + LineEnding +
+            'chathistory.pmTargetCycling=true' + LineEnding +
+            'poh.showMythicalCape=true' + LineEnding +
+            'itemCharge.showAmuletOfBountyCharges=true' + LineEnding +
+            'grounditems.hideUnderValue=0' + LineEnding +
+            'implings.showbaby=NONE' + LineEnding +
+            'runelite.xptrackerplugin=false' + LineEnding +
+            'reportButton.time=LOGIN_TIME' + LineEnding +
+            'menuentryswapper.swapPick=false' + LineEnding +
+            'runelite.cannonplugin=false' + LineEnding +
+            'grandexchange.enableGELimitReset=true' + LineEnding +
+            'chatnotification.notifyOnOwnName={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'party.statusOverlayStamina=false' + LineEnding +
+            'runelite.npcindicatorsplugin=false' + LineEnding +
+            'timers.showDfsSpecial=true' + LineEnding +
+            'hiscore.virtualLevels=true' + LineEnding +
+            'runecraft.showDeath=true' + LineEnding +
+            'zoom.disableCameraShake=false' + LineEnding +
+            'xpglobes.showXpLeft=true' + LineEnding +
+            'dailytaskindicators.showHerbBoxes=true' + LineEnding +
+            'questhelpervars.rsprofile.6E69puls.fruitTreeSaplings=APPLE' + LineEnding +
+            'poh.showPools=true' + LineEnding +
+            'motherlode.showVeins=true' + LineEnding +
+            'minimap.zoomLevel=4.0' + LineEnding +
+            'runecraft.degradingNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'itemprices.showEA=true' + LineEnding +
+            'driftnet.highlightUntaggedFish=true' + LineEnding +
+            'timers.showDivine=true' + LineEnding +
+            'pyramidplunder.highlightSpeartrapColor=-14336' + LineEnding +
+            'grounditems.highValuePrice=1000000' + LineEnding +
+            'implings.showninja=NONE' + LineEnding +
+            'woodcutting.forestryPheasantControlNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'prayer.prayerIndicatorOverheads=false' + LineEnding +
+            'tileindicators.highlightHoveredTile=false' + LineEnding +
+            'runelite.gameAlwaysOnTop=false' + LineEnding +
+            'fishing.trawlerContribution=true' + LineEnding +
+            'textrecolor.opaqueClanMessageHighlight=-16777216' + LineEnding +
+            'prayer.prayerFlickAlwaysOn=false' + LineEnding +
+            'npcindicators.borderWidth=2.0' + LineEnding +
+            'nightmareZone.recurrentdamagenotification={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'slayer.itemoverlay=true' + LineEnding +
+            'totem-fletching.showTotemId=false' + LineEnding +
+            'woodcutting.forestryStrugglingSaplingNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'chatcommands.clue=true' + LineEnding +
+            'kingdomofmiscellania.sendNotifications=false' + LineEnding +
+            'roofremoval.removeHovered=true' + LineEnding +
+            'worldmap.jewelleryIcon=true' + LineEnding +
+            'tileindicators.hoveredTileBorderWidth=2.0' + LineEnding +
+            'worldmap.questStartTooltips=true' + LineEnding +
+            'nightmareZone.overloadearlywarningseconds=10' + LineEnding +
+            'dailytaskindicators.showDynamite=false' + LineEnding +
+            'screenshot.valuableDropThreshold=0' + LineEnding +
+            'dailytaskindicators.showBonemeal=false' + LineEnding +
+            'itemCharge.dodgyNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'runelite.lockWindowSize=false' + LineEnding +
+            'attackIndicator.warnForAttack=false' + LineEnding +
+            'boosts.displayNextDebuffChange=NEVER' + LineEnding +
+            'mta.alchemy=true' + LineEnding +
+            'totem-fletching.pointsTextColor=-2243841' + LineEnding +
+            'runelite.wikiplugin=false' + LineEnding +
+            'runelite.timersplugin=false' + LineEnding +
+            'runelite.notificationVolume=100' + LineEnding +
+            'barrows.deadBrotherLocColor=-65536' + LineEnding +
+            'randomevents.notifyBob={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'boosts.boostThreshold=0' + LineEnding +
+            'runelite.infoplugin=false' + LineEnding +
+            'menuentryswapper.shopSell=OFF' + LineEnding +
+            'playerindicators.colorPlayerMenu=true' + LineEnding +
+            'grandexchange.geSearchMode=DEFAULT' + LineEnding +
+            'xpglobes.Progress\ orb\ outline\ color=-16777216' + LineEnding +
+            'grounditems.hiddenColor=-8355712' + LineEnding +
+            'xpglobes.showActionsLeft=true' + LineEnding +
+            'timetracking.defaultTimerMinutes=5' + LineEnding +
+            'interacthighlight.objectInteractHighlightColor=-1862336512' + LineEnding +
+            'specialcounter.specDropColor=-1' + LineEnding +
+            'textrecolor.opaqueGameMessageHighlight=-1109984' + LineEnding +
+            'runelite.automaticResizeType=KEEP_GAME_SIZE' + LineEnding +
+            'itemprices.hideInventory=true' + LineEnding +
+            'agility.lapsToLevel=true' + LineEnding +
+            'itemstat.showStatsInBank=true' + LineEnding +
+            'itemCharge.showExpeditiousBraceletCharges=true' + LineEnding +
+            'logouttimer.idleTimeout=5' + LineEnding +
+            'interacthighlight.borderWidth=4' + LineEnding +
+            'timers.showScurriusFoodPile=true' + LineEnding +
+            'lowmemory.lowDetail=true' + LineEnding +
+            'opponentinfo.hitpointsDisplayStyle=HITPOINTS' + LineEnding +
+            'xpdrop.hideSkillIcons=false' + LineEnding +
+            'randomevents.removeMenuOptions=true' + LineEnding +
+            'hunterplugin.maniacalMonkeyNotify={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'slayer.highlightOutline=false' + LineEnding +
+            'herbiboar.colorTunnel=-16711936' + LineEnding +
+            'gpu.anisotropicFilteringLevel=1' + LineEnding +
+            'cannon.showDoubleHitSpot=false' + LineEnding +
+            'runelite.diaryrequirementsplugin=false' + LineEnding +
+            'mta.telekinetic=true' + LineEnding +
+            'runelite.screenshotplugin=false' + LineEnding +
+            'banktags.rememberTab=true' + LineEnding +
+            'interfaceStyles.condensePlayerOptions=false' + LineEnding +
+            'music.muteOtherAreaNPCSounds=false' + LineEnding +
+            'loottracker.priceType=GRAND_EXCHANGE' + LineEnding +
+            'itemCharge.showExplorerRingCharges=true' + LineEnding +
+            'runelite.sidebarToggleKey=122\:128' + LineEnding +
+            'tileindicators.hoveredTileFillColor=838860800' + LineEnding +
+            'grounditems.lootbeamStyle=MODERN' + LineEnding +
+            'specialcounter.dragonWarhammerThreshold=0' + LineEnding +
+            'zoom.rightClickMenuBlocksCamera=true' + LineEnding +
+            'woodcutting.highlightLeprechaunRainbow=true' + LineEnding +
+            'itemCharge.ringOfForgingNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'runelite.tooltipFontType={"family"\:"RuneScape Small","size"\:16,"bold"\:false,"italic"\:false}' + LineEnding +
+            'xpTracker.onScreenDisplayModeBottom=XP_HOUR' + LineEnding +
+            'npcindicators.ignoreDeadNpcs=true' + LineEnding +
+            'questhelpervars.rsprofile.6E69puls.kandarin-easy-killed-water=false' + LineEnding +
+            'loottracker.rsprofile.6E69puls.drops_EVENT_Vale\ offerings={"type"\:"EVENT","name"\:"Vale offerings","kills"\:5500,"first"\:1785023442035,"last"\:1785038141100,"drops"\:[31032,6,31047,321,22798,10,6049,11,5074,2,31045,65,314,1343,5313,2,6047,3,29381,83,28134,489,5288,2,6051,5,6045,4,5289,2]}' + LineEnding +
+            'cannon.showInfobox=false' + LineEnding +
+            'chatfilter.filterFriends=false' + LineEnding +
+            'gpu.colorBlindMode=NONE' + LineEnding +
+            'specialcounter.specDropMisses=false' + LineEnding +
+            'poh.showGlory=true' + LineEnding +
+            'motherlode.showRocks=true' + LineEnding +
+            'runelite.tithefarmplugin=false' + LineEnding +
+            'worldhopper.showMessage=true' + LineEnding +
+            'textrecolor.opaqueClanInfoHighlight=-65536' + LineEnding +
+            'implings.natureColor=-10712481' + LineEnding +
+            'itemstat.showWeight=true' + LineEnding +
+            'playerindicators.drawMinimapNames=false' + LineEnding +
+            'textrecolor.transparentGameMessageHighlight=-1109984' + LineEnding +
+            'grounditems.groundItemTimers=OFF' + LineEnding +
+            'woodcutting.showLeprechaunLuck=true' + LineEnding +
+            'interfaceStyles.gameframe=AROUND_2010' + LineEnding +
+            'mta.graveyard=true' + LineEnding +
+            'randomevents.notifyForester={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'gpu.removeVertexSnapping=true' + LineEnding +
+            'itemidentification.showCloth=false' + LineEnding +
+            'interacthighlight.itemShowHover=true' + LineEnding +
+            'runelite.pestcontrolplugin=false' + LineEnding +
+            'totem-fletching.highlightCorrectCarvingChoice=true' + LineEnding +
+            'bank.rightClickBankLoot=false' + LineEnding +
+            'npcindicators.highlightHull=true' + LineEnding +
+            'implings.babyColor=-5140557' + LineEnding +
+            'runelite.hunterplugin=false' + LineEnding +
+            'chatcommands.killcount=true' + LineEnding +
+            'implings.showyoung=NONE' + LineEnding +
+            'raids.scoutOverlayAtBank=true' + LineEnding +
+            'runelite.overlayBackgroundColor=-1673118414' + LineEnding +
+            'itemidentification.showHerbSeeds=true' + LineEnding +
+            'specialcounter.darklightThreshold=0' + LineEnding +
+            'fpscontrol.maxFps=50' + LineEnding +
+            'poison.changeHealthIcon=true' + LineEnding +
+            'runelite.tooltipPosition=UNDER_CURSOR' + LineEnding +
+            'inventoryViewer.hiddenDefault=false' + LineEnding +
+            'runelite.herbiboarplugin=false' + LineEnding +
+            'itemstat.alwaysShowBaseStats=false' + LineEnding +
+            'xpTracker.xpPanelLabel2=XP_LEFT' + LineEnding +
+            'xpTracker.xpPanelLabel3=XP_HOUR' + LineEnding +
+            'xpTracker.xpPanelLabel4=ACTIONS_LEFT' + LineEnding +
+            'zoom.rightClickObjects=true' + LineEnding +
+            'menuentryswapper.swapHelp=true' + LineEnding +
+            'poison.showInfoboxes=false' + LineEnding +
+            'runelite.infoBoxVertical=false' + LineEnding +
+            'grounditems.hiddenItems=Vial, Ashes, Coins, Bones, Bucket, Jug, Seaweed' + LineEnding +
+            'xpTracker.xpPanelLabel1=XP_GAINED' + LineEnding +
+            'loottracker.showPriceType=false' + LineEnding +
+            'clanchat.publicChatIcons=false' + LineEnding +
+            'fishing.onlyCurrent=false' + LineEnding +
+            'gpu.vsyncMode=OFF' + LineEnding +
+            'runelite.loottrackerplugin=false' + LineEnding +
+            'hiscore.autocomplete=true' + LineEnding +
+            'itemidentification.showHerbs=false' + LineEnding +
+            'timers.showOverload=true' + LineEnding +
+            'screenshot.untradeableDrop=false' + LineEnding +
+            'kourendLibrary.hideButton=true' + LineEnding +
+            'randomevents.notifyPillory={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'fishing.showIcons=true' + LineEnding +
+            'objectindicators.borderWidth=2.0' + LineEnding +
+            'agility.overlayColor=-16711936' + LineEnding +
+            'randomevents.notifyFrog={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'menuentryswapper.swapAbyssTeleport=true' + LineEnding +
+            'totem-fletching.keepDecoratedText=false' + LineEnding +
+            'chathistory.retainChatHistory=true' + LineEnding +
+            'inventorygrid.highlightColor=755040000' + LineEnding +
+            'textrecolor.transparentExamineHighlight=-16711936' + LineEnding +
+            'timetracking.timerWarningThreshold=10' + LineEnding +
+            'tileindicators.highlightCurrentTile=false' + LineEnding +
+            'corp.markDarkCore=true' + LineEnding +
+            'cooking.statTimeout=5' + LineEnding +
+            'opponentinfo.showOpponentHealthOverlay=true' + LineEnding +
+            'menuentryswapper.swapAdmire=true' + LineEnding +
+            'runelite.kourendlibraryplugin=false' + LineEnding +
+            'woodcutting.highlightPheasantNest=true' + LineEnding +
+            'cannon.showCannonSpots=true' + LineEnding +
+            'menuentryswapper.swapHomePortal=HOME' + LineEnding +
+            'runelite.discordplugin=false' + LineEnding +
+            'friendNotes.showIcons=true' + LineEnding +
+            'entityhider.hideClanChatMembers=false' + LineEnding +
+            'agility.agilityArenaTimer=true' + LineEnding +
+            'randomevents.notifyMaze={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'barrows.brotherLocColor=-16711681' + LineEnding +
+            'playerindicators.teamMemberColor=-15503625' + LineEnding +
+            'agility.highlightSepulchreSkilling=true' + LineEnding +
+            'regenmeter.showWhenNoChange=false' + LineEnding +
+            'music.mutePrayerSounds=false' + LineEnding +
+            'party.statusOverlaySpec=false' + LineEnding +
+            'playerindicators.clanMemberColor=-5635841' + LineEnding +
+            'textrecolor.opaqueClanChatGuestMessageHighlight=-16777216' + LineEnding +
+            'npcindicators.highlightTile=false' + LineEnding +
+            'keyremapping.f1=49\:0' + LineEnding +
+            'entityhider.hidePets=false' + LineEnding +
+            'keyremapping.f3=51\:0' + LineEnding +
+            'woodcutting.highlightMulch=true' + LineEnding +
+            'keyremapping.f2=50\:0' + LineEnding +
+            'itemidentification.showComposts=false' + LineEnding +
+            'agility.sepulchreHighlightColor=-16711936' + LineEnding +
+            'smelting.statTimeout=5' + LineEnding +
+            'chathistory.copyToClipboard=true' + LineEnding +
+            'statusbars.enableCounter=false' + LineEnding +
+            'itemCharge.showInfoboxes=false' + LineEnding +
+            'woodcutting.showWoodcuttingStats=true' + LineEnding +
+            'xpTracker.saveState=true' + LineEnding +
+            'prayer.showPrayerBar=false' + LineEnding +
+            'playerindicators.highlightOthers=DISABLED' + LineEnding +
+            'runelite.blastmineplugin=false' + LineEnding +
+            'chatcommands.bhRogue=true' + LineEnding +
+            'itemstat.colorBetterCapped=-1118669' + LineEnding +
+            'nightmareZone.absorptionthreshold=50' + LineEnding +
+            'itemstat.relative=true' + LineEnding +
+            'keyremapping.control=0\:128' + LineEnding +
+            'playerindicators.ownNameColor=-16729900' + LineEnding +
+            'timers.showVengeanceActive=true' + LineEnding +
+            'specialcounter.defenceDrainInfobox=true' + LineEnding +
+            'runelite.gpuplugin=false' + LineEnding +
+            'worldhopper.regionFilter=[]' + LineEnding +
+            'runelite.infoBoxSize=35' + LineEnding +
+            'cluescroll.identify=ON_READ' + LineEnding +
+            'runelite.worldhopperplugin=false' + LineEnding +
+            'worldmap.fishingSpotTooltips=true' + LineEnding +
+            'zoom.outerLimit=0' + LineEnding +
+            'itemCharge.showGuthixRestDoses=true' + LineEnding +
+            'bank.bankPinKeyboard=false' + LineEnding +
+            'interacthighlight.playerHoverHighlightColor=-1878982657' + LineEnding +
+            'interacthighlight.npcAttackHighlightColor=-1862336512' + LineEnding +
+            'inventorygrid.showHighlight=true' + LineEnding +
+            'itemCharge.showBloodEssenceCharges=true' + LineEnding +
+            'idlenotifier.animationidle={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'timetracking.timerNotification={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'herbiboar.showStart=true' + LineEnding +
+            'runelite.playerindicatorsplugin=false' + LineEnding +
+            'timers.showTeleblock=true' + LineEnding +
+            'randomevents.notifyCerters={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'questhelpervars.rsprofile.6E69puls.calquatTreeSaplings=CALQUAT' + LineEnding +
+            'itemCharge.lowWarningColor=-256' + LineEnding +
+            'gpu.colorBlindIntensity=100' + LineEnding +
+            'raids.copyToClipboard=true' + LineEnding +
+            'barrows.showBrotherLoc=true' + LineEnding +
+            'interacthighlight.npcShowHover=true' + LineEnding +
+            'runelite.flashNotification=DISABLED' + LineEnding +
+            'agility.trapOverlay=true' + LineEnding +
+            'boosts.displayIndicators=true' + LineEnding +
+            'runelite.cookingplugin=false' + LineEnding +
+            'nightmareZone.absorptioncolorbelowthreshold=-65536' + LineEnding +
+            'timers.showLiquidAdrenaline=true' + LineEnding +
+            'interacthighlight.itemShowInteract=true' + LineEnding +
+            'chatcommands.pets=true' + LineEnding +
+            'npcUnaggroArea.notifyExpire={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'objectindicators.highlightOutline=false' + LineEnding +
+            'timestamp.format=[HH\:mm]' + LineEnding +
+            'menuentryswapper.swapAssignment=true' + LineEnding +
+            'menuentryswapper.shopBuy=OFF' + LineEnding +
+            'implings.dragonColor=-2992821' + LineEnding +
+            'menuentryswapper.swapDepositItems=false' + LineEnding +
+            'menuentryswapper.objectShiftClickWalkHere=false' + LineEnding +
+            'bank.rightClickPlaceholders=false' + LineEnding +
+            'interacthighlight.playerShowHover=true' + LineEnding +
+            'runelite.dailytasksplugin=false' + LineEnding +
+            'gpu.unlockFps=true' + LineEnding +
+            'interacthighlight.playerInteractHighlightColor=-1862336512' + LineEnding +
+            'zoom.cameraSpeed=1.0' + LineEnding +
+            'npcUnaggroArea.hideIfOutOfCombat=false' + LineEnding +
+            'discord.showDungeonActivity=true' + LineEnding +
+            'playerindicators.playerNamePosition=ABOVE_HEAD' + LineEnding +
+            'driftnet.tagAnnette=true' + LineEnding +
+            'itemCharge.showWateringCanCharges=true' + LineEnding +
+            'runelite.totemfletchingplugin=true' + LineEnding +
+            'entityhider.hideNPCs=false' + LineEnding +
+            'itemCharge.expeditiousNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'loottracker.showRaidsLootValue=true' + LineEnding +
+            'music.muteAmbientSounds=false' + LineEnding +
+            'agility.lapTimeout=5' + LineEnding +
+            'grounditems.highlightTiles=false' + LineEnding +
+            'itemCharge.amuletOfChemistryNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'grounditems.insaneValuePrice=10000000' + LineEnding +
+            'worldmap.dungeonTooltips=true' + LineEnding +
+            'runelite.screenmarkerplugin=false' + LineEnding +
+            'grandexchange.showTotal=true' + LineEnding +
+            'runelite.blastfurnaceplugin=false' + LineEnding +
+            'runelite.pohplugin=false' + LineEnding +
+            'inventorygrid.showItem=true' + LineEnding +
+            'regenmeter.notifyBeforeHpRegenDuration=0' + LineEnding +
+            'timers.showHomeMinigameTeleports=true' + LineEnding +
+            'keyremapping.f9=57\:0' + LineEnding +
+            'runelite.slayerplugin=false' + LineEnding +
+            'bank.rightClickBankEquip=false' + LineEnding +
+            'keyremapping.f8=56\:0' + LineEnding +
+            'reportButton.switchTimeFormat=TIME_12H' + LineEnding +
+            'menuentryswapper.swapArdougneCloak=WEAR' + LineEnding +
+            'keyremapping.f5=53\:0' + LineEnding +
+            'slayer.superiornotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'menuentryswapper.swapFairyRing=LAST_DESTINATION' + LineEnding +
+            'keyremapping.f4=52\:0' + LineEnding +
+            'keyremapping.f7=55\:0' + LineEnding +
+            'runelite.chathistoryplugin=false' + LineEnding +
+            'keyremapping.f6=54\:0' + LineEnding +
+            'runepouch.fontcolor=-256' + LineEnding +
+            'runenergy.replaceOrbText=false' + LineEnding +
+            'stretchedmode.keepAspectRatio=false' + LineEnding +
+            'loottracker.pvpKillChatMessage=false' + LineEnding +
+            'dpscounter.autoreset=false' + LineEnding +
+            'mousehighlight.disableSpellbooktooltip=false' + LineEnding +
+            'itemCharge.showBasketCharges=true' + LineEnding +
+            'timers.showColosseumDoom=true' + LineEnding +
+            'chatfilter.maxRepeatedPublicChats=0' + LineEnding +
+            'wintertodt.notifyFullInv=true' + LineEnding +
+            'implings.spawnColor=-1' + LineEnding +
+            'entityhider.hideLocalPlayer2D=false' + LineEnding +
+            'zoom.controlFunction=NONE' + LineEnding +
+            'xpdrop.magePrayerColor=-15368019' + LineEnding +
+            'npcUnaggroArea.npcUnaggroAlwaysActive=false' + LineEnding +
+            'blastmine.showWarningOverlay=true' + LineEnding +
+            'tileindicators.currentTileFillColor=838860800' + LineEnding +
+            'wiki.showWikiMinimapButton=true' + LineEnding +
+            'implings.shownature=NONE' + LineEnding +
+            'driftnet.annetteTagColor=-65536' + LineEnding +
+            'interacthighlight.npcInteractHighlightColor=-1862336512' + LineEnding +
+            'specialcounter.ayakThreshold=0' + LineEnding +
+            'idlenotifier.prayerNotification={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'idlenotifier.logoutidle={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'runelite.runepouchplugin=false' + LineEnding +
+            'runelite.clientBounds=0\:31\:765\:503\:g' + LineEnding +
+            'screenshot.friendDeath=false' + LineEnding +
+            'npcindicators.showRespawnTimer=false' + LineEnding +
+            'xpglobes.showTimeTilGoal=true' + LineEnding +
+            'itemCharge.veryLowWarning=1' + LineEnding +
+            'runelite.notificationTray=true' + LineEnding +
+            'entityhider.hideThralls=false' + LineEnding +
+            'timers.showTormentedDemonBuffs=true' + LineEnding +
+            'dpscounter.autopause=false' + LineEnding +
+            'loginscreen.pasteenabled=false' + LineEnding +
+            'hiscore.playerOption=true' + LineEnding +
+            'inventorygrid.showGrid=true' + LineEnding +
+            'discord.showRegionsActivity=true' + LineEnding +
+            'specialcounter.specDrops=true' + LineEnding +
+            'menuentryswapper.swapTan=false' + LineEnding +
+            'boosts.displayBoosts=COMBAT' + LineEnding +
+            'puzzlesolver.dotColor=-256' + LineEnding +
+            'npcindicators.npcColor=-16711681' + LineEnding +
+            'timers.showStamina=true' + LineEnding +
+            'itemidentification.showTablets=false' + LineEnding +
+            'clanchat.clanChatShowOnlineMemberCount=false' + LineEnding +
+            'nightmareZone.zappernotification={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'itemidentification.showSpecialSeeds=false' + LineEnding +
+            'grounditems.highValueColor=-27136' + LineEnding +
+            'driftnet.timeoutDelay=60' + LineEnding +
+            'implings.showearth=NONE' + LineEnding +
+            'runelite.regenmeterplugin=false' + LineEnding +
+            'worldmap.ancientSpellbookIcon=true' + LineEnding +
+            'discord.actionTimeout=5' + LineEnding +
+            'woodcutting.forestryPoachersNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'itemCharge.showRingOfForgingCount=true' + LineEnding +
+            'barbarianAssault.showTimer=true' + LineEnding +
+            'specialcounter.bandosGodswordThreshold=0' + LineEnding +
+            'xpdrop.rangePrayerColor=-15368019' + LineEnding +
+            'worldmap.transportationTooltips=true' + LineEnding +
+            'grounditems.lowValueColor=-10046721' + LineEnding +
+            'worldmap.agilityShortcutTooltips=true' + LineEnding +
+            'screenshot.boss=false' + LineEnding +
+            'runecraft.showBody=true' + LineEnding +
+            'dailytaskindicators.showSand=false' + LineEnding +
+            'clanchat.joinLeaveTimeout=20' + LineEnding +
+            'specialcounter.thresholdNotification={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'gpu.antiAliasingMode=MSAA_2' + LineEnding +
+            'antiDrag.disableOnCtrl=false' + LineEnding +
+            'implings.showessence=NONE' + LineEnding +
+            'randomevents.notifyTwin={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'menuentryswapper.swapStairsShiftClick=CLIMB' + LineEnding +
+            'agility.lapsPerHour=true' + LineEnding +
+            'itemstat.theoretical=false' + LineEnding +
+            'woodcutting.highlightBeeHive=true' + LineEnding +
+            'agility.highlightStick=true' + LineEnding +
+            'idlenotifier.lowEnergy=0' + LineEnding +
+            'kourendLibrary.hideDuplicateBook=true' + LineEnding +
+            'prayer.prayerIndicator=false' + LineEnding +
+            'playerindicators.clanchatMenuIcons=true' + LineEnding +
+            'implings.eclecticColor=-7234747' + LineEnding +
+            'woodcutting.forestryRisingRootsNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'gpu.drawDistance=50' + LineEnding +
+            'runecraft.showPouch=true' + LineEnding +
+            'combatlevel.showPreciseCombatLevel=true' + LineEnding +
+            'fishing.aerialOverlayColor=-16711936' + LineEnding +
+            'blastfurnace.showBarDispenser=false' + LineEnding +
+            'menuentryswapper.swapTrade=true' + LineEnding +
+            'teamCapes.clanChatMemberCounter=false' + LineEnding +
+            'itemidentification.textColor=-1' + LineEnding +
+            'idlenotifier.prayer=1' + LineEnding +
+            'woodcutting.statTimeout=5' + LineEnding +
+            'grounditems.highlightedColor=-5635841' + LineEnding +
+            'totem-fletching.pointsOffset=16' + LineEnding +
+            'worldmap.mooringLocationTooltips=true' + LineEnding +
+            'runelite.usernameInTitle=true' + LineEnding +
+            'clanchat.clanChatShowJoinLeave=false' + LineEnding +
+            'chatnotification.notifyOnTrade={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'xpTracker.pauseSkillAfter=0' + LineEnding +
+            'timetracking.farmingContractInfoBox=true' + LineEnding +
+            'prayer.replaceOrbText=false' + LineEnding +
+            'grounditems.mediumValuePrice=100000' + LineEnding +
+            'slayer.statTimeout=5' + LineEnding +
+            'woodcutting.forestryLeprechaunNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'poh.showExitPortal=true' + LineEnding +
+            'implings.showeclectic=NONE' + LineEnding +
+            'itemCharge.bindingNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'screenshot.pets=true' + LineEnding +
+            'interfaceStyles.menuAlpha=255' + LineEnding +
+            'slayer.taskCommand=true' + LineEnding +
+            'itemidentification.showSacks=false' + LineEnding +
+            'fishing.showMinnowOverlay=true' + LineEnding +
+            'menuentryswapper.leftClickCustomization=true' + LineEnding +
+            'menuentryswapper.swapTravel=true' + LineEnding +
+            'inventorygrid.gridColor=771751935' + LineEnding +
+            'clanchat.clanChatIcons=true' + LineEnding +
+            'pyramidplunder.highlightSpeartraps=true' + LineEnding +
+            'timers.showMoonlightPotion=true' + LineEnding +
+            'worldmap.lunarSpellbookIcon=true' + LineEnding +
+            'prayer.prayerDoseOrbStartColor=-16711681' + LineEnding +
+            'hunterplugin.hexColorFullTrap=-16711936' + LineEnding +
+            'npcUnaggroArea.npcUnaggroShowTimer=true' + LineEnding +
+            'worldmap.agilityCourseRooftopIcon=true' + LineEnding +
+            'itemidentification.showTreeSeeds=false' + LineEnding +
+            'inventorytags.tagFill=false' + LineEnding +
+            'textrecolor.opaquePrivateMessageSentHighlight=-16767101' + LineEnding +
+            'barrows.showChestValue=true' + LineEnding +
+            'worldmap.rareTreeTooltips=true' + LineEnding +
+            'xpupdater.wiseoldman=false' + LineEnding +
+            'minimap.hideMinimap=false' + LineEnding +
+            'itemidentification.showHopSeeds=false' + LineEnding +
+            'itemCharge.showFungicideCharges=true' + LineEnding +
+            'xpglobes.Progress\ arc\ color=-14336' + LineEnding +
+            'interfaceStyles.alwaysStack=false' + LineEnding +
+            'totem-fletching.totemIncompleteColor=-1810593' + LineEnding +
+            'woodcutting.showRespawnTimers=true' + LineEnding +
+            'poh.showMagicTravel=true' + LineEnding +
+            'loginscreen.loginScreen=OFF' + LineEnding +
+            'chatcommands.clog=true' + LineEnding +
+            'discord.showCityActivity=true' + LineEnding +
+            'implings.essenceColor=-14657190' + LineEnding +
+            'interacthighlight.itemInteractHighlightColor=-1862336512' + LineEnding +
+            'timers.showArceuusCooldown=false' + LineEnding +
+            'pyramidplunder.highlightDoorsColor=-16711936' + LineEnding +
+            'itemidentification.showBars=false' + LineEnding +
+            'xpglobes.hideMaxed=false' + LineEnding +
+            'idlenotifier.highEnergy=100' + LineEnding +
+            'opponentinfo.showOpponentsInMenu=false' + LineEnding +
+            'zoom.invertPitch=false' + LineEnding +
+            'timers.showStaffOfTheDead=true' + LineEnding +
+            'runelite.blockExtraMouseButtons=true' + LineEnding +
+            'timers.showAbyssalSireStun=true' + LineEnding +
+            'playerindicators.highlightPartyMembers=ENABLED' + LineEnding +
+            'slayer.highlightTile=false' + LineEnding +
+            'attackIndicator.removeWarnedStyles=false' + LineEnding +
+            'xpupdater.cml=false' + LineEnding +
+            'tileindicators.highlightDestinationTile=true' + LineEnding +
+            'zoom.ctrlZoomValue=512' + LineEnding +
+            'fishing.showTiles=true' + LineEnding +
+            'inventoryViewer.hideIfInventoryActive=false' + LineEnding +
+            'runecraft.showClickBox=true' + LineEnding +
+            'totem-fletching.pointsCappedColor=-1810593' + LineEnding +
+            'timers.showSilkDressing=true' + LineEnding +
+            'itemstat.geStats=true' + LineEnding +
+            'chatcommands.clearSingleWord=8\:128' + LineEnding +
+            'clanchat.showIgnoresColor=-65536' + LineEnding +
+            'itemstat.equipmentStats=true' + LineEnding +
+            'idlenotifier.timeout=5000' + LineEnding +
+            'runelite.runecraftplugin=false' + LineEnding +
+            'menuentryswapper.swapBoxTrap=true' + LineEnding +
+            'screenshot.levels=true' + LineEnding +
+            'itemstat.consumableStats=true' + LineEnding +
+            'mta.enchantment=true' + LineEnding +
+            'itemCharge.recoilNotification={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'nightmareZone.overloadnotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'questhelpervars.rsprofile.6E69puls.kandarin-easy-killed-fire=false' + LineEnding +
+            'runelite.nightmarezoneplugin=false' + LineEnding +
+            'runelite.notificationFlashColor=1191116800' + LineEnding +
+            'itemprices.showHAValue=true' + LineEnding +
+            'virtuallevels.virtualTotalLevel=true' + LineEnding +
+            'totem-fletching.totemTextColor=-2243841' + LineEnding +
+            'herbiboar.colorTrail=-1' + LineEnding +
+            'screenshot.wildernessLootChest=true' + LineEnding +
+            'bank.seedVaultValue=true' + LineEnding +
+            'raids.ccDisplay=false' + LineEnding +
+            'tearsofguthix.showGreenTearsTimer=true' + LineEnding +
+            'motherlode.showGemsFound=true' + LineEnding +
+            'party.statusOverlayRenderSelf=true' + LineEnding +
+            'totem-fletching.carvingHighlightColor=-6490763' + LineEnding +
+            'runelite.uiWindowOpacity=100' + LineEnding +
+            'raids.scoutOverlay=true' + LineEnding +
+            'npcindicators.highlightMenuStyle=NONE' + LineEnding +
+            'runecraft.showEarth=true' + LineEnding +
+            'hunterplugin.hexColorTransTrap=-14336' + LineEnding +
+            'discord.elapsedTime=TOTAL' + LineEnding +
+            'attackIndicator.hideAutoRetaliate=false' + LineEnding +
+            'woodcutting.highlightRitualCircle=true' + LineEnding +
+            'entityhider.hideAttackers=false' + LineEnding +
+            'statusbars.enableSkillIcon=true' + LineEnding +
+            'roofremoval.removeDestination=true' + LineEnding +
+            'menuentryswapper.swapPay=true' + LineEnding +
+            'runelite.notificationTimeout=10000' + LineEnding +
+            'textrecolor.opaqueClanChatMessageHighlight=-16777216' + LineEnding +
+            'totem-fletching.maskIncorrectCarvingChoice=true' + LineEnding +
+            'opponentinfo.lookupOnInteraction=false' + LineEnding +
+            'infoboxoverlay.orient_InfoBoxOverlay=HORIZONTAL' + LineEnding +
+            'pyramidplunder.hideTimer=true' + LineEnding +
+            'grounditems.mediumValueColor=-6684775' + LineEnding +
+            'woodcutting.highlightFoxTrap=true' + LineEnding +
+            'barbarianAssault.waveTimes=true' + LineEnding +
+            'loginscreen.showLoginFire=true' + LineEnding +
+            'zoom.inner=false' + LineEnding +
+            'prayer.showPrayerTooltip=true' + LineEnding +
+            'dailytaskindicators.showFlax=false' + LineEnding +
+            'chatnotification.notifyOnBroadcast={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'rsprofile.rsprofile.1QRW8beR.displayName=B1GAU551E' + LineEnding +
+            'screenshot.copyToClipboard=false' + LineEnding +
+            'menuentryswapper.swapExchange=true' + LineEnding +
+            'screenshot.baHighGamble=false' + LineEnding +
+            'worldhopper.previousKey=37\:192' + LineEnding +
+            'grounditems.showMenuItemQuantities=true' + LineEnding +
+            'specialcounter.elderMaulThreshold=0' + LineEnding +
+            'attackIndicator.warningNotification={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'menuentryswapper.swapKaramjaGloves=WEAR' + LineEnding +
+            'runecraft.showRifts=true' + LineEnding +
+            'worldhopper.nextKey=39\:192' + LineEnding +
+            'chatcommands.clearEntireChatBox=0\:0' + LineEnding +
+            'grounditems.priceDisplayMode=BOTH' + LineEnding +
+            'playerindicators.drawPlayerTiles=false' + LineEnding +
+            'runelite.friendnotesplugin=false' + LineEnding +
+            'inventorytags.showTagOutline=true' + LineEnding +
+            'clanchat.showIgnores=true' + LineEnding +
+            'menuentryswapper.swapRadasBlessing=EQUIP' + LineEnding +
+            'zoom.rightClickExamine=false' + LineEnding +
+            'screenshot.duels=false' + LineEnding +
+            'discord.showMinigameActivity=true' + LineEnding +
+            'itemidentification.showCoralFrags=false' + LineEnding +
+            'itemstat.colorBetterSomecapped=-6492621' + LineEnding +
+            'gpu.hideUnrelatedMaps=true' + LineEnding +
+            'menuentryswapper.swapGEAbort=false' + LineEnding +
+            'npcindicators.outlineFeather=0' + LineEnding +
+            'runelite.banktagsplugin=false' + LineEnding +
+            'idlenotifier.movementidle={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'runelite.minimapplugin=false' + LineEnding +
+            'implings.showCrystal=NONE' + LineEnding +
+            'woodcutting.forestryFloweringTreeNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'wintertodt.notifyBrazierDamage=INTERRUPT' + LineEnding +
+            'chatfilter.stripAccents=false' + LineEnding +
+            'tithefarmplugin.hexColorUnwatered=-17664' + LineEnding +
+            'banktags.removeTabSeparators=false' + LineEnding +
+            'defaultworld.defaultWorld=0' + LineEnding +
+            'randomevents.notifyArnav={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'teamCapes.friendsChatMemberCounter=false' + LineEnding +
+            'textrecolor.transparentClanChatInfoHighlight=-65536' + LineEnding +
+            'runelite.gameSize=765x503' + LineEnding +
+            'discord.showBossActivity=true' + LineEnding +
+            'friendlist.showWorldOnLogin=false' + LineEnding +
+            'raids.scoutOverlayInRaid=true' + LineEnding +
+            'hiscore.bountylookup=false' + LineEnding +
+            'specialcounter.emberlightThreshold=0' + LineEnding +
+            'slayer.highlightHull=false' + LineEnding +
+            'worldmap.farmingpatchTooltips=true' + LineEnding +
+            'totem-fletching.carvingHighlightBorderWidth=2' + LineEnding +
+            'kourendLibrary.alwaysShowVarlamoreEnvoy=false' + LineEnding +
+            'randomevents.notifyDunce={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'fishing.showFishingStats=true' + LineEnding +
+            'blastmine.showOreOverlay=true' + LineEnding +
+            'worldhopper.displayPing=false' + LineEnding +
+            'poh.showBurner=true' + LineEnding +
+            'agility.highlightShortcuts=true' + LineEnding +
+            'runelite.prayerplugin=false' + LineEnding +
+            'bank.showExact=false' + LineEnding +
+            'idlenotifier.oxygenNotification={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'itemidentification.showOres=false' + LineEnding +
+            'woodcutting.highlightFlowers=true' + LineEnding +
+            'playerindicators.friendNameColor=-16725933' + LineEnding +
+            'boosts.migrated=1' + LineEnding +
+            'npcindicators.highlightSouthWestTile=false' + LineEnding +
+            'interacthighlight.objectShowInteract=true' + LineEnding +
+            'dailytaskindicators.showArrows=false' + LineEnding +
+            'timetracking.preferSoonest=false' + LineEnding +
+            'interacthighlight.playerShowInteract=true' + LineEnding +
+            'runelite.accountplugin=false' + LineEnding +
+            'agility.showLapCount=true' + LineEnding +
+            'zoom.zoomIncrement=25' + LineEnding +
+            'runelite.spellbookplugin=false' + LineEnding +
+            'itemCharge.lowWarning=2' + LineEnding +
+            'questhelpervars.rsprofile.6E69puls.gracefulOrFarming=false' + LineEnding +
+            'pyramidplunder.highlightedChestFloor=9' + LineEnding +
+            'xpTracker.onScreenDisplayMode=XP_GAINED' + LineEnding +
+            'totem-fletching.renderPanel=false' + LineEnding +
+            'implings.showgourmet=NONE' + LineEnding +
+            'itemidentification.showLogs=false' + LineEnding +
+            'runelite.agilityplugin=false' + LineEnding +
+            'chatcommands.sw=true' + LineEnding +
+            'itemCharge.showBraceletOfClayCharges=true' + LineEnding +
+            'timers.showPrayerRegeneration=true' + LineEnding +
+            'fishing.minnowsOverlayColor=-65536' + LineEnding +
+            'defaultworld.lastWorld=0' + LineEnding +
+            'runelite.grandexchangeplugin=false' + LineEnding +
+            'timers.showArceuus=true' + LineEnding +
+            'xpTracker.logoutPausing=true' + LineEnding +
+            'runelite.puzzlesolverplugin=false' + LineEnding +
+            'loottracker.syncPanel=true' + LineEnding +
+            'raids.enableLayoutWhitelist=false' + LineEnding +
+            'zoom.middleClickMenu=false' + LineEnding +
+            'agility.showClickboxes=true' + LineEnding +
+            'runelite.chatchannelplugin=false' + LineEnding +
+            'worldmap.agilityCourseTooltips=true' + LineEnding +
+            'raids.enableRotationWhitelist=false' + LineEnding +
+            'keyremapping.up=87\:0' + LineEnding +
+            'worldhopper.menuOption=true' + LineEnding +
+            'chatnotification.notifyOnHighlight={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'attackIndicator.showChatWarnings=true' + LineEnding +
+            'loottracker.rsprofile.6E69puls.drops_NPC_Vorkath={"type"\:"NPC","name"\:"Vorkath","kills"\:292,"first"\:1783145998221,"last"\:1783423251636,"drops"\:[22124,584,1751,584,5295,3,9193,346,1750,622,1514,1100,1748,475,1752,937,1602,304,1201,43,537,322,1754,601,450,457,1303,49,1988,5736,21930,1891,30900,876,1392,177,995,1123017,562,7981,27897,27,1305,10,21907,3,9194,205,1616,26,5304,5,4087,8,1377,10,11232,856,384,169,5317,1,21880,267,824,1007,560,5164,987,6,11237,549,4585,8,5300,7,5314,3,392,322,9190,111,22118,5,9192,58,5315,2,1619,1,5289,1,21486,1,2363,1,892,42,5288,1,1623,1,9191,25,985,3,1319,2,829,20,9189,28]}' + LineEnding +
+            'timers.showAntipoison=true' + LineEnding +
+            'specialcounter.arclightThreshold=0' + LineEnding +
+            'runelite.uiEnableCustomChrome=true' + LineEnding +
+            'antiDrag.dragDelay=30' + LineEnding +
+            'wintertodt.roundNotification=5' + LineEnding +
+            'regenmeter.showHitpoints=true' + LineEnding +
+            'itemprices.showWhileAlching=true' + LineEnding +
+            'menuentryswapper.swapPortalNexus=false' + LineEnding +
+            'totem-fletching.renderEntTrails=true' + LineEnding +
+            'totem-fletching.renderTotemHighlight=OUTLINE' + LineEnding +
+            'menuentryswapper.swapPrivate=false' + LineEnding +
+            'textrecolor.transparentPrivateMessageSentHighlight=-1' + LineEnding +
+            'minimap.zoom=true' + LineEnding +
+            'runecraft.showMind=true' + LineEnding +
+            'grounditems.showLootbeamTier=HIGH' + LineEnding +
+            'banktags.position=0' + LineEnding +
+            'itemidentification.showFlowerSeeds=false' + LineEnding +
+            'nightmareZone.ultimateforcenotification={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'clanchat.guestClanChatShowJoinLeave=false' + LineEnding +
+            'textrecolor.transparentClanInfoHighlight=-65536' + LineEnding +
+            'xpTracker.intermediateLevelMarkers=false' + LineEnding +
+            'driftnet.countColor=-1' + LineEnding +
+            'npcindicators.drawNames=false' + LineEnding +
+            'timers.showCurseOfTheMoons=true' + LineEnding +
+            'randomevents.notifyCountCheck={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'randomevents.notifySandwich={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'playerindicators.partyMemberNameColor=-1410213' + LineEnding +
+            'stretchedmode.scalingFactor=50' + LineEnding +
+            'interacthighlight.npcHoverHighlightColor=-1862271232' + LineEnding +
+            'runelite.infoBoxTextOutline=false' + LineEnding +
+            'statusbars.enableRestorationBars=true' + LineEnding +
+            'itemidentification.showWines=false' + LineEnding +
+            'runelite.rememberScreenBounds=true' + LineEnding +
+            'implings.gourmetColor=-5667998' + LineEnding +
+            'chatnotification.notifyOnDuel={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'xpTracker.progressBarLabel=PERCENTAGE' + LineEnding +
+            'loottracker.rsprofile.6E69puls.drops_NPC_Feral\ Vampyre={"type"\:"NPC","name"\:"Feral Vampyre","kills"\:1,"first"\:1783933688357,"last"\:1783933688357,"drops"\:[3325,1,995,15]}' + LineEnding +
+            'agility.agilityArenaNotifier={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'runelite.externalPlugins=totem-fletching' + LineEnding +
+            'barrows.showPuzzleAnswer=true' + LineEnding +
+            'itemCharge.showAbyssalBraceletCharges=true' + LineEnding +
+            'itemprices.showAlchProfit=false' + LineEnding +
+            'blastfurnace.showCofferTime=true' + LineEnding +
+            'raids.raidsTimer=true' + LineEnding +
+            'totem-fletching.builtOffset=160' + LineEnding +
+            'groundMarker.borderWidth=2.0' + LineEnding +
+            'puzzlesolver.displaySolution=true' + LineEnding +
+            'prayer.prayerBarHideIfNonCombat=false' + LineEnding +
+            'runelite.corpplugin=false' + LineEnding +
+            'textrecolor.opaqueClanChatInfoHighlight=-65536' + LineEnding +
+            'runelite.skillcalculatorplugin=false' + LineEnding +
+            'totem-fletching.renderTotemText=true' + LineEnding +
+            'keyremapping.cameraRemap=true' + LineEnding +
+            'runelite.defaultworldplugin=false' + LineEnding +
+            'fpscontrol.drawFps=true' + LineEnding +
+            'fpscontrol.limitFps=false' + LineEnding +
+            'randomevents.notifyAll={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'keyremapping.space=32\:0' + LineEnding +
+            'zoom.relaxCameraPitch=false' + LineEnding +
+            'prayer.prayerFlickLocation=NONE' + LineEnding +
+            'grounditems.doubleTapDelay=250' + LineEnding +
+            'implings.luckyColor=-10090651' + LineEnding +
+            'runelite.panelToggleKey=123\:128' + LineEnding +
+            'runecraft.pouchDegrade=true' + LineEnding +
+            'itemCharge.showPotionDoseCount=false' + LineEnding +
+            'runelite.reportbuttonplugin=false' + LineEnding +
+            'runelite.warningOnExit=LOGGED_IN' + LineEnding +
+            'runecraft.showBlood=true' + LineEnding +
+            'agility.highlightMarks=true' + LineEnding +
+            'chatnotification.highlightOwnName=true' + LineEnding +
+            'timers.showMagicImbue=true' + LineEnding +
+            'playerindicators.highlightTeamMembers=ENABLED' + LineEnding +
+            'wiki.leftClickSearch=false' + LineEnding +
+            'grounditems.insaneValueColor=-39246' + LineEnding +
+            'grandexchange.enableGeLimits=true' + LineEnding +
+            'hiscore.menuOption=true' + LineEnding +
+            'worldmap.scrollIcon=true' + LineEnding +
+            'clanchat.joinLeaveRank=UNRANKED' + LineEnding +
+            'poh.showDigsitePendant=true' + LineEnding +
+            'tileindicators.highlightHoveredColor=0' + LineEnding +
+            'herbiboar.showTunnel=true' + LineEnding +
+            'menuentryswapper.swapTeleToPoh=false' + LineEnding +
+            'itemidentification.showEnchantedJewellery=false' + LineEnding +
+            'pyramidplunder.highlightContainersColor=-256' + LineEnding +
+            'randomevents.notifyJekyll={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'itemidentification.showPotions=false' + LineEnding +
+            'grandexchange.notifyOnOfferComplete={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'fishing.showNames=false' + LineEnding +
+            'menuentryswapper.swapBones=false' + LineEnding +
+            'agility.trapHighlight=-65536' + LineEnding +
+            'implings.ninjaColor=-12106165' + LineEnding +
+            'textrecolor.transparentClanGuestInfoHighlight=-65536' + LineEnding +
+            'poh.showPortalNexus=true' + LineEnding +
+            'clanchat.guestClanChatShowOnlineMemberCount=false' + LineEnding +
+            'xpupdater.templeosrs=false' + LineEnding +
+            'timers.showPrayerEnhance=true' + LineEnding +
+            'runelite.notificationSound=NATIVE' + LineEnding +
+            'screenshot.kingdom=true' + LineEnding +
+            'metronome.tockVolume=0' + LineEnding +
+            'grounditems.ownershipFilterMode=ALL' + LineEnding +
+            'itemidentification.identificationType=SHORT' + LineEnding +
+            'entityhider.hidePlayers2D=true' + LineEnding +
+            'slayer.infobox=true' + LineEnding +
+            'totem-fletching.totemFillAlpha=80' + LineEnding +
+            'objectindicators.highlightClickbox=false' + LineEnding +
+            'tithefarmplugin.hexColorWatered=-16737793' + LineEnding +
+            'randomevents.notifyMime={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'metronome.tickCount=1' + LineEnding +
+            'runelite.implingsplugin=false' + LineEnding +
+            'questhelpervars.rsprofile.6E69puls.payOrCompostTree=false' + LineEnding +
+            'worldmap.rareTreeIcon=true' + LineEnding +
+            'herbiboar.showObject=true' + LineEnding +
+            'boosts.displayNextBuffChange=BOOSTED' + LineEnding +
+            'itemidentification.showButterflyMothJars=false' + LineEnding +
+            'runepouch.runePouchOverlayMode=BOTH' + LineEnding +
+            'runelite.mousehighlightplugin=false' + LineEnding +
+            'combatlevel.showLevelsUntil=true' + LineEnding +
+            'wintertodt.damageNotificationColor=-16711681' + LineEnding +
+            'entityhider.hideDeadNpcs=false' + LineEnding +
+            'idlenotifier.interactionidle={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'menuentryswapper.swapBirdhouseEmpty=true' + LineEnding +
+            'cluescroll.displayHintArrows=true' + LineEnding +
+            'implings.showdragon=HIGHLIGHT' + LineEnding +
+            'antiDrag.onShiftOnly=true' + LineEnding +
+            'woodcutting.forestryBeeHiveNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'timers.showBurnDamageNextHit=false' + LineEnding +
+            'itemCharge.showTeleportCharges=true' + LineEnding +
+            'entityhider.hideWorldEntities=false' + LineEnding +
+            'lowmemory.hideLowerPlanes=false' + LineEnding +
+            'implings.showlucky=HIGHLIGHT' + LineEnding +
+            'runecraft.showCosmic=true' + LineEnding +
+            'runelite.cluescrollplugin=false' + LineEnding +
+            'pyramidplunder.highlightedSarcophagusFloor=9' + LineEnding +
+            'menuentryswapper.swapChase=true' + LineEnding +
+            'fishing.trawlerTimer=true' + LineEnding +
+            'menuentryswapper.groundItemShiftClickWalkHere=false' + LineEnding +
+            'xpTracker.prioritizeRecentXpSkills=false' + LineEnding +
+            'clanchat.recentChats=true' + LineEnding +
+            'implings.showspawn=false' + LineEnding +
+            'grounditems.itemHighlightMode=BOTH' + LineEnding +
+            'nightmareZone.absorptioncoloroverthreshold=-256' + LineEnding +
+            'entityhider.hideRandomEvents=false' + LineEnding +
+            'randomevents.notifyFlippa={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'keyremapping.down=83\:0' + LineEnding +
+            'itemCharge.showSackCharges=true' + LineEnding +
+            'timers.showGodWarsAltar=true' + LineEnding +
+            'menuentryswapper.swapStairsLeftClick=CLIMB' + LineEnding +
+            'screenshot.clanDeath=false' + LineEnding +
+            'teamCapes.teamCapesOverlay=false' + LineEnding +
+            'entityhider.hideIgnores=false' + LineEnding +
+            'runecraft.showChaos=true' + LineEnding +
+            'loginscreen.syncusername=true' + LineEnding +
+            'runelite.bankplugin=false' + LineEnding +
+            'npcUnaggroArea.npcUnaggroShowAreaLines=false' + LineEnding +
+            'runelite.useWikiItemPrices=true' + LineEnding +
+            'runecraft.showWater=true' + LineEnding +
+            'party.statusOverlayHealth=false' + LineEnding +
+            'chatcommands.lp=true' + LineEnding +
+            'itemCharge.showImpCharges=true' + LineEnding +
+            'npcindicators.drawMinimapNames=false' + LineEnding +
+            'statusbars.leftBarMode=HITPOINTS' + LineEnding +
+            'dpscounter.bossDamage=false' + LineEnding +
+            'puzzlesolver.dotEndColor=-65536' + LineEnding +
+            'runelite.itemchargeplugin=false' + LineEnding +
+            'itemidentification.showTeleportScrolls=false' + LineEnding +
+            'randomevents.notifyGravedigger={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'interacthighlight.outlineFeather=4' + LineEnding +
+            'idlenotifier.hitpoints=1' + LineEnding +
+            'cannon.highlightDoubleHitColor=-65536' + LineEnding +
+            'menuentryswapper.swapTeleportItem=false' + LineEnding +
+            'timetracking.timeFormatMode=ABSOLUTE_24H' + LineEnding +
+            'poh.showAltar=true' + LineEnding +
+            'objectindicators.outlineFeather=0' + LineEnding +
+            'agility.stickHighlightColor=-65536' + LineEnding +
+            'woodcutting.clueNestNotifyTier=BEGINNER' + LineEnding +
+            'xpglobes.Progress\ orb\ background\ color=2139127936' + LineEnding +
+            'runelite.dragHotkey=0\:512' + LineEnding +
+            'bank.searchKeybind=70\:128' + LineEnding +
+            'runelite.loginscreenplugin=false' + LineEnding +
+            'discord.showRaidingActivity=true' + LineEnding +
+            'npcUnaggroArea.npcAggroAreaColor=1694498560' + LineEnding +
+            'randomevents.notifyGenie={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'npcUnaggroArea.showOnSlayerTask=false' + LineEnding +
+            'xpglobes.alignOrbsVertically=false' + LineEnding +
+            'totem-fletching.renderPoints=true' + LineEnding +
+            'itemCharge.slaughterNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'runelite.itemstatplugin=false' + LineEnding +
+            'itemidentification.showFruitTreeSeeds=false' + LineEnding +
+            'nightmareZone.powersurgenotification={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'timers.showCharge=true' + LineEnding +
+            'tileindicators.currentTileBorderWidth=2.0' + LineEnding +
+            'menuentryswapper.npcLeftClickCustomization=true' + LineEnding +
+            'questhelpervars.rsprofile.6E69puls.kandarin-easy-killed-air=false' + LineEnding +
+            'xpTracker.hideMaxed=false' + LineEnding +
+            'runelite.containInScreen2=RESIZING' + LineEnding +
+            'textrecolor.opaquePublicChatHighlight=-16777216' + LineEnding +
+            'runelite.notificationGameMessage=false' + LineEnding +
+            'interacthighlight.objectShowHover=true' + LineEnding +
+            'raids.pointsMessage=true' + LineEnding +
+            'grandexchange.showExact=false' + LineEnding +
+            'timers.showGoading=true' + LineEnding +
+            'keyremapping.fkeyRemap=false' + LineEnding +
+            'randomevents.notifyBeekeeper={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'grounditems.lowValuePrice=20000' + LineEnding +
+            'stretchedmode.increasedPerformance=false' + LineEnding +
+            'agility.highlightSepulchreObstacles=true' + LineEnding +
+            'xpTracker.resetSkillRateAfter=0' + LineEnding +
+            'keyremapping.right=68\:0' + LineEnding +
+            'grandexchange.showActivelyTradedPrice=true' + LineEnding +
+            'customcursor.cursorStyle=RS3_GOLD' + LineEnding +
+            'puzzlesolver.drawDots=true' + LineEnding +
+            'worldhopper.ping=true' + LineEnding +
+            'randomevents.notifyPrison={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'npcindicators.highlightTrueTile=false' + LineEnding +
+            'puzzlesolver.displayRemainingMoves=true' + LineEnding +
+            'randomevents.notifyDwarf={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
+            'playerindicators.clanMenuIcons=true' + LineEnding +
+            'gpu.numThreads=3' + LineEnding +
+            'agility.portalsHighlight=-65281' + LineEnding +
+            'chatfilter.filterType=CENSOR_WORDS' + LineEnding +
+            'bank.showHA=false' + LineEnding +
+            'herbiboar.colorGameObject=-16711681' + LineEnding +
+            'poh.showJewelleryBox=true' + LineEnding +
+            'entityhider.hideFriends=false' + LineEnding +
+            'chatcommands.pb=true' + LineEnding +
+            'boosts.displayPanel=false' + LineEnding +
+            'cannon.lowWarningThreshold=0' + LineEnding +
+            'herbiboar.colorStart=-16711681' + LineEnding +
+            'barbarianAssault.showHealerBars=true' + LineEnding +
+            'textrecolor.opaqueExamineHighlight=-16776961' + LineEnding +
+            'banktags.preventTagTabDrags=false' + LineEnding +
+            'itemidentification.showSaplings=true' + LineEnding +
+            'rsprofile.rsprofile.6E69puls.displayName=BIGAUSS1E' + LineEnding +
+            'menuentryswapper.removeDeadNpcMenus=false' + LineEnding +
+            'runelite.notesplugin=false' + LineEnding +
+            'textrecolor.transparentClanChatMessageHighlight=-1' + LineEnding +
+            'objectindicators.highlightHull=true' + LineEnding +
+            'wintertodt.notifyEmptyInv=true' + LineEnding +
+            'chatcommands.qp=true' + LineEnding +
+            'bank.showGE=true' + LineEnding +
+            'clanchat.confirmKicks=false' + LineEnding +
+            'kingdomofmiscellania.approvalThreshold=100' + LineEnding +
+            'runelite.poisonplugin=false' + LineEnding +
+            'tearsofguthix.greenTearsColor=1677786880' + LineEnding +
+            'party.pingHotkey=0\:0' + LineEnding +
+            'menuentryswapper.swapEssenceMineTeleport=false' + LineEnding +
+            'rsprofile.rsprofile.6E69puls.accountHash=7252322525730655976' + LineEnding +
+            'playerindicators.clanChatMemberColor=-14413909' + LineEnding +
+            'itemidentification.showImplingJars=false' + LineEnding +
+            'itemidentification.showJewellery=false' + LineEnding +
+            'timers.showFreezes=true' + LineEnding +
+            'pyramidplunder.timerLowWarning=30';
+end;
+function TWaspUpdater.ActivateProfile(path, name: String; id: Int32): Boolean;
+var
+  jsonContent: String;
+  json, tmp: TJSONObject;
+  arr, clean: TJSONArray;
+  i, j: Int32;
+begin
+  Result := False;
+  jsonContent := '';
+  if FileExists(path + 'profiles.json') then
+    jsonContent := ReadFileContents(path + 'profiles.json');
+  if jsonContent = '' then
+    jsonContent := '{"profiles":[]}';
+
+  try
+    json.Init(jsonContent);
+    try
+      arr := json.getJSONArray('profiles');
+    except
+      arr.Init();
+    end;
+
+    j := -1;
+    clean.Init();
+    for i := 0 to arr.High() do
+    begin
+      tmp := arr.getJSONObject(i);
+      if (tmp.getInt('id') = id) and (tmp.getString('name') = name) then
+      begin
+        tmp.Put('active', True);
+        tmp.Put('sync', False);
+        tmp.Put('rev', -1);
+        try
+          tmp.remove('defaultForRsProfiles');
+        except
+        end;
+        clean.Put(tmp);
+        j := clean.High();
+        Continue;
+      end;
+
+      if (tmp.getInt('id') = id) then
+        Continue;
+      if (tmp.getString('name') = name) then
+        Continue;
+      try
+        if tmp.getBoolean('active') then
+          tmp.Put('active', False);
+      except
+        try
+          if tmp.getString('active') = 'true' then
+            tmp.Put('active', False);
+        except
+        end;
+      end;
+
+      clean.Put(tmp);
+    end;
+
+    if j = -1 then
+    begin
+      tmp.Init('{"id":' + ToStr(id) + ',"name":"' + name + '","sync":false,"active":true,"rev":-1}');
+      clean.put(tmp);
+    end;
+
+    try
+      json.remove('profiles');
+    except
+    end;
+    json.put('profiles', clean);
+
+    Result := WriteFileContents(path + 'profiles.json', json.toString(), False);
+  finally
+    json.Free();
+  end;
+end;
+
+function TWaspUpdater.InstallRLProfile(out name: String; out updatedExisting: Boolean; silent: Boolean = False): Boolean;
+  function _StrToInt(str: String): Int32;
+  var
+    i: Int32;
+  begin
+    Result := 0;
+    for i := 1 to Length(str) do
+      Result += Int32(str[i]);
+  end;
+
+  procedure _Fail(const reason: String);
+  begin
+    if silent then
+      WriteLn('[B.A.S.H] RuneLite profile setup failed: ', reason)
+    else
+      TerminateScript(reason);
+  end;
+var
+  path, profileFile: String;
+  id: Int32;
+begin
+  Result := False;
+  updatedExisting := False;
+  name := '';
+  path := GetEnvironmentVariable('userprofile') + DirectorySeparator + '.runelite' +
+          DirectorySeparator + 'profiles2' + DirectorySeparator;
+
+  if not ForceDirectories(path) then
+  begin
+    _Fail('Failed to create RuneLite profiles2 directory.');
+    Exit;
+  end;
+
+  name := BashLicenseClient.GetInstallId();
+  name := StringReplace(name, '-', '', [rfReplaceAll]);
+  if Length(name) < 8 then
+    name := 'bashprof';
+  name := Copy(name, 1, 8);
+  id := _StrToInt(name);
+  profileFile := name + '-' + ToStr(id) + '.properties';
+
+  updatedExisting := FileExists(path + profileFile);
+
+  if not WriteFileContents(path + profileFile, Self.GetProfileFileString(), False) then
+  begin
+    _Fail('Failed to write B.A.S.H RuneLite profile.');
+    Exit;
+  end;
+
+  if not Self.ActivateProfile(path, name, id) then
+  begin
+    _Fail('Failed to write to profiles.json');
+    Exit;
+  end;
+
+  Result := True;
+end;
+
 procedure TWaspUpdater.Free();
 begin
   Self.MonitorSRLB.Timer.Free();
@@ -4193,6 +5561,36 @@ var
 begin
   panel := TButton(sender).getOwner();
   Self._OpenScript(panel.GetChild('scripts_listbox'));
+end;
+
+
+procedure TWaspForm._InstallProfile(sender: TObject);
+var
+  name: String;
+  updatedExisting: Boolean;
+begin
+  if not WaspUpdater.InstallRLProfile(name, updatedExisting) then
+  begin
+    MessageDlg('B.A.S.H', 'Failed to install/update the RuneLite profile.', TMsgDlgType.mtError, []);
+    Exit;
+  end;
+
+  if updatedExisting then
+    MessageDlg(
+      'B.A.S.H',
+      'Updated RuneLite profile "' + name + '".' + LineEnding +
+      'Please select it in RuneLite before you start botting.',
+      TMsgDlgType.mtInformation,
+      []
+    )
+  else
+    MessageDlg(
+      'B.A.S.H',
+      'Installed RuneLite profile "' + name + '".' + LineEnding +
+      'Please select it in RuneLite before you start botting.',
+      TMsgDlgType.mtInformation,
+      []
+    );
 end;
 
 procedure TWaspForm._UpdateSRLB();
@@ -5121,7 +6519,7 @@ begin
 
   headerBottom := Max(logo.GetTop() + logo.getHeight(), sourcePanel.GetTop() + sourcePanel.getHeight());
   listTop := headerBottom + TControl.AdjustToDPI(12);
-  footerTop := panel.getHeight() - TControl.AdjustToDPI(88);
+  footerTop := panel.getHeight() - TControl.AdjustToDPI(120);
   colGap := TControl.AdjustToDPI(24);
 
   licensePanel.Create(panel);
@@ -5333,6 +6731,16 @@ begin
   button.SetTop(footerTop + TControl.AdjustToDPI(35));
   button.SetLeft(panel.getWidth() - TControl.AdjustToDPI(16) - button.getWidth());
 
+
+  button.Create(panel);
+  button.setName('install_rl_button');
+  button.SetCaption('Install RuneLite Profile');
+  button.setOnClick(@Self._InstallProfile);
+  button.setWidth(TControl.AdjustToDPI(150));
+  button.setHeight(TControl.AdjustToDPI(25));
+  button.SetTop(footerTop + TControl.AdjustToDPI(65));
+  button.SetLeft(panel.getWidth() - TControl.AdjustToDPI(16) - button.getWidth());
+
   Self.SetupColorLegend(panel);
 
   launcherRev.Create(panel);
@@ -5340,7 +6748,7 @@ begin
   launcherRev.setCaption('Launcher revision: ' + ToStr(WaspUpdater.Launcher.Revision));
   launcherRev.SetFontSize(9);
   launcherRev.SetFontColor($A89F90);
-  launcherRev.SetTop(footerTop + TControl.AdjustToDPI(65));
+  launcherRev.SetTop(footerTop + TControl.AdjustToDPI(95));
   launcherRev.setLeft(Self.Size.X div 2 - launcherRev.GetTrueWidth() div 2);
 end;
 
@@ -5362,7 +6770,21 @@ procedure TWaspForm.OnShow(sender: TObject);
 var
   text: TLabel;
   status: TLabel;
+  profileName: String;
+  updatedExisting: Boolean;
 begin
+  try
+    if WaspUpdater.InstallRLProfile(profileName, updatedExisting, True) then
+    begin
+      if updatedExisting then
+        WriteLn('[B.A.S.H] Updated RuneLite profile: ', profileName)
+      else
+        WriteLn('[B.A.S.H] Installed RuneLite profile: ', profileName);
+    end;
+  except
+    WriteLn('[B.A.S.H] Silent RuneLite profile setup failed: ', GetExceptionMessage());
+  end;
+
   Self.PopulateScripts();
 
   text := Self.Form.GetChild('source_bash_label');
@@ -5397,7 +6819,7 @@ end;
 
 procedure TWaspForm.Setup();
 begin
-  Self.Size := [TControl.AdjustToDPI(920), TControl.AdjustToDPI(640)];
+  Self.Size := [TControl.AdjustToDPI(920), TControl.AdjustToDPI(670)];
 
   Self.Form.Init(nil);
   Self.Form.SetName('bash_form');

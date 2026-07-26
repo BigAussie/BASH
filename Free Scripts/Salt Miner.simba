@@ -1,8 +1,9 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := '5d89af42-7819-45b6-b4fb-886971d700bf'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '3'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '6'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
+{$I BashLib/optional/handlers/aichat.simba}
 
 {
 ----------------------------------------------------------------------------------
@@ -14,7 +15,6 @@ Github: https://github.com/BigAussie
 ----------------------------------------------------------------------------------
 }
 
-//=============DEFAULT SCRIPT SETTINGS============== // The values below are adjustable in the GUI and don't need to be changed here.
 var
   STONYBASALTINPUT: Integer                      = 10; 
   ICYBASALTINPUT: Integer                        = 10;
@@ -632,6 +632,15 @@ procedure SaltMiner.Init(MaxActions: UInt32; MaxTime: UInt64); override;
 begin
   inherited;
 
+  if AIChatbot.Enabled then
+  begin
+    WriteLn('[AI Chatbot] Enabled - initializing');
+    AIChatbot.Init();
+  end
+  else
+    WriteLn('[AI Chatbot] Disabled');
+
+
   StatsPayload.Setup({$macro SCRIPT_ID});
   APIClient.TimeStamp := GetTickCount();
 
@@ -715,10 +724,10 @@ type
   TConfig = record(TScriptForm)
     NavPanel, ContentPanel, StatusPanel, DividerPanel, StatusDivider, StatusPad: TPanel;
     BrandLabel: TLabel;
-    ScriptNav, AccountsNav, AntibanNav: TImage;
+    ScriptNav, AccountsNav, AntibanNav, AIChatNav: TImage;
     StartChip: TImage;
     ActiveNav: TImage;
-    ScriptSection, AccountsSection, AntibanSection: TPanel;
+    ScriptSection, AccountsSection, AntibanSection, AIChatSection: TPanel;
 
     Message: TLabel;
     StonyInputBox, IcyInputBox, TeSaltMineInputBox, EfhSaltMineInputBox, UrtSaltMineInputBox: TLabeledEdit;
@@ -895,6 +904,7 @@ begin
   Self.PaintRoundChip(Self.ScriptNav, Self.ScriptNav.GetHint(), SM_GUI_NAV_IDLE, SM_GUI_NAV, False);
   Self.PaintRoundChip(Self.AccountsNav, Self.AccountsNav.GetHint(), SM_GUI_NAV_IDLE, SM_GUI_NAV, False);
   Self.PaintRoundChip(Self.AntibanNav, Self.AntibanNav.GetHint(), SM_GUI_NAV_IDLE, SM_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AIChatNav, Self.AIChatNav.GetHint(), SM_GUI_NAV_IDLE, SM_GUI_NAV, False);
   Self.PaintRoundChip(selected, selected.GetHint(), SM_GUI_ACCENT, SM_GUI_NAV, True);
 end;
 
@@ -903,6 +913,7 @@ begin
   Self.ScriptSection.SetVisible(False);
   Self.AccountsSection.SetVisible(False);
   Self.AntibanSection.SetVisible(False);
+  Self.AIChatSection.SetVisible(False);
   section.SetVisible(True);
   Self.StyleNav(selected);
 end;
@@ -920,6 +931,11 @@ end;
 procedure TConfig.ShowAntiban({$H-}sender: TObject); {$H+}
 begin
   Self.ShowSection(Self.AntibanSection, Self.AntibanNav);
+end;
+
+procedure TConfig.ShowAIChat({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AIChatSection, Self.AIChatNav);
 end;
 
 procedure TConfig.BasaltOnlyCheckBoxClicked(Sender: TObject);
@@ -969,6 +985,8 @@ begin
     Self._WarmBuildCache();
   except
   end;
+  AIChatbot.ApplyFromGUI();
+
   Self.Form.SetOnClose(nil);
   Self.Form.Close();
 end;
@@ -1157,10 +1175,12 @@ begin
   Self.ScriptNav := Self.MakeNavItem(Self.NavPanel, 'Action', 12, 100, True);
   Self.AccountsNav := Self.MakeNavItem(Self.NavPanel, 'Accounts', 12, 152);
   Self.AntibanNav := Self.MakeNavItem(Self.NavPanel, 'Antiban', 12, 204);
+  Self.AIChatNav := Self.MakeNavItem(Self.NavPanel, 'AI Chat', 12, 256);
 
   Self.ScriptSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, SM_GUI_BG);
   Self.AccountsSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, SM_GUI_BG);
   Self.AntibanSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, SM_GUI_BG);
+  Self.AIChatSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, SM_GUI_BG);
 
   Self.ScriptSection.SetWidth(mainW);
   Self.ScriptSection.SetHeight(contentH);
@@ -1168,14 +1188,18 @@ begin
   Self.AccountsSection.SetHeight(contentH);
   Self.AntibanSection.SetWidth(mainW);
   Self.AntibanSection.SetHeight(contentH);
+  Self.AIChatSection.SetWidth(mainW);
+  Self.AIChatSection.SetHeight(contentH);
 
   Self.BuildScriptSection(SavedBasaltOnly, SavedStony, SavedIcy, SavedTe, SavedEfh, SavedUrt);
   Self.BuildAccountsSection();
   Self.BuildAntibanSection(SavedMaxActions, SavedMaxTime);
+  AIChatbot.BuildSettings(Self.AIChatSection, mainW);
 
   Self.ScriptNav.SetOnClick(@Self.ShowScript);
   Self.AccountsNav.SetOnClick(@Self.ShowAccounts);
   Self.AntibanNav.SetOnClick(@Self.ShowAntiban);
+  Self.AIChatNav.SetOnClick(@Self.ShowAIChat);
 
   Self.StartChip.Create(Self.StatusPanel);
   Self.StartChip.SetLeft(mainW - startW - TControl.AdjustToDPI(24));
@@ -1218,6 +1242,11 @@ begin
     SavedMaxTime := WLSettings.GetInt('max_time')
   else
     SavedMaxTime := 0;
+
+  AIChatbot.Setup('Gemini', '');
+  AIChatbot.Enabled := False;
+  AIChatbot.LoadSettings();
+  AIChatbot.SetScriptDefaults('mining salt');
 
   Self.Setup('BigAussies Salt Miner', [SM_GUI_W, SM_GUI_H], False);
   Self.BuildShell(SavedBasaltOnly, SavedStony, SavedIcy, SavedTe, SavedEfh, SavedUrt, SavedMaxActions, SavedMaxTime);
