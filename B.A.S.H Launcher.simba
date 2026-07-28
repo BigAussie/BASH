@@ -1,5 +1,5 @@
 {$DEFINE SCRIPT_ID := 'bfde3085-80dc-4bd6-870a-8cb3186a938c'}
-{$DEFINE SCRIPT_REVISION := '25'}
+{$DEFINE SCRIPT_REVISION := '27'}
 
 {.$DEFINE DEVELOPER_MODE}
 
@@ -1396,8 +1396,6 @@ var
   desc: String;
 begin
   Result := existing;
-  // Only the launcher description should advertise run support
-  // (avoids false positives like "Prifddinas" furnace lists).
   desc := LowerCase(description);
 
   if desc.Contains('farm runs') or desc.Contains('farm run') then
@@ -1719,7 +1717,6 @@ begin
 
     if script.ID = '' then
       Continue;
-    // Auto-update channel only — never show in the runnable script list.
     if SameText(script.ID, 'bfde3085-80dc-4bd6-870a-8cb3186a938c') then
       Continue;
     if script.Name.Contains('Launcher') or script.URL.Contains('Launcher') then
@@ -2052,6 +2049,7 @@ begin
     code := GetHTTPPageEx(http, url, tempDest);
     if code <> 200 then
     begin
+      WriteLn('[B.A.S.H] Free API download failed (HTTP ', code, '), falling back to GitHub');
       if FileExists(tempDest) then
         DeleteFile(tempDest);
       Exit;
@@ -2159,12 +2157,29 @@ begin
     Exit(False);
 
   prefix := BASH_FREE_SCRIPTS_DIR + '/';
-  // Preferred layout: Free Scripts/<script>.simba
+
   if normalized.StartsWith(prefix) then
     Exit(True);
 
-  // Transition: allow root-level free scripts until the move is complete.
   Result := (Pos('/', normalized) = 0);
+end;
+
+function ResolveBashFreeScriptRepoPath(const path: String): String;
+var
+  normalized, prefix: String;
+begin
+  normalized := path.Replace('\', '/');
+  if normalized = '' then
+    Exit('');
+
+  prefix := BASH_FREE_SCRIPTS_DIR + '/';
+  if normalized.StartsWith(prefix) then
+    Exit(normalized);
+
+  if Pos('/', normalized) = 0 then
+    Exit(prefix + normalized);
+
+  Result := normalized;
 end;
 
 function TBashScriptClient.FetchRawHeader(path: String): String;
@@ -2759,7 +2774,11 @@ begin
   end;
 
   dest := Self.ScriptsPath + ExtractFileName(script.URL).Replace('%20', ' ');
-  url := 'https://raw.githubusercontent.com/' + Self.Repo + '/' + Self.Branch + '/' + EncodeGitHubPath(script.URL);
+  if script.Typ = EScriptType.FREE then
+    url := 'https://raw.githubusercontent.com/' + Self.Repo + '/' + Self.Branch + '/' +
+      EncodeGitHubPath(ResolveBashFreeScriptRepoPath(script.URL))
+  else
+    url := 'https://raw.githubusercontent.com/' + Self.Repo + '/' + Self.Branch + '/' + EncodeGitHubPath(script.URL);
 
   WriteLn('[B.A.S.H] Downloading script: ', script.Name);
   WriteLn('[B.A.S.H] URL: ', url);
@@ -6728,7 +6747,7 @@ begin
   button.SetOnClick(@Self._OpenScriptEx);
   button.setWidth(TControl.AdjustToDPI(150));
   button.setHeight(TControl.AdjustToDPI(25));
-  button.SetTop(footerTop + TControl.AdjustToDPI(35));
+  button.SetTop(footerTop + TControl.AdjustToDPI(45));
   button.SetLeft(panel.getWidth() - TControl.AdjustToDPI(16) - button.getWidth());
 
 
@@ -6738,7 +6757,7 @@ begin
   button.setOnClick(@Self._InstallProfile);
   button.setWidth(TControl.AdjustToDPI(150));
   button.setHeight(TControl.AdjustToDPI(25));
-  button.SetTop(footerTop + TControl.AdjustToDPI(65));
+  button.SetTop(footerTop + TControl.AdjustToDPI(75));
   button.SetLeft(panel.getWidth() - TControl.AdjustToDPI(16) - button.getWidth());
 
   Self.SetupColorLegend(panel);
@@ -6748,7 +6767,7 @@ begin
   launcherRev.setCaption('Launcher revision: ' + ToStr(WaspUpdater.Launcher.Revision));
   launcherRev.SetFontSize(9);
   launcherRev.SetFontColor($A89F90);
-  launcherRev.SetTop(footerTop + TControl.AdjustToDPI(95));
+  launcherRev.SetTop(footerTop + TControl.AdjustToDPI(105));
   launcherRev.setLeft(Self.Size.X div 2 - launcherRev.GetTrueWidth() div 2);
 end;
 
