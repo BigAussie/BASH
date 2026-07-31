@@ -18,7 +18,8 @@ Easiest way to get set up:
 2. Run the installer and follow the prompts (Simba + B.A.S.H launcher)
 3. Open Simba and run `bash-launcher.simba`
 
-Setup source / releases: https://github.com/BigWaspBackup/bash-setup
+Already got Simba installed? Simply run the B.A.S.H Launcher to get latest libs and scripts.
+https://github.com/BigAussie/BASH/blob/main/B.A.S.H%20Launcher.simba
 
 ---
 
