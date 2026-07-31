@@ -1,5 +1,5 @@
 {$DEFINE SCRIPT_ID := 'bfde3085-80dc-4bd6-870a-8cb3186a938c'}
-{$DEFINE SCRIPT_REVISION := '27'}
+{$DEFINE SCRIPT_REVISION := '28'}
 
 {.$DEFINE DEVELOPER_MODE}
 
@@ -35,8 +35,8 @@ const
   BASH_LICENSE_HEADER = 'X-License-Key';
   BASH_INSTALL_HEADER = 'X-Install-Id';
   BASH_LAUNCHER_FILE  = 'bash-launcher.simba';
-  BASH_ACTIVITY_IDS = 'combat,magic,prayer,ranged,farming,fishing,hunter,mining,woodcutting,cooking,crafting,fletching,herblore,runecraft,smithing,agility,construction,firemaking,sailing,slayer,thieving,minigame,bossing';
-  BASH_ACTIVITY_LABELS = 'Combat,Magic,Prayer,Ranged,Farming,Fishing,Hunter,Mining,Woodcutting,Cooking,Crafting,Fletching,Herblore,Runecraft,Smithing,Agility,Construction,Firemaking,Sailing,Slayer,Thieving,MiniGames,Bossing';
+  BASH_ACTIVITY_IDS = 'combat,magic,prayer,ranged,farming,fishing,hunter,mining,woodcutting,cooking,crafting,fletching,herblore,runecraft,smithing,agility,construction,firemaking,sailing,slayer,thieving,utility,minigame,bossing';
+  BASH_ACTIVITY_LABELS = 'Combat,Magic,Prayer,Ranged,Farming,Fishing,Hunter,Mining,Woodcutting,Cooking,Crafting,Fletching,Herblore,Runecraft,Smithing,Agility,Construction,Firemaking,Sailing,Slayer,Thieving,Utility,MiniGames,Bossing';
   BASH_CATEGORY_IDS = 'all,combat,gathering,production,utility,other';
   BASH_CATEGORY_LABELS = 'All,Combat,Gathering,Production,Utility,Other';
   BASH_ACTIVITY_ICON_DIR = 'assets' + DirectorySeparator + 'activities' + DirectorySeparator;
@@ -1198,7 +1198,9 @@ begin
   else if id = 'runecrafting' then
     id := 'runecraft'
   else if (id = 'boss') or (id = 'bosses') then
-    id := 'bossing';
+    id := 'bossing'
+  else if (id = 'general') or (id = 'multi') or (id = 'aio') then
+    id := 'utility';
 
   known := String(BASH_ACTIVITY_IDS).Split(',');
   if known.Contains(id) then
@@ -1537,7 +1539,7 @@ begin
   else if c = 'production' then
     Result := ['cooking', 'crafting', 'fletching', 'herblore', 'runecraft', 'smithing']
   else if c = 'utility' then
-    Result := ['agility', 'construction', 'firemaking', 'sailing', 'slayer', 'thieving']
+    Result := ['utility', 'agility', 'construction', 'firemaking', 'sailing', 'slayer', 'thieving']
   else if c = 'other' then
     Result := ['minigame', 'bossing']
   else
@@ -1879,6 +1881,200 @@ begin
   if Length(iso) < 10 then
     Exit;
   Result := Copy(iso, 9, 2) + '-' + Copy(iso, 6, 2) + '-' + Copy(iso, 1, 4);
+end;
+
+function FormatChangelogEntry(item: TJSONObject; includeName: Boolean = True): String;
+var
+  name, notes, at, header: String;
+  revision: Int32;
+begin
+  Result := '';
+  if item = nil then
+    Exit;
+
+  name := Trim(item.optString('name', ''));
+  notes := Trim(item.optString('notes', ''));
+  if notes = '' then
+    Exit;
+
+  revision := item.optInt('revision', 0);
+  at := FormatLicenseExpiryDate(item.optString('at', ''));
+
+  header := '';
+  if includeName then
+  begin
+    if name = '' then
+      name := 'Unknown script';
+    header := name;
+  end;
+
+  if revision > 0 then
+  begin
+    if header <> '' then
+      header += ' - ';
+    header += 'rev.' + ToStr(revision);
+  end;
+
+  if at <> '' then
+  begin
+    if header <> '' then
+      header += ' - ';
+    header += at;
+  end;
+
+  if header = '' then
+    header := 'Update';
+
+  Result := header + LineEnding + notes;
+end;
+
+// Per-script changelog history from the premium API (no license required).
+function FetchScriptChangelog(const scriptId, scriptName: String; out outError: String): String;
+var
+  http, code, i: Int32;
+  url, response, block, title: String;
+  json: TJSONObject;
+  entries: TJSONArray;
+  item: TJSONObject;
+begin
+  Result := '';
+  outError := '';
+
+  if Trim(scriptId) = '' then
+  begin
+    outError := 'Select a script first.';
+    Exit;
+  end;
+
+  url := BASH_PREMIUM_API + '/v1/scripts/' + scriptId + '/changelog';
+  http := InitializeHTTPClient(True);
+  try
+    SetHTTPHeader(http, 'User-Agent', 'B.A.S.H-Launcher');
+    SetHTTPHeader(http, 'Accept', 'application/json');
+    try
+      SetSocketTimeout(http, 15000);
+    except
+    end;
+
+    response := GetHTTPPage(http, url);
+    code := GetHTTPResponseCode(http);
+  finally
+    FreeHTTPClient(http);
+  end;
+
+  if code = 404 then
+  begin
+    outError := 'No changelog found for this script yet.';
+    Exit;
+  end;
+
+  if code <> 200 then
+  begin
+    outError := 'Could not load changelog (HTTP ' + ToStr(code) + ').';
+    WriteLn('[B.A.S.H] Script changelog failed (HTTP ', code, '): ', scriptId);
+    Exit;
+  end;
+
+  try
+    json.Init(response);
+  except
+    outError := 'Could not parse changelog response.';
+    Exit;
+  end;
+
+  try
+    title := Trim(json.optString('name', scriptName));
+    entries := json.optJSONArray('entries');
+    if (entries = nil) or (entries.High() < 0) then
+    begin
+      if title <> '' then
+        Result := 'No changelog entries for ' + title + ' yet.'
+      else
+        Result := 'No changelog entries yet.';
+      Exit;
+    end;
+
+    for i := 0 to entries.High() do
+    begin
+      item := entries.optJSONObject(i);
+      block := FormatChangelogEntry(item, False);
+      if block = '' then
+        Continue;
+      if Result <> '' then
+        Result += LineEnding + LineEnding + '----------------' + LineEnding + LineEnding;
+      Result += block;
+    end;
+
+    if Result = '' then
+    begin
+      if title <> '' then
+        Result := 'No changelog entries for ' + title + ' yet.'
+      else
+        Result := 'No changelog entries yet.';
+    end;
+  finally
+    json.Free();
+  end;
+end;
+
+procedure CloseBashChangelogDialog(sender: TObject);
+begin
+  TForm(TButton(sender).GetParent()).Close();
+end;
+
+procedure ShowBashChangelogDialog(const title, body: String);
+var
+  form: TForm;
+  memo: TMemo;
+  btn: TButton;
+  w, h, pad, btnH: Int32;
+begin
+  w := TControl.AdjustToDPI(520);
+  h := TControl.AdjustToDPI(420);
+  pad := TControl.AdjustToDPI(12);
+  btnH := TControl.AdjustToDPI(28);
+
+  form.Init(nil);
+  form.setCaption(title);
+  form.setWidth(w);
+  form.setHeight(h);
+  form.getConstraints().SetInterfaceConstraints(w, h, w, h);
+  form.setPosition(TPosition.poScreenCenter);
+  form.setColor($1A1814);
+
+  with form.getFont() do
+  begin
+    setQuality(TFontQuality.fqAntialiased);
+    SetColor($F2EDE4);
+  end;
+
+  memo.Create(form);
+  memo.setName('changelog_memo');
+  memo.setLeft(pad);
+  memo.SetTop(pad);
+  memo.setWidth(w - (pad * 2) - TControl.AdjustToDPI(16));
+  memo.setHeight(h - (pad * 3) - btnH - TControl.AdjustToDPI(40));
+  memo.setColor($24201C);
+  memo.SetFontColor($F2EDE4);
+  memo.setScrollBars(TScrollStyle.ssAutoBoth);
+  memo.setReadOnly(True);
+  memo.setWordWrap(True);
+  memo.setText(body);
+
+  btn.Create(form);
+  btn.setName('changelog_close_button');
+  btn.SetCaption('Close');
+  btn.setWidth(TControl.AdjustToDPI(100));
+  btn.setHeight(btnH);
+  btn.SetLeft((w - btn.getWidth()) div 2 - TControl.AdjustToDPI(8));
+  btn.SetTop(memo.GetTop() + memo.getHeight() + pad);
+  btn.setOnClick(@CloseBashChangelogDialog);
+
+  try
+    form.ShowModal();
+  finally
+    form.Free();
+  end;
 end;
 
 function TBashLicenseClient.DownloadPremium(script: TScriptData): Boolean;
@@ -5612,6 +5808,54 @@ begin
     );
 end;
 
+procedure TWaspForm._ShowChangelog(sender: TObject);
+var
+  script: TScriptData;
+  body, err, title: String;
+  btn: TButton;
+  oldCaption: String;
+begin
+  btn := TButton(sender);
+  oldCaption := btn.getCaption();
+  btn.setEnabled(False);
+  btn.setCaption('Loading...');
+  btn.Repaint();
+
+  try
+    if BashScriptClient.IsLocalSource() then
+    begin
+      MessageDlg('B.A.S.H', 'Changelog is only available for catalog scripts.', TMsgDlgType.mtInformation, []);
+      Exit;
+    end;
+
+    if not Self.GetSelectedScript(script) then
+    begin
+      MessageDlg('B.A.S.H', 'Select a script first.', TMsgDlgType.mtInformation, []);
+      Exit;
+    end;
+
+    if script.ID = '' then
+    begin
+      MessageDlg('B.A.S.H', 'This script has no changelog available.', TMsgDlgType.mtInformation, []);
+      Exit;
+    end;
+
+    err := '';
+    body := FetchScriptChangelog(script.ID, script.Name, err);
+    if err <> '' then
+    begin
+      MessageDlg('B.A.S.H', err, TMsgDlgType.mtWarning, []);
+      Exit;
+    end;
+
+    title := script.Name + ' Changelog';
+    ShowBashChangelogDialog(title, body);
+  finally
+    btn.setCaption(oldCaption);
+    btn.setEnabled(True);
+  end;
+end;
+
 procedure TWaspForm._UpdateSRLB();
 var
   panel: TPanel;
@@ -6750,6 +6994,19 @@ begin
   button.SetTop(footerTop + TControl.AdjustToDPI(45));
   button.SetLeft(panel.getWidth() - TControl.AdjustToDPI(16) - button.getWidth());
 
+  button.Create(panel);
+  button.setName('changelog_button');
+  button.SetCaption('Changelog');
+  button.SetOnClick(@Self._ShowChangelog);
+  button.setWidth(TControl.AdjustToDPI(100));
+  button.setHeight(TControl.AdjustToDPI(25));
+  button.SetTop(footerTop + TControl.AdjustToDPI(45));
+  button.SetLeft(
+    panel.getWidth() - TControl.AdjustToDPI(16) - TControl.AdjustToDPI(150) -
+    TControl.AdjustToDPI(8) - button.getWidth()
+  );
+  button.setHint('View changelog for the selected script');
+  button.setShowHint(True);
 
   button.Create(panel);
   button.setName('install_rl_button');
