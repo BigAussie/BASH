@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := '89354d20-c87d-4706-98d6-6b4f0a65f5f5'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '3'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '5'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -76,6 +76,8 @@ type
 
     MyFullPos: TRSPosition;
     Timer: TStopWatch;
+    LobbyWaitTimer: TStopWatch;
+    LobbyWaitTimeout: Int32;
     TreeFilteredCoords: TPointArray;
 
 
@@ -977,6 +979,20 @@ var
   AntibanTimer: TStopWatch;
   AntibanInterval: Int32;
 begin
+  if Self.LobbyWaitTimeout = 0 then
+  begin
+    Self.LobbyWaitTimeout := Random(8 * ONE_MINUTE, 10 * ONE_MINUTE);
+    Self.LobbyWaitTimer.Start();
+    writeln('Waiting for game. Will terminate if none starts within ' +
+            SRL.MsToTime(Self.LobbyWaitTimeout, Time_Short) + '.');
+  end
+  else if Self.LobbyWaitTimer.ElapsedTime >= Self.LobbyWaitTimeout then
+  begin
+    writeln('No game found after waiting in lobby for ' +
+            SRL.MsToTime(Self.LobbyWaitTimer.ElapsedTime, Time_Short) + '. Terminating.');
+    TerminateScript();
+  end;
+
   if not Self.TeamDetermined then
   begin
     writeln('Detecting what team we are on.');
@@ -1413,6 +1429,25 @@ begin
   end;
 end;
 
+function TroubleBrewing.DoAntiban(checkBreaks: Boolean = True; checkSleeps: Boolean = True): Boolean; override;
+begin
+  Antiban.DismissRandom();
+  Self.TimeRunning.Pause();
+  Self.OnAntiban := True;
+
+  checkBreaks := checkBreaks and WLSettings.GetObject('antiban').getBoolean('breaks');
+  checkSleeps := checkSleeps and WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('enabled');
+
+  if WLSettings.GetObject('antiban').getJSONObject('tasks').getBoolean('enabled') or checkBreaks or checkSleeps then
+    Result := Antiban.DoAntiban(checkBreaks, checkSleeps);
+
+  Self.TimeRunning.Resume();
+  Self.OnAntiban := False;
+
+  if not RSClient.IsLoggedIn() then
+    Login.LoginPlayer(False);
+end;
+
 procedure TroubleBrewing.doAction();
 begin
   if IsInterfaceOpen() then
@@ -1421,7 +1456,7 @@ begin
     CloseEndGameInterface();
 
   if (not RSClient.IsLoggedIn()) then
-    Login.LoginPlayer();
+    Login.LoginPlayer(False);
   {Self.GET_TIME_REMAINING();
   writeln('Game Time remaining: ' + IntToStr(TimeRemaining));
   if TimeRemaining = 1 then
@@ -1432,6 +1467,9 @@ begin
 
   RSClient.Image.Clear;
   Self.CurrentState := Self.getState();
+
+  if (Self.CurrentState <> STATE_WAITING_FOR_GAME) and (Self.LobbyWaitTimeout <> 0) then
+    Self.LobbyWaitTimeout := 0;
 
   case Self.GetState() of
     STATE_ENDGAME:
