@@ -1,5 +1,5 @@
 {$DEFINE SCRIPT_ID := 'bfde3085-80dc-4bd6-870a-8cb3186a938c'}
-{$DEFINE SCRIPT_REVISION := '29'}
+{$DEFINE SCRIPT_REVISION := '30'}
 
 {.$DEFINE DEVELOPER_MODE}
 
@@ -1393,40 +1393,6 @@ begin
   end;
 end;
 
-function InferScriptFeatures(const description: String; existing: TStringArray): TStringArray;
-var
-  desc: String;
-begin
-  Result := existing;
-  desc := LowerCase(description);
-
-  if desc.Contains('farm runs') or desc.Contains('farm run') then
-  begin
-    if not Result.Contains('farm_runs') then
-      Result += 'farm_runs';
-  end;
-
-  if desc.Contains('birdhouse runs') or desc.Contains('birdhouse run') then
-  begin
-    if not Result.Contains('birdhouses') then
-      Result += 'birdhouses';
-  end;
-end;
-
-procedure ApplyRunFeatureActivities(var script: TScriptData);
-begin
-  if script.Features.Contains('farm_runs') and (not script.Activities.Contains('farming')) then
-    script.Activities += 'farming';
-  if script.Features.Contains('birdhouses') and (not script.Activities.Contains('hunter')) then
-    script.Activities += 'hunter';
-end;
-
-procedure FinalizeScriptMetadata(var script: TScriptData);
-begin
-  script.Features := InferScriptFeatures(script.Description, script.Features);
-  ApplyRunFeatureActivities(script);
-end;
-
 function ScriptHasFarmRuns(const script: TScriptData): Boolean;
 begin
   Result := script.Features.Contains('farm_runs');
@@ -1446,27 +1412,32 @@ begin
   if farm and birds then
   begin
     if longForm then
-      Exit('Supports Integrated Farm and Birdhouse Runs');
-    Exit('(Farm & Birdhouse Support)');
+      Exit('Farm and Birdhouse Runs Included');
+    Exit('(F+BH)');
   end;
   if farm then
   begin
     if longForm then
-      Exit('Supports Integrated Farm Runs');
-    Exit('(Farm Support)');
+      Exit('Farm Runs Included');
+    Exit('(Farm)');
   end;
   if birds then
   begin
     if longForm then
-      Exit('Supports Integrated Birdhouse Runs');
-    Exit('(Birdhouse Support)');
+      Exit('BirdHouse Runs Included');
+    Exit('(BH)');
   end;
   Result := '';
 end;
 
 function ScriptListCaption(const script: TScriptData): String;
+var
+  runs: String;
 begin
   Result := script.Name;
+  runs := ScriptRunFeaturesCaption(script, False);
+  if runs <> '' then
+    Result := Result + ' ' + runs;
 end;
 
 function MigrateLegacyLibIncludes(const filepath: String): Boolean;
@@ -1685,7 +1656,6 @@ begin
     script.LocalPath := '';
     script.Activities := InferScriptActivities(script.Name, script.URL, ParseActivitiesJSON(item));
     script.Features := ParseFeaturesJSON(item);
-    FinalizeScriptMetadata(script);
 
     tier := LowerCase(item.optString('type', 'premium'));
     if tier = 'free' then
@@ -2487,7 +2457,6 @@ begin
     Result.Description := description;
 
   Result.Activities := InferScriptActivities(Result.Name, path, Result.Activities, Result.Description);
-  FinalizeScriptMetadata(Result);
 end;
 
 function TBashScriptClient.ScriptsFromCatalogArray(scriptsArr: TJSONArray): TScriptDataArray;
@@ -2521,7 +2490,6 @@ begin
       script.Name := item.optString('name', '');
     script.Activities := InferScriptActivities(script.Name, script.URL, ParseActivitiesJSON(item));
     script.Features := ParseFeaturesJSON(item);
-    FinalizeScriptMetadata(script);
 
     case LowerCase(item.optString('type', 'free')) of
       'premium': script.Typ := EScriptType.PREMIUM;
@@ -2655,7 +2623,6 @@ begin
             script.Content := '';
             script.Activities := InferScriptActivities(script.Name, path, []);
             script.Features := [];
-            FinalizeScriptMetadata(script);
           end;
           Result += script;
         end;
@@ -2718,8 +2685,6 @@ begin
           script.Features := entitled[e].Features;
         Break;
       end;
-
-    FinalizeScriptMetadata(script);
 
     if owned then
     begin
