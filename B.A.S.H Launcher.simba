@@ -1,5 +1,5 @@
 {$DEFINE SCRIPT_ID := 'bfde3085-80dc-4bd6-870a-8cb3186a938c'}
-{$DEFINE SCRIPT_REVISION := '28'}
+{$DEFINE SCRIPT_REVISION := '29'}
 
 {.$DEFINE DEVELOPER_MODE}
 
@@ -1465,13 +1465,8 @@ begin
 end;
 
 function ScriptListCaption(const script: TScriptData): String;
-var
-  features: String;
 begin
   Result := script.Name;
-  features := ScriptRunFeaturesCaption(script, False);
-  if features <> '' then
-    Result += ' ' + features;
 end;
 
 function MigrateLegacyLibIncludes(const filepath: String): Boolean;
@@ -6445,14 +6440,13 @@ var
   text: TLabel;
   versionPanel: TPanel;
   i, y, rowH, sw, legendW: Int32;
-  colors: array[0..4] of TColor;
-  labels: array[0..4] of String;
+  colors: array[0..3] of TColor;
+  labels: array[0..3] of String;
 begin
   colors[0] := $F2EDE4; labels[0] := 'Free';
-  colors[1] := $3DCF7A; labels[1] := 'Unlocked';
-  colors[2] := $3084B8; labels[2] := 'Premium';
-  colors[3] := $C8904A; labels[3] := 'Testing';
-  colors[4] := $4C5DE8; labels[4] := 'Full (No Sales)';
+  colors[1] := $3084B8; labels[1] := 'Premium';
+  colors[2] := $C8904A; labels[2] := 'Testing';
+  colors[3] := $4C5DE8; labels[3] := 'Full (No Sales)';
 
   rowH := TControl.AdjustToDPI(16);
   sw := TControl.AdjustToDPI(10);
@@ -6464,7 +6458,7 @@ begin
   panel.setBevelWidth(0);
   panel.setColor($1A1814);
   panel.setWidth(legendW);
-  panel.setHeight(5 * rowH);
+  panel.setHeight(4 * rowH);
 
   versionPanel := parent.GetChild('version_panel');
   if versionPanel <> nil then
@@ -6479,7 +6473,7 @@ begin
   end;
 
   y := 0;
-  for i := 0 to 4 do
+  for i := 0 to 3 do
   begin
     swatch.Create(panel);
     swatch.setName('color_legend_swatch_' + ToStr(i));

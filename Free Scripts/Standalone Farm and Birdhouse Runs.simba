@@ -65,10 +65,12 @@ begin
         if force or (not Self.StartingChunksLoaded) then
         begin
           WriteLn('[BASH Farm+BH] Loading Grand Exchange map chunk');
+          
           if Map.IsSetup then
             Map.AddChunkEx(Box(48, 55, 51, 52), [0])
           else
             Map.SetupChunkEx(Box(48, 55, 51, 52), [0]);
+
           Self.StartingChunksLoaded := True;
         end;
 

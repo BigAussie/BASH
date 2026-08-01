@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := '5d89af42-7819-45b6-b4fb-886971d700bf'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '6'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '7'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -163,25 +163,32 @@ end;
 function SaltMiner.FindSnowflake(): Boolean;
 var
   Attempts: Integer;
+  ApproachTiles: TPointArray;
+  Approach: TPoint;
 begin
   Attempts := 0;
+  ApproachTiles := [[6878, 706], [6886, 706], [6878, 714], [6886, 714]];
 
-  while Attempts < 2 do
+  while Attempts < 3 do
   begin
     if Snowflake.IsVisible() then
       Exit(True);
 
-    if not Snowflake.IsVisible() then
-    begin
-      RSW.WalkBlind([6882, 707], 35);
-    end;
+    Approach := ApproachTiles[Attempts mod Length(ApproachTiles)];
 
-    if not Snowflake.IsVisible() then
-      Inc(Attempts);
-  end;
+    if RSW.AtTile([6882, 710], 8) then
+      RSW.WalkBlind(Approach, 4)
+    else
+      RSW.WalkBlind(Approach, 8);
 
-  if Attempts >= 2 then
+    RSW.MakePointVisible([6882, 710]);
+
+    if Snowflake.IsVisible() then
+      Exit(True);
+
     Antiban.RandomRotate();
+    Inc(Attempts);
+  end;
 
   Result := Snowflake.IsVisible();
 end;
