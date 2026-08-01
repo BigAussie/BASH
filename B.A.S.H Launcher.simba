@@ -7142,7 +7142,7 @@ end;
 function BashDefaultSimbaBody(): String;
 begin
   Result :=
-    '(* Thank you for choosing B.A.S.H — BigAussie Script House *)' + LineEnding +
+    '(* Thank you for choosing B.A.S.H - BigAussie Script House *)' + LineEnding +
     '(* Discord: https://discord.gg/qsmKs5uKfR *)' + LineEnding +
     LineEnding +
     '(* To start simply double click the green play button. *)' + LineEnding +

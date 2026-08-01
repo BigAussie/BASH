@@ -1,0 +1,430 @@
+{$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'cba5ca58-c6d2-48bc-b625-f54e300b4760'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '1'}
+{$DEFINE BASH_FARM_WITH_BIRDHOUSE}
+{$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
+{$I SRL-B/osr.simba}
+{$I BashLib/osr.simba}
+{$I BashLib/optional/handlers/bashbirdhouse/bashbirdhouserunner.simba}
+{$I BashLib/optional/handlers/bashfarm/bashfarmrunner.simba}
+
+{
+----------------------------------------------------------------------------------
+~~~ Need Support? Contact Me ~~~
+Discord ID: big.aussie
+Discord Server: https://discord.gg/qsmKs5uKfR
+Email: thebigaussie@proton.me
+Github: https://github.com/BigAussie/BASH
+----------------------------------------------------------------------------------
+}
+
+type
+  EState = (
+    OPEN_CHAT,
+    CHANGE_CHAT_FILTER,
+    DO_FARM_RUN,
+    DO_BH_RUN,
+    WAIT_FOR_NEXT
+  );
+
+  TScript = record(TBaseScript)
+    State: EState;
+    DoFarmRuns, DoBHRuns: Boolean;
+    StartingLocationIdx: Int32;
+    StartingChunksLoaded: Boolean;
+    Form: TBASHFarmGUI;
+  end;
+
+var
+  Bot: TScript;
+
+procedure TAntiban.Setup(); override;
+begin
+  Self.Skills := [ERSSkill.FARMING, ERSSkill.HUNTER, ERSSkill.TOTAL];
+  Self.MinZoom := 5;
+  Self.MaxZoom := 25;
+  inherited;
+end;
+
+procedure TScript.BindMapObjects();
+begin
+  Objects.Data := nil;
+  NPCs.Data := nil;
+  Banks.MapObjects := [];
+  Banks.ObjectsCache := [];
+  Banks.NPCsCache := [];
+
+  Objects.Setup(Map.Objects(), @Map.Walker);
+  NPCs.Setup(Map.NPCs(), @Map.Walker);
+end;
+
+procedure TScript.EnsureStartingLocationChunks(force: Boolean = False);
+begin
+  case Self.StartingLocationIdx of
+    0:
+      begin
+        if force or (not Self.StartingChunksLoaded) then
+        begin
+          WriteLn('[BASH Farm+BH] Loading Grand Exchange map chunk');
+          if Map.IsSetup then
+            Map.AddChunkEx(Box(48, 55, 51, 52), [0])
+          else
+            Map.SetupChunkEx(Box(48, 55, 51, 52), [0]);
+          Self.StartingChunksLoaded := True;
+        end;
+
+        Self.BindMapObjects();
+        Map.Walker.ScreenWalk := False;
+        Map.Walker.AdaptiveWalk := False;
+      end;
+  else
+    WriteLn('[BASH Farm+BH] No chunk mapped for starting location');
+  end;
+end;
+
+function TScript.OpenStartingBank(): Boolean;
+var
+  attempt: Int32;
+begin
+  Result := False;
+
+  if Bank.IsOpen() then
+    Exit(True);
+
+  WriteLn('[BASH Farm+BH] Opening starting bank');
+
+  for attempt := 1 to 5 do
+  begin
+    if Banks.WalkOpen() then
+    begin
+      if Bank.IsOpen() or BankPin.IsOpen() then
+        Exit(True);
+    end;
+
+    if Banks.Open() then
+    begin
+      if Bank.IsOpen() or BankPin.IsOpen() then
+        Exit(True);
+    end;
+  end;
+
+  WriteLn('[BASH Farm+BH] Could not open starting bank');
+  Result := False;
+end;
+
+function TScript.WithdrawStartingLocationItems(): Boolean;
+var
+  haveFire, haveAir, haveLaw, fireNeed, airNeed, lawNeed: Int32;
+begin
+  Result := True;
+
+  case Self.StartingLocationIdx of
+    0:
+      begin
+        haveFire := Max(0, Inventory.CountItemStack('Fire rune'));
+        haveAir := Max(0, Inventory.CountItemStack('Air rune'));
+        haveLaw := Max(0, Inventory.CountItemStack('Law rune'));
+        fireNeed := haveFire + 1;
+        airNeed := haveAir + 3;
+        lawNeed := haveLaw + 1;
+
+        WriteLn('[BASH Farm+BH] Withdrawing Grand Exchange teleport runes');
+
+        if not BASHFarmRunner.FarmWithdrawHelper('Fire rune', fireNeed) then
+        begin
+          WriteLn('[BASH Farm+BH] Failed to withdraw Fire rune');
+          Exit(False);
+        end;
+        if not BASHFarmRunner.FarmWithdrawHelper('Air rune', airNeed) then
+        begin
+          WriteLn('[BASH Farm+BH] Failed to withdraw Air rune');
+          Exit(False);
+        end;
+        if not BASHFarmRunner.FarmWithdrawHelper('Law rune', lawNeed) then
+        begin
+          WriteLn('[BASH Farm+BH] Failed to withdraw Law rune');
+          Exit(False);
+        end;
+      end;
+  else
+    WriteLn('[BASH Farm+BH] Unknown starting location');
+  end;
+end;
+
+function TScript.ReturnToStartingBank(): Boolean;
+var
+  attempt: Int32;
+  geArea: TBox;
+begin
+  Result := False;
+
+  case Self.StartingLocationIdx of
+    0:
+      begin
+        WriteLn('[BASH Farm+BH] Returning to Grand Exchange bank');
+
+        if RSInterface.IsOpen() then
+          RSInterface.Close(True);
+
+        for attempt := 1 to 3 do
+        begin
+          if Magic.CastSpell(ERSSpell.VARROCK_TELEPORT, 'Grand Exchange') then
+            Break;
+
+          Wait(Random(600, 1200));
+          if attempt = 3 then
+          begin
+            WriteLn('[BASH Farm+BH] Failed to teleport to Grand Exchange');
+            Exit(False);
+          end;
+        end;
+
+        geArea := Box(8328, 36282, 9120, 36946);
+        if not WaitUntil(Map.Position().InBox(geArea), 65, 10000) then
+        begin
+          WriteLn('[BASH Farm+BH] Timed out waiting for Grand Exchange after teleport');
+          Exit(False);
+        end;
+
+        Self.EnsureStartingLocationChunks(True);
+
+        if not Self.OpenStartingBank() then
+        begin
+          WriteLn('[BASH Farm+BH] Could not open starting bank after return');
+          Exit(False);
+        end;
+
+        if Inventory.Count() > 0 then
+          Bank.DepositAll();
+
+        if Bank.IsOpen() then
+          Bank.Close();
+
+        Result := True;
+        WriteLn('[BASH Farm+BH] Deposited at Grand Exchange');
+      end;
+  else
+    WriteLn('[BASH Farm+BH] No return teleport for starting location');
+  end;
+end;
+
+function TBASHFarmRunner.OnStart(): Boolean; override;
+begin
+  Bot.EnsureStartingLocationChunks();
+
+  if not Bot.OpenStartingBank() then
+  begin
+    WriteLn('[BASH Farm+BH] Farm OnStart: failed to open starting bank');
+    Exit(False);
+  end;
+
+  case Bot.StartingLocationIdx of
+    0:
+      begin
+        BASHFarmRunner.ExtraRuneNames := ['Fire rune', 'Air rune', 'Law rune'];
+        BASHFarmRunner.ExtraRuneQtys := [1, 3, 1];
+      end;
+  else
+    begin
+      SetLength(BASHFarmRunner.ExtraRuneNames, 0);
+      SetLength(BASHFarmRunner.ExtraRuneQtys, 0);
+    end;
+  end;
+
+  if not inherited then
+  begin
+    WriteLn('[BASH Farm+BH] Farm OnStart inherited returned False');
+    Exit(False);
+  end;
+
+  Result := True;
+end;
+
+procedure TBASHFarmRunner.OnComplete(); override;
+begin
+  WriteLn('[BASH Farm+BH] Farm run complete (runs=', Self.RunsComplete, ')');
+  Bot.ReturnToStartingBank();
+end;
+
+function TBASHBirdHouseRunner.OnStart(): Boolean; override;
+begin
+  Bot.EnsureStartingLocationChunks();
+
+  if not Bot.OpenStartingBank() then
+  begin
+    WriteLn('[BASH Farm+BH] BH OnStart: failed to open starting bank');
+    Exit(False);
+  end;
+
+  WriteLn('[BASH Farm+BH] Depositing inventory');
+  Bank.DepositAll();
+
+  if not Bot.WithdrawStartingLocationItems() then
+    Exit(False);
+
+  if not Self.WithdrawNextRun() then
+    Exit(False);
+
+  Result := inherited;
+end;
+
+procedure TBASHBirdHouseRunner.OnComplete(); override;
+begin
+  WriteLn('[BASH Farm+BH] Birdhouse run complete (runs=', Self.RunsCompleted, ')');
+  Bot.ReturnToStartingBank();
+end;
+
+procedure TScript.Report();
+begin
+  if Self.DoBHRuns then
+    BASHBirdHouseRunner.PrintReport();
+
+  WriteLn('|===================================|');
+  WriteLn('|--- ~ BASH Farm + Birdhouse ~ -----|');
+  WriteLn('|===================================|');
+  WriteLn(padR('| Runtime: ' + SRL.MsToTime(GetTimeRunning(), Time_Short), 36, ' ') + '|');
+  if Self.DoFarmRuns then
+  begin
+    WriteLn(padR('| Farm runs: ' + ToStr(BASHFarmRunner.RunsComplete), 36, ' ') + '|');
+    WriteLn(padR('| Next farm: ' + SRL.MsToTime(BASHFarmRunner.ReadyTimer.TimeRemaining(), TTimeFormat.Time_Short), 36, ' ') + '|');
+  end;
+  if Self.DoBHRuns then
+    WriteLn(padR('| Next BH: ' + SRL.MsToTime(BASHBirdHouseRunner.ScriptIntervalTimer.TimeRemaining(), TTimeFormat.Time_Short), 36, ' ') + '|');
+  WriteLn('|===================================|');
+end;
+
+function TScript.FarmReady(): Boolean;
+begin
+  Result := Self.DoFarmRuns and BASHFarmRunner.CanDoFarmRun();
+end;
+
+function TScript.BHReady(): Boolean;
+begin
+  Result := Self.DoBHRuns and BASHBirdHouseRunner.CanDoBirdHouseRun();
+end;
+
+procedure TScript.WaitForNext();
+begin
+  WriteLn('[BASH Farm+BH] Waiting for next run');
+
+  if Self.FarmReady() or Self.BHReady() then
+    Exit;
+
+  Self.Report();
+
+  if RSClient.IsLoggedIn() then
+    Logout.ClickLogout();
+
+  repeat
+    if Self.DoBHRuns then
+      WriteLn('[BASH Farm+BH] Next BH in ' + SRL.MsToTime(BASHBirdHouseRunner.ScriptIntervalTimer.TimeRemaining(), Time_Short));
+
+    if Self.DoFarmRuns then
+      WriteLn('[BASH Farm+BH] Next farm in ' + SRL.MsToTime(BASHFarmRunner.ReadyTimer.TimeRemaining(), Time_Short));
+
+    Antiban.LoseFocus(300000);
+    Self.DoAntiban();
+  until Self.FarmReady() or Self.BHReady();
+
+  if not RSClient.IsLoggedIn() then
+    Login.LoginPlayer();
+end;
+
+function TScript.GetState(): EState;
+begin
+  if Self.ShouldStop() then
+  begin
+    TerminateScript('Action / time limit reached');
+    Exit(EState.WAIT_FOR_NEXT);
+  end;
+
+  if RSClient.IsLoggedIn() and (ChatButtons.GetState(ERSChatButton.GAME_CHAT) <> ERSChatButtonState.ENABLED) then
+    Exit(EState.CHANGE_CHAT_FILTER);
+
+  if RSClient.IsLoggedIn() and not ChatButtons.IsActive(ERSChatButton.GAME_CHAT) then
+    Exit(EState.OPEN_CHAT);
+
+  if Self.FarmReady() then
+    Exit(EState.DO_FARM_RUN);
+
+  if Self.BHReady() then
+    Exit(EState.DO_BH_RUN);
+
+  Result := EState.WAIT_FOR_NEXT;
+end;
+
+procedure TScript.Init(maxActions: UInt32; maxTime: UInt64); override;
+begin
+  Self.Name := 'BASH Farm and Birdhouse';
+  inherited;
+end;
+
+procedure TScript.Setup();
+begin
+  WriteLn('[BASH Farm+BH] Opening dashboard');
+  Self.Form.Run();
+
+  Self.DoFarmRuns := Self.Form.DoPatches or Self.Form.DoTrees;
+  Self.DoBHRuns := Self.Form.DoBirdhouse;
+  Self.StartingLocationIdx := Self.Form.StartingLocationIdx;
+
+  WriteLn('[BASH Farm+BH] Starting location: ', BASH_HOST_START_LOCATIONS[Self.StartingLocationIdx]);
+
+  if Self.DoFarmRuns and (Length(BASHFarmRunner.Patches) = 0) then
+  begin
+    WriteLn('[BASH Farm+BH] No farm patches enabled — farm runs disabled');
+    Self.DoFarmRuns := False;
+  end
+  else if Self.DoFarmRuns then
+    WriteLn('[BASH Farm+BH] Farm ready with ', Length(BASHFarmRunner.Patches), ' patches');
+
+  if Self.DoBHRuns then
+    WriteLn('[BASH Farm+BH] Birdhouse ready - log=', ToStr(BASHBirdHouseRunner.LogType),
+      ' seed=', ToStr(BASHBirdHouseRunner.Seed))
+  else
+    BASHBirdHouseRunner.IsDisabled := True;
+
+  if (not Self.DoFarmRuns) and (not Self.DoBHRuns) then
+    TerminateScript('Neither farm nor birdhouse runs are enabled');
+
+  Self.Init(0, 0);
+  Self.EnsureStartingLocationChunks();
+end;
+
+procedure TScript.Run();
+begin
+  while True do
+  begin
+    Self.State := Self.GetState();
+    case Self.State of
+      EState.OPEN_CHAT:
+        ChatButtons.Open(ERSChatButton.GAME_CHAT);
+      EState.CHANGE_CHAT_FILTER:
+        ChatButtons.ChangeState(ERSChatButton.GAME_CHAT, ERSChatButtonState.ENABLED);
+      EState.DO_FARM_RUN:
+        begin
+          if not RSClient.IsLoggedIn() then
+            Login.LoginPlayer();
+          WriteLn('[BASH Farm+BH] Starting farm run');
+          BASHFarmRunner.DoFarmRun();
+          Self.Report();
+        end;
+      EState.DO_BH_RUN:
+        begin
+          if not RSClient.IsLoggedIn() then
+            Login.LoginPlayer();
+          WriteLn('[BASH Farm+BH] Starting birdhouse run');
+          BASHBirdHouseRunner.DoBirdHouseRun();
+          Self.Report();
+        end;
+      EState.WAIT_FOR_NEXT:
+        Self.WaitForNext();
+    end;
+
+    Self.DoAntiban();
+  end;
+end;
+
+begin
+  Bot.Setup();
+  Bot.Run();
+end.
