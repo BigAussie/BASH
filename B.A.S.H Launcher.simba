@@ -1,5 +1,5 @@
 {$DEFINE SCRIPT_ID := 'bfde3085-80dc-4bd6-870a-8cb3186a938c'}
-{$DEFINE SCRIPT_REVISION := '30'}
+{$DEFINE SCRIPT_REVISION := '33'}
 
 {.$DEFINE DEVELOPER_MODE}
 
@@ -1153,6 +1153,7 @@ type
     Revision: Int32;
     Activities: TStringArray;
     Features: TStringArray;
+    ExpiresAt: String;
   end;
 
   TScriptDataArray = array of TScriptData;
@@ -1432,12 +1433,50 @@ end;
 
 function ScriptListCaption(const script: TScriptData): String;
 var
-  runs: String;
+  runs, days: String;
+  y, m, d, daysLeft: Int32;
+  expDate: TDateTime;
 begin
   Result := script.Name;
   runs := ScriptRunFeaturesCaption(script, False);
   if runs <> '' then
     Result := Result + ' ' + runs;
+  if (script.Typ <> EScriptType.PREMIUM) and
+     (script.Typ <> EScriptType.TESTING) and
+     (script.Typ <> EScriptType.FULL) then
+    Exit;
+
+  if Trim(script.ExpiresAt) = '' then
+    Exit;
+  if Length(Trim(script.ExpiresAt)) < 10 then
+  begin
+    Result := Result + ' (' + Trim(script.ExpiresAt) + ')';
+    Exit;
+  end;
+  y := StrToIntDef(Copy(script.ExpiresAt, 1, 4), 0);
+  m := StrToIntDef(Copy(script.ExpiresAt, 6, 2), 0);
+  d := StrToIntDef(Copy(script.ExpiresAt, 9, 2), 0);
+  if (y < 2000) or (m < 1) or (m > 12) or (d < 1) or (d > 31) then
+  begin
+    Result := Result + ' (' + Copy(script.ExpiresAt, 9, 2) + '-' + Copy(script.ExpiresAt, 6, 2) + '-' + Copy(script.ExpiresAt, 1, 4) + ')';
+    Exit;
+  end;
+  try
+    expDate := EncodeDate(y, m, d);
+  except
+    Result := Result + ' (' + Copy(script.ExpiresAt, 9, 2) + '-' + Copy(script.ExpiresAt, 6, 2) + '-' + Copy(script.ExpiresAt, 1, 4) + ')';
+    Exit;
+  end;
+  daysLeft := Trunc(expDate) - Trunc(Date);
+  if daysLeft < 0 then
+    days := 'expired'
+  else if daysLeft = 0 then
+    days := 'ends today'
+  else if daysLeft = 1 then
+    days := '1d left'
+  else
+    days := ToStr(daysLeft) + 'd left';
+  Result := Result + ' (' + days + ')';
 end;
 
 function MigrateLegacyLibIncludes(const filepath: String): Boolean;
@@ -1656,6 +1695,9 @@ begin
     script.LocalPath := '';
     script.Activities := InferScriptActivities(script.Name, script.URL, ParseActivitiesJSON(item));
     script.Features := ParseFeaturesJSON(item);
+    script.ExpiresAt := item.optString('expires_at', '');
+    if (script.ExpiresAt = 'null') or (script.ExpiresAt = 'undefined') then
+      script.ExpiresAt := '';
 
     tier := LowerCase(item.optString('type', 'premium'));
     if tier = 'free' then
@@ -1846,6 +1888,64 @@ begin
   if Length(iso) < 10 then
     Exit;
   Result := Copy(iso, 9, 2) + '-' + Copy(iso, 6, 2) + '-' + Copy(iso, 1, 4);
+end;
+
+function FormatDaysRemaining(const iso: String): String;
+var
+  y, m, d, daysLeft: Int32;
+  expDate: TDateTime;
+begin
+  Result := '';
+  if Length(Trim(iso)) < 10 then
+    Exit;
+  y := StrToIntDef(Copy(iso, 1, 4), 0);
+  m := StrToIntDef(Copy(iso, 6, 2), 0);
+  d := StrToIntDef(Copy(iso, 9, 2), 0);
+  if (y < 2000) or (m < 1) or (m > 12) or (d < 1) or (d > 31) then
+    Exit;
+  try
+    expDate := EncodeDate(y, m, d);
+  except
+    Exit;
+  end;
+  daysLeft := Trunc(expDate) - Trunc(Date);
+  if daysLeft < 0 then
+    Result := 'expired'
+  else if daysLeft = 0 then
+    Result := 'ends today'
+  else if daysLeft = 1 then
+    Result := '1 day left'
+  else
+    Result := ToStr(daysLeft) + ' days left';
+end;
+
+{ Prefer script.ExpiresAt from /v1/me merge. }
+function ResolveScriptExpiresAt(const script: TScriptData): String;
+begin
+  Result := Trim(script.ExpiresAt);
+end;
+
+{ Suffix for selected-script title, e.g. " - 12 days left" / " - lifetime". }
+function ScriptExpiryTitleSuffix(const script: TScriptData): String;
+var
+  exp, days: String;
+begin
+  Result := '';
+  if (script.Typ <> EScriptType.PREMIUM) and
+     (script.Typ <> EScriptType.TESTING) and
+     (script.Typ <> EScriptType.FULL) then
+    Exit;
+  exp := ResolveScriptExpiresAt(script);
+  if exp = '' then
+  begin
+    Result := ' - lifetime';
+    Exit;
+  end;
+  days := FormatDaysRemaining(exp);
+  if days = '' then
+    Result := ' - expires ' + FormatLicenseExpiryDate(exp)
+  else
+    Result := ' - ' + days;
 end;
 
 function FormatChangelogEntry(item: TJSONObject; includeName: Boolean = True): String;
@@ -2419,6 +2519,7 @@ begin
   Result.Source := EScriptSource.BASH;
   Result.Activities := [];
   Result.Features := [];
+  Result.ExpiresAt := '';
 
   if header.Contains('SCRIPT_ID') then
   begin
@@ -2683,6 +2784,7 @@ begin
           script.Activities := entitled[e].Activities;
         if (Length(script.Features) = 0) and (Length(entitled[e].Features) > 0) then
           script.Features := entitled[e].Features;
+        script.ExpiresAt := entitled[e].ExpiresAt;
         Break;
       end;
 
@@ -2742,6 +2844,7 @@ begin
     if idx > -1 then
     begin
       Result[idx].Typ := entitled[e].Typ;
+      Result[idx].ExpiresAt := entitled[e].ExpiresAt;
       Continue;
     end;
     script := entitled[e];
@@ -4986,12 +5089,14 @@ begin
             'timers.showFreezes=true' + LineEnding +
             'pyramidplunder.timerLowWarning=30';
 end;
-function TWaspUpdater.ActivateProfile(path, name: String; id: Int32): Boolean;
+// Registers the B.A.S.H profile in profiles.json without activating it or
+// touching any existing / default profile entries.
+function TWaspUpdater.RegisterProfile(path, name: String; id: Int32): Boolean;
 var
   jsonContent: String;
   json, tmp: TJSONObject;
-  arr, clean: TJSONArray;
-  i, j: Int32;
+  arr: TJSONArray;
+  i: Int32;
 begin
   Result := False;
   jsonContent := '';
@@ -5006,56 +5111,31 @@ begin
       arr := json.getJSONArray('profiles');
     except
       arr.Init();
+      json.put('profiles', arr);
     end;
 
-    j := -1;
-    clean.Init();
     for i := 0 to arr.High() do
     begin
       tmp := arr.getJSONObject(i);
       if (tmp.getInt('id') = id) and (tmp.getString('name') = name) then
       begin
-        tmp.Put('active', True);
-        tmp.Put('sync', False);
-        tmp.Put('rev', -1);
-        try
-          tmp.remove('defaultForRsProfiles');
-        except
-        end;
-        clean.Put(tmp);
-        j := clean.High();
-        Continue;
+        Result := True;
+        Exit;
       end;
-
-      if (tmp.getInt('id') = id) then
-        Continue;
-      if (tmp.getString('name') = name) then
-        Continue;
-      try
-        if tmp.getBoolean('active') then
-          tmp.Put('active', False);
-      except
-        try
-          if tmp.getString('active') = 'true' then
-            tmp.Put('active', False);
-        except
-        end;
-      end;
-
-      clean.Put(tmp);
     end;
 
-    if j = -1 then
-    begin
-      tmp.Init('{"id":' + ToStr(id) + ',"name":"' + name + '","sync":false,"active":true,"rev":-1}');
-      clean.put(tmp);
-    end;
+    tmp.Init(
+      '{"id":' + ToStr(id) +
+      ',"name":"' + name +
+      '","sync":false,"active":false,"rev":-1}'
+    );
+    arr.put(tmp);
 
     try
       json.remove('profiles');
     except
     end;
-    json.put('profiles', clean);
+    json.put('profiles', arr);
 
     Result := WriteFileContents(path + 'profiles.json', json.toString(), False);
   finally
@@ -5063,7 +5143,7 @@ begin
   end;
 end;
 
-function TWaspUpdater.InstallRLProfile(out name: String; out updatedExisting: Boolean; silent: Boolean = False): Boolean;
+function TWaspUpdater.InstallRLProfile(out name: String; out updatedExisting: Boolean): Boolean;
   function _StrToInt(str: String): Int32;
   var
     i: Int32;
@@ -5071,14 +5151,6 @@ function TWaspUpdater.InstallRLProfile(out name: String; out updatedExisting: Bo
     Result := 0;
     for i := 1 to Length(str) do
       Result += Int32(str[i]);
-  end;
-
-  procedure _Fail(const reason: String);
-  begin
-    if silent then
-      WriteLn('[B.A.S.H] RuneLite profile setup failed: ', reason)
-    else
-      TerminateScript(reason);
   end;
 var
   path, profileFile: String;
@@ -5092,7 +5164,7 @@ begin
 
   if not ForceDirectories(path) then
   begin
-    _Fail('Failed to create RuneLite profiles2 directory.');
+    WriteLn('[B.A.S.H] RuneLite profile setup failed: Failed to create profiles2 directory.');
     Exit;
   end;
 
@@ -5108,13 +5180,13 @@ begin
 
   if not WriteFileContents(path + profileFile, Self.GetProfileFileString(), False) then
   begin
-    _Fail('Failed to write B.A.S.H RuneLite profile.');
+    WriteLn('[B.A.S.H] RuneLite profile setup failed: Failed to write B.A.S.H RuneLite profile.');
     Exit;
   end;
 
-  if not Self.ActivateProfile(path, name, id) then
+  if not Self.RegisterProfile(path, name, id) then
   begin
-    _Fail('Failed to write to profiles.json');
+    WriteLn('[B.A.S.H] RuneLite profile setup failed: Failed to write to profiles.json');
     Exit;
   end;
 
@@ -5894,7 +5966,6 @@ end;
 procedure TWaspForm._SaveLicenseKey(sender: TObject);
 var
   edit: TEdit;
-  status: TLabel;
   key: String;
   scripts: TScriptDataArray;
 begin
@@ -5905,14 +5976,8 @@ begin
   BashLicenseClient.SetKey(key, True);
   BashScriptClient.InvalidateCatalog();
 
-  status := Self.Form.GetChild('license_status_label');
   if key = '' then
   begin
-    if status <> nil then
-    begin
-      status.setCaption('No license key saved');
-      status.SetFontColor($A89F90);
-    end;
     Self.PopulateScripts();
     Exit;
   end;
@@ -5920,25 +5985,10 @@ begin
   scripts := BashLicenseClient.FetchEntitlements(True);
   if BashLicenseClient.Valid then
   begin
-    if status <> nil then
-    begin
-      if BashLicenseClient.ExpiresAt <> '' then
-        status.setCaption('Expires - ' + FormatLicenseExpiryDate(BashLicenseClient.ExpiresAt))
-      else
-        status.setCaption('License active - lifetime');
-      status.SetFontColor($3DCF7A);
-    end;
+    { Per-script expiry is shown on the selected script title. }
   end
   else
   begin
-    if status <> nil then
-    begin
-      if BashLicenseClient.LastError = 'license_expired' then
-        status.setCaption('License expired')
-      else
-        status.setCaption('Invalid or revoked key');
-      status.SetFontColor($4C5DE8);
-    end;
     if BashLicenseClient.LastError = 'license_expired' then
       MessageDlg(
         'B.A.S.H',
@@ -5963,7 +6013,6 @@ end;
 procedure TWaspForm._ClearLicenseKey(sender: TObject);
 var
   edit: TEdit;
-  status: TLabel;
 begin
   edit := Self.Form.GetChild('license_key_edit');
   if edit <> nil then
@@ -5971,13 +6020,6 @@ begin
 
   BashLicenseClient.ClearKey();
   BashScriptClient.InvalidateCatalog();
-
-  status := Self.Form.GetChild('license_status_label');
-  if status <> nil then
-  begin
-    status.setCaption('No license key saved');
-    status.SetFontColor($A89F90);
-  end;
 
   Self.PopulateScripts();
 end;
@@ -6129,7 +6171,7 @@ begin
 
   panel := main.GetChild('script_panel');
   text := panel.GetChild('script_name_label');
-  text.setCaption(scriptData.Name);
+  text.setCaption(scriptData.Name + ScriptExpiryTitleSuffix(scriptData));
 
   text := panel.GetChild('script_category_label');
   case scriptData.Typ of
@@ -6600,7 +6642,7 @@ procedure TWaspForm.SetupScriptsPanel(parent: TPanel);
 var
   panel, accentBar, sourcePanel, licensePanel, activityPanel, activityCell, categoryPanel: TPanel;
   logo, activityIcon: TImage;
-  branding, subtitle, discordLink, launcherRev, bashLabel, localLabel, licenseStatus, activityCaption: TLabel;
+  branding, subtitle, discordLink, launcherRev, bashLabel, localLabel, activityCaption: TLabel;
   button, saveBtn, clearBtn, categoryBtn: TButton;
   scriptsList: TLabeledDarkListBox;
   licenseEdit: TLabeledEdit;
@@ -6784,22 +6826,6 @@ begin
   clearBtn.setHeight(TControl.AdjustToDPI(24));
   clearBtn.SetTop(saveBtn.GetTop());
   clearBtn.SetLeft(saveBtn.GetLeft() + saveBtn.getWidth() + TControl.AdjustToDPI(6));
-
-  licenseStatus.Create(licensePanel);
-  licenseStatus.setName('license_status_label');
-  if BashLicenseClient.HasKey() then
-  begin
-    licenseStatus.setCaption('Key saved - click Save to refresh');
-    licenseStatus.SetFontColor($D4A017);
-  end
-  else
-  begin
-    licenseStatus.setCaption('No license key saved');
-    licenseStatus.SetFontColor($A89F90);
-  end;
-  licenseStatus.SetFontSize(8);
-  licenseStatus.SetTop(saveBtn.GetTop() + TControl.AdjustToDPI(4));
-  licenseStatus.SetLeft(clearBtn.GetLeft() + clearBtn.getWidth() + TControl.AdjustToDPI(8));
 
   activityCaption.Create(panel);
   activityCaption.setName('activity_filter_caption');
@@ -7004,21 +7030,9 @@ end;
 procedure TWaspForm.OnShow(sender: TObject);
 var
   text: TLabel;
-  status: TLabel;
-  profileName: String;
-  updatedExisting: Boolean;
 begin
-  try
-    if WaspUpdater.InstallRLProfile(profileName, updatedExisting, True) then
-    begin
-      if updatedExisting then
-        WriteLn('[B.A.S.H] Updated RuneLite profile: ', profileName)
-      else
-        WriteLn('[B.A.S.H] Installed RuneLite profile: ', profileName);
-    end;
-  except
-    WriteLn('[B.A.S.H] Silent RuneLite profile setup failed: ', GetExceptionMessage());
-  end;
+  if BashLicenseClient.HasKey() then
+    BashLicenseClient.FetchEntitlements(True);
 
   Self.PopulateScripts();
 
@@ -7028,28 +7042,6 @@ begin
   text := Self.Form.GetChild('source_local_label');
   if text <> nil then
     text.SetFontColor($FFFFFF);
-
-  status := Self.Form.GetChild('license_status_label');
-  if (status <> nil) and BashLicenseClient.HasKey() then
-  begin
-    BashLicenseClient.FetchEntitlements(True);
-    if BashLicenseClient.Valid then
-    begin
-      if BashLicenseClient.ExpiresAt <> '' then
-        status.setCaption('Expires - ' + FormatLicenseExpiryDate(BashLicenseClient.ExpiresAt))
-      else
-        status.setCaption('License active - lifetime');
-      status.SetFontColor($3DCF7A);
-    end
-    else
-    begin
-      if BashLicenseClient.LastError = 'license_expired' then
-        status.setCaption('License expired')
-      else
-        status.setCaption('Invalid or revoked key');
-      status.SetFontColor($4C5DE8);
-    end;
-  end;
 end;
 
 procedure TWaspForm.Setup();
