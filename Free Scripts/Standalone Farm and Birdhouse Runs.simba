@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'cba5ca58-c6d2-48bc-b625-f54e300b4760'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '1'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '2'}
 {$DEFINE BASH_FARM_WITH_BIRDHOUSE}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
@@ -57,30 +57,73 @@ begin
   NPCs.Setup(Map.NPCs(), @Map.Walker);
 end;
 
-procedure TScript.EnsureStartingLocationChunks(force: Boolean = False);
+procedure TScript.AppendUniqueChunks(var dest: array of TRSMapChunk; src: array of TRSMapChunk);
+var
+  i, k: Int32;
+  exists: Boolean;
 begin
+  for i := 0 to High(src) do
+  begin
+    exists := False;
+    for k := 0 to High(dest) do
+      if dest[k].Chunk = src[i].Chunk then
+      begin
+        exists := True;
+        Break;
+      end;
+    if not exists then
+      dest += src[i];
+  end;
+end;
+
+procedure TScript.SetupCombinedMap();
+var
+  chunks: array of TRSMapChunk;
+  startChunk: TRSMapChunk;
+begin
+  SetLength(chunks, 0);
+
   case Self.StartingLocationIdx of
     0:
       begin
-        if force or (not Self.StartingChunksLoaded) then
-        begin
-          WriteLn('[BASH Farm+BH] Loading Grand Exchange map chunk');
-          
-          if Map.IsSetup then
-            Map.AddChunkEx(Box(48, 55, 51, 52), [0])
-          else
-            Map.SetupChunkEx(Box(48, 55, 51, 52), [0]);
-
-          Self.StartingChunksLoaded := True;
-        end;
-
-        Self.BindMapObjects();
-        Map.Walker.ScreenWalk := False;
-        Map.Walker.AdaptiveWalk := False;
+        startChunk.Chunk := Box(48, 55, 51, 52);
+        startChunk.Planes := [0];
+        chunks += startChunk;
       end;
-  else
-    WriteLn('[BASH Farm+BH] No chunk mapped for starting location');
   end;
+
+  if Self.DoFarmRuns then
+    Self.AppendUniqueChunks(chunks, BASHFarmRunner.CollectChunks());
+
+  if Self.DoBHRuns then
+    Self.AppendUniqueChunks(chunks, BASHBirdHouseRunner.CollectChunks());
+
+  if Length(chunks) = 0 then
+  begin
+    WriteLn('[BASH Farm+BH] Map: no chunks to load');
+    Exit;
+  end;
+
+  WriteLn('[BASH Farm+BH] Setup: ', Length(chunks), ' region(s)');
+  Map.SetupChunks(chunks, 8);
+  Self.BindMapObjects();
+  Map.Walker.ScreenWalk := False;
+  Map.Walker.AdaptiveWalk := False;
+
+  Self.StartingChunksLoaded := True;
+end;
+
+procedure TScript.EnsureStartingLocationChunks();
+begin
+  if Self.StartingChunksLoaded and Map.IsSetup then
+  begin
+    Self.BindMapObjects();
+    Map.Walker.ScreenWalk := False;
+    Map.Walker.AdaptiveWalk := False;
+    Exit;
+  end;
+
+  Self.SetupCombinedMap();
 end;
 
 function TScript.OpenStartingBank(): Boolean;
@@ -187,7 +230,7 @@ begin
           Exit(False);
         end;
 
-        Self.EnsureStartingLocationChunks(True);
+        Self.EnsureStartingLocationChunks();
 
         if not Self.OpenStartingBank() then
         begin
@@ -389,7 +432,7 @@ begin
     TerminateScript('Neither farm nor birdhouse runs are enabled');
 
   Self.Init(0, 0);
-  Self.EnsureStartingLocationChunks();
+  Self.SetupCombinedMap();
 end;
 
 procedure TScript.Run();
