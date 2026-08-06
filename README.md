@@ -6,6 +6,7 @@ All scripts use Simba and are color scripts — no custom plugins, injection, or
 
 **Note:** I design these scripts for myself when maxxing or grinding my accounts. I do not cater to gold farmers — you will have little to no success running these on multiple accounts or trying to create a farm.
 
+**Website**: https://bashscripts.shop/
 **Discord:** https://discord.gg/qsmKs5uKfR
 
 ---
