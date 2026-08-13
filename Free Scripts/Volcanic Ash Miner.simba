@@ -1,0 +1,2011 @@
+{$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'c4a8f1e2-7b3d-4a9e-8c6f-1d2e3f4a5b6c'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '1'}
+{$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
+{$I SRL-B/osr.simba}
+{$I BashLib/osr.simba}
+{$I BashLib/optional/handlers/discord.simba}
+{$I BashLib/optional/handlers/aichat.simba}
+
+{
+----------------------------------------------------------------------------------
+~~~ Need Support? Contact Me ~~~
+Website: https://bashscripts.shop/
+Discord Server: https://discord.gg/qsmKs5uKfR
+Email: thebigaussie@proton.me
+Github: https://github.com/BigAussie/BASH
+----------------------------------------------------------------------------------
+}
+
+var
+  WEBHOOKURL: String                     = '';
+  ENABLEWEBHOOKS: Boolean                = True;
+  SENDSESSIONSUMMARYMSG: Boolean         = True;
+  SENDHOURLYREPORTMSG: Boolean           = True;
+  PINGONTERMINATED: Boolean              = True;
+
+  STOPATCOUNT: Integer                   = 0;
+  ENABLEWORLDHOPPING: Boolean            = False;
+  WORLDHOPINTERVAL: Integer              = 45;
+  ENABLEPLAYERDETECTION: Boolean         = False;
+  PLAYERDETECTIONDELAY: Integer          = 0;
+  ENABLEPREHOVER: Boolean                = True;
+  USESOUTHSIDE: Boolean                  = False;
+  USENORTHSIDE: Boolean                  = False;
+  OVERRIDEBREAKS: Boolean                = False;
+  CUSTOMBREAKINTERVAL: Integer           = 60;
+  CUSTOMBREAKDURATION: Integer           = 5;
+
+const
+  ASH_PILE_COUNT        = 14;
+  ASH_RESPAWN_AVOID_MS  = 26000;
+  ASH_XP_IDLE_MS        = 2800;
+  ASH_FLAG_GONE_MS      = 5000;
+  ASH_HOVER_ATTEMPTS    = 3;
+  ASH_PREHOVER_CHANCE   = 60;
+  ASH_PREHOVER_MAX_DIST = 70;
+  ASH_DEPLETED_CONFIRM  = 2;
+  ASH_SOUTH_LO          = 0;
+  ASH_SOUTH_HI          = 6;
+  ASH_PILE_PRIMARY: TCTS2Color   = [9803424, 19, 0.12, 0.15];
+  ASH_PILE_SECONDARY: TCTS2Color = [10461096, 19, 0.12, 0.19];
+  ASH_PILE_CLUSTER_DIST = 15;
+
+  ASH_PILE_COORDS: array[0..13] of TPoint = [
+    [11028, 35334], [11060, 35354], [11080, 35338], [11104, 35362],
+    [11144,35342], [11188, 35314], [11176,35266], [11184,35214],
+    [11152,35166], [11120,35134], [11080,35166],
+    [11048,35198], [11044,35146], [11176,35274]
+  ];
+
+  VA_GUI_NAV       = $F0EBE4;
+  VA_GUI_BG        = $FFFFFF;
+  VA_GUI_STATUS    = $F7F4F1;
+  VA_GUI_DIVIDER   = $D4C9BC;
+  VA_GUI_CARD      = $F7F4F1;
+  VA_GUI_ACCENT    = $E0C9AE;
+  VA_GUI_NAV_IDLE  = $E7DED4;
+  VA_GUI_START     = $C9B094;
+  VA_GUI_TEXT      = $1C1C1E;
+  VA_GUI_MUTED     = $6B6B70;
+  VA_GUI_LINK      = $C07020;
+  VA_GUI_W         = 1120;
+  VA_GUI_H         = 700;
+  VA_GUI_NAV_W     = 190;
+  VA_GUI_STATUS_H  = 56;
+  VA_GUI_BTN_H     = 42;
+  VA_GUI_EDIT_W    = 260;
+  VA_GUI_COL2      = 308;
+  VA_GUI_TASK_COL  = 130;
+  VA_GUI_BOTTOM_INSET = 34;
+
+type
+  EAshState = (
+    VA_LOGIN,
+    VA_DROP_SODA,
+    VA_MINE,
+    VA_HOP,
+    VA_END
+  );
+
+  TAshPile = record
+    Coord: TPoint;
+    LastMinedAt: UInt64;
+    Obj: TRSObjectV2;
+  end;
+
+  TVolcanicAshMiner = record(TBaseScript)
+    State: EAshState;
+    Piles: array[0..13] of TAshPile;
+    CurrentIndex: Int32;
+    StartAshCount: Int32;
+    AshGained: Int32;
+    LastReportTime: UInt64;
+    LastHourlyReportTime: Int64;
+    NextWorldHopTime: UInt64;
+    WorldHopsCompleted: Int32;
+    LastWorldHopTime: Int64;
+    PlayerDetectedTime: UInt64;
+    PlayerDetectionHops: Int32;
+    PlayerNearby: Boolean;
+    ActiveRunTime: TStopwatch;
+  end;
+
+var
+  VolcanicAshMiner: TVolcanicAshMiner;
+  Discord: TDiscordClient;
+
+procedure TAntiban.Setup(); override;
+begin
+  Self.Skills := [ERSSkill.MINING, ERSSkill.TOTAL];
+  Self.MinZoom := 10;
+  Self.MaxZoom := 20;
+  inherited;
+
+  if OVERRIDEBREAKS then
+  begin
+    Antiban.Breaks := [];
+    Antiban.AddBreak(
+      CUSTOMBREAKINTERVAL * ONE_MINUTE,
+      CUSTOMBREAKDURATION * ONE_MINUTE,
+      0.15,
+      1.0
+    );
+  end;
+end;
+
+function TBaseScript.DoAntiban(checkBreaks: Boolean = True; checkSleeps: Boolean = True): Boolean; override;
+begin
+  Antiban.DismissRandom();
+  Self.TimeRunning.Pause();
+  Self.OnAntiban := True;
+
+  checkBreaks := checkBreaks and (WLSettings.GetObject('antiban').getBoolean('breaks') or OVERRIDEBREAKS);
+  checkSleeps := checkSleeps and WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('enabled');
+
+  if WLSettings.GetObject('antiban').getJSONObject('tasks').getBoolean('enabled') or checkBreaks or checkSleeps then
+    Result := Antiban.DoAntiban(checkBreaks, checkSleeps);
+
+  Self.TimeRunning.Resume();
+  Self.OnAntiban := False;
+
+  if not RSClient.IsLoggedIn() then
+    Login.LoginPlayer();
+end;
+
+function FormatRoundedNumber(Number: Int64): String;
+begin
+  if Number >= 1000000 then
+    Result := FormatFloat('0.0M', Number / 1000000)
+  else if Number >= 1000 then
+    Result := FormatFloat('0K', Number / 1000)
+  else
+    Result := SRL.FormatNumber(Number);
+end;
+
+function TVolcanicAshMiner.GetAshGained(): Int32;
+begin
+  Result := Max(0, Inventory.CountItemStack('Volcanic ash') - Self.StartAshCount);
+  Self.AshGained := Result;
+end;
+
+function TVolcanicAshMiner.ReachedStopCount(): Boolean;
+begin
+  Result := (STOPATCOUNT > 0) and (Self.GetAshGained() >= STOPATCOUNT);
+end;
+
+procedure TVolcanicAshMiner.SetupChunks();
+begin
+  Map.SetupChunksEx([[56, 61, 60, 57]], [0]);
+  WriteLn('[INIT] Loaded Fossil Island chunks Box');
+end;
+
+procedure TVolcanicAshMiner.SetupPiles();
+var
+  I: Int32;
+begin
+  for I := 0 to High(Self.Piles) do
+  begin
+    Self.Piles[I].Coord := ASH_PILE_COORDS[I];
+    Self.Piles[I].LastMinedAt := 0;
+    with Self.Piles[I].Obj do
+    begin
+      Walker := @Map.Walker;
+      SetupEx([1, 1, 4], [[Self.Piles[I].Coord.X, Self.Piles[I].Coord.Y]]);
+      SetupUpText(['Mine A', 'e Ash', 'Empty']);
+      Finder.Colors := [];
+      Finder.ColorClusters += [
+        ASH_PILE_PRIMARY,
+        ASH_PILE_SECONDARY,
+        ASH_PILE_CLUSTER_DIST
+      ];
+      Finder.ClusterDistance := 4;
+      Finder.Erode := 1;
+      Finder.Grow := 2;
+      Finder.MinShortSide := 10;
+      Finder.MinLongSide := 10;
+    end;
+  end;
+end;
+
+function TVolcanicAshMiner.PileConfigured(Index: Int32): Boolean;
+begin
+  Result := (Index >= 0) and (Index <= High(Self.Piles)) and
+            (Self.Piles[Index].Coord.X <> 0) and (Self.Piles[Index].Coord.Y <> 0);
+end;
+
+function TVolcanicAshMiner.PileOnCooldown(Index: Int32): Boolean;
+begin
+  if Self.Piles[Index].LastMinedAt = 0 then
+    Exit(False);
+  Result := (GetTickCount() - Self.Piles[Index].LastMinedAt) < ASH_RESPAWN_AVOID_MS;
+end;
+
+function TVolcanicAshMiner.IsMineableUpText(): Boolean;
+begin
+  if MainScreen.IsUpText('Empty') then
+    Exit(False);
+  Result := MainScreen.IsUpText('Mine A') or MainScreen.IsUpText('e Ash') or MainScreen.IsUpText('Ash pile');
+end;
+
+function TVolcanicAshMiner.IsEmptyUpText(): Boolean;
+begin
+  Result := MainScreen.IsUpText('Empty');
+end;
+
+function TVolcanicAshMiner.PileInSelectedSide(Index: Int32): Boolean;
+var
+  SideFilter: Boolean;
+begin
+  SideFilter := USESOUTHSIDE or USENORTHSIDE;
+  if not SideFilter then
+    Exit(True);
+
+  Result := False;
+  if USESOUTHSIDE and InRange(Index, ASH_SOUTH_LO, ASH_SOUTH_HI) then
+    Result := True;
+  if USENORTHSIDE and (Index > ASH_SOUTH_HI) and (Index <= High(Self.Piles)) then
+    Result := True;
+end;
+
+function TVolcanicAshMiner.PickNextPileIndex(ExcludeIndex: Int32 = -1): Int32;
+var
+  Me: TPoint;
+  I: Int32;
+  Dist, BestDist: Double;
+  Candidates: TIntegerArray;
+  UseRandom: Boolean;
+begin
+  Result := -1;
+  BestDist := 999999.0;
+  Candidates := [];
+  Me := Map.Walker.Position();
+  UseRandom := (not USESOUTHSIDE) and (not USENORTHSIDE);
+
+  for I := 0 to High(Self.Piles) do
+  begin
+    if I = ExcludeIndex then
+      Continue;
+    if not Self.PileConfigured(I) then
+      Continue;
+    if not Self.PileInSelectedSide(I) then
+      Continue;
+    if Self.PileOnCooldown(I) then
+      Continue;
+
+    if UseRandom then
+      Candidates += I
+    else
+    begin
+      Dist := Me.DistanceTo(Self.Piles[I].Coord);
+      if Dist < BestDist then
+      begin
+        BestDist := Dist;
+        Result := I;
+      end;
+    end;
+  end;
+
+  if UseRandom and (Length(Candidates) > 0) then
+    Result := Candidates[Random(Length(Candidates))];
+end;
+
+procedure TVolcanicAshMiner.HoverNextPile(ExcludeIndex: Int32);
+var
+  NextIdx, I: Int32;
+  Me: TPoint;
+  Dist, BestDist: Double;
+  ATPA: T2DPointArray;
+begin
+  if not ENABLEPREHOVER then
+    Exit;
+
+  if Random(100) >= ASH_PREHOVER_CHANCE then
+  begin
+    WriteLn('[MINE] Pre-hover skipped (antiban chance)');
+    Exit;
+  end;
+
+  NextIdx := -1;
+  BestDist := 999999.0;
+  Me := Map.Walker.Position();
+
+  for I := 0 to High(Self.Piles) do
+  begin
+    if I = ExcludeIndex then
+      Continue;
+    if not Self.PileConfigured(I) then
+      Continue;
+    if not Self.PileInSelectedSide(I) then
+      Continue;
+    if Self.PileOnCooldown(I) then
+      Continue;
+
+    Dist := Me.DistanceTo(Self.Piles[I].Coord);
+    if Dist > ASH_PREHOVER_MAX_DIST then
+      Continue;
+    if Dist < BestDist then
+    begin
+      BestDist := Dist;
+      NextIdx := I;
+    end;
+  end;
+
+  if NextIdx < 0 then
+  begin
+    WriteLn('[MINE] No nearby pile for pre-hover (max dist ' + IntToStr(ASH_PREHOVER_MAX_DIST) + ')');
+    Exit;
+  end;
+
+  if not Self.Piles[NextIdx].Obj.Find(ATPA) or (Length(ATPA) = 0) or (Length(ATPA[0]) = 0) then
+  begin
+    Exit;
+  end;
+
+  Mouse.Move(ATPA[0].RandomValue());
+
+  if Self.IsEmptyUpText() then
+  begin
+    Self.Piles[NextIdx].LastMinedAt := GetTickCount();
+  end;
+end;
+
+function TVolcanicAshMiner.PileHasAshColor(Index: Int32): Boolean;
+var
+  ATPA: T2DPointArray;
+begin
+  Result := False;
+  if not Self.PileConfigured(Index) then
+    Exit;
+  Result := Self.Piles[Index].Obj.Find(ATPA);
+end;
+
+function TVolcanicAshMiner.WaitMiningXP(CurrentIndex: Int32): Boolean;
+var
+  Idle, FlagGone: TCountDown;
+  Started, HoveredNext, FlagGoneActive: Boolean;
+  ColorMissStreak: Int32;
+begin
+  Result := False;
+  Started := False;
+  HoveredNext := False;
+  FlagGoneActive := False;
+  ColorMissStreak := 0;
+  Idle.Init(ASH_XP_IDLE_MS);
+
+  repeat
+    if Inventory.IsFull() then
+      Exit(True);
+
+    if Self.ReachedStopCount() then
+      Exit(True);
+
+    if XPBar.EarnedXP() then
+    begin
+      Started := True;
+      Result := True;
+      Idle.Restart();
+      WL.Activity.Restart();
+      FlagGoneActive := False;
+      ColorMissStreak := 0;
+
+      if not HoveredNext then
+      begin
+        Self.HoverNextPile(CurrentIndex);
+        HoveredNext := True;
+      end;
+    end;
+
+    if not Started then
+    begin
+      if Minimap.HasFlag() then
+        FlagGoneActive := False
+      else
+      begin
+        if not FlagGoneActive then
+        begin
+          FlagGone.Init(ASH_FLAG_GONE_MS);
+          FlagGoneActive := True;
+        end
+        else if FlagGone.IsFinished() then
+        begin
+          Exit(False);
+        end;
+      end;
+    end
+    else
+    begin
+      if not Self.PileHasAshColor(CurrentIndex) then
+      begin
+        Inc(ColorMissStreak);
+        if ColorMissStreak >= ASH_DEPLETED_CONFIRM then
+        begin
+          Exit(True);
+        end;
+      end
+      else
+        ColorMissStreak := 0;
+
+      if Idle.IsFinished() then
+      begin
+        Exit(True);
+      end;
+    end;
+
+    Wait(50, 100);
+  until False;
+end;
+
+function TVolcanicAshMiner.MinePile(Index: Int32): Boolean;
+var
+  Attempts: Int32;
+begin
+  Result := False;
+  if not Self.PileConfigured(Index) then
+    Exit;
+
+  Inventory.Open();
+  Self.CurrentIndex := Index;
+  WriteLn('[MINE] Targeting pile ' + IntToStr(Index) + ' @ ' + ToStr(Self.Piles[Index].Coord));
+
+  for Attempts := 1 to ASH_HOVER_ATTEMPTS do
+  begin
+    if not Self.Piles[Index].Obj.WalkHover(2) then
+    begin
+      if Self.IsEmptyUpText() then
+      begin
+        Self.Piles[Index].LastMinedAt := GetTickCount();
+        Exit(False);
+      end;
+
+      WriteLn('[MINE] Failed to hover pile ' + IntToStr(Index) + ' (' + IntToStr(Attempts) + '/' + IntToStr(ASH_HOVER_ATTEMPTS) + ')');
+      if Attempts >= ASH_HOVER_ATTEMPTS then
+      begin
+        Self.Piles[Index].LastMinedAt := GetTickCount();
+        Exit(False);
+      end;
+      Continue;
+    end;
+
+    if Self.IsEmptyUpText() then
+    begin
+      Self.Piles[Index].LastMinedAt := GetTickCount();
+      Exit(False);
+    end;
+
+    if not Self.IsMineableUpText() then
+    begin
+      if Attempts >= ASH_HOVER_ATTEMPTS then
+      begin
+        Self.Piles[Index].LastMinedAt := GetTickCount();
+        Exit(False);
+      end;
+      Continue;
+    end;
+
+    Mouse.Click(MOUSE_LEFT);
+
+    if Self.WaitMiningXP(Index) then
+    begin
+      Result := True;
+      Self.Piles[Index].LastMinedAt := GetTickCount();
+      Self.CurrentIndex := Index;
+      Self.GetAshGained();
+      Exit;
+    end;
+  end;
+  Self.Piles[Index].LastMinedAt := GetTickCount();
+end;
+
+procedure TVolcanicAshMiner.DropSodaAsh();
+begin
+  WriteLn('[INV] Dropping Soda ash');
+  Inventory.ShiftDrop(['Soda ash'], DROP_PATTERN_SNAKE);
+end;
+
+procedure TVolcanicAshMiner.TerminateFullInventory();
+begin
+  Logout.ClickLogout();
+  TerminateScript('Inventory full (no Soda ash to drop)');
+end;
+
+procedure TVolcanicAshMiner.TerminateStopCount();
+begin
+  WriteLn('[STOP] Reached Volcanic ash target: ' + IntToStr(STOPATCOUNT));
+  Logout.ClickLogout();
+  TerminateScript('Reached volcanic ash stop count');
+end;
+
+function TVolcanicAshMiner.GetRandomWorldHopTime(): UInt64;
+var
+  BaseInterval: UInt64;
+begin
+  BaseInterval := WORLDHOPINTERVAL * 60000;
+  Result := BaseInterval + Round(BaseInterval * (Random(-10, 10) / 100.0));
+end;
+
+procedure TVolcanicAshMiner.SetupWorldHopping();
+begin
+  if not ENABLEWORLDHOPPING then
+    Exit;
+
+  if Length(Login.GetPlayer().Worlds) < 2 then
+  begin
+    WriteLn('[ERROR] Need at least 2 worlds configured for world hopping!');
+    Logout.ClickLogout();
+    TerminateScript('Need 2+ worlds for hopping');
+  end;
+
+  Self.NextWorldHopTime := GetTickCount() + Self.GetRandomWorldHopTime();
+end;
+
+function TVolcanicAshMiner.ShouldHopWorld(): Boolean;
+begin
+  if not ENABLEWORLDHOPPING then
+    Exit(False);
+  if GetTickCount() < Self.NextWorldHopTime then
+    Exit(False);
+  Result := True;
+end;
+
+procedure TVolcanicAshMiner.DoWorldHop();
+var
+  CurrentWorld, TargetWorld, I: Int32;
+  PlayerWorlds, AvailableWorlds: TIntegerArray;
+begin
+  if not ENABLEWORLDHOPPING then
+    Exit;
+
+  WriteLn('[WORLDHOP] Time to hop worlds!');
+  PlayerWorlds := Login.GetPlayer().Worlds;
+
+  if not Logout.Open() then
+  begin
+    Self.NextWorldHopTime := GetTickCount() + 120000;
+    Exit;
+  end;
+
+  if not Logout.IsWorldSwitcherOpen() then
+    Logout.GetButton(ERSLogoutButton.WORLD_SWITCHER).Click(MOUSE_LEFT);
+  WaitUntil((CurrentWorld := WorldHopper.GetCurrentWorld()) <> 0, 65, 20000);
+
+  AvailableWorlds := [];
+  for I := 0 to High(PlayerWorlds) do
+    if PlayerWorlds[I] <> CurrentWorld then
+      AvailableWorlds += PlayerWorlds[I];
+
+  if Length(AvailableWorlds) = 0 then
+  begin
+    ENABLEWORLDHOPPING := False;
+    Exit;
+  end;
+
+  TargetWorld := AvailableWorlds[Random(Length(AvailableWorlds))];
+  if WorldHopper.Hop([TargetWorld]) then
+  begin
+    Inc(Self.WorldHopsCompleted);
+    Self.LastWorldHopTime := GetTickCount();
+    Self.NextWorldHopTime := GetTickCount() + Self.GetRandomWorldHopTime();
+  end
+  else
+    Self.NextWorldHopTime := GetTickCount() + 120000;
+end;
+
+function TVolcanicAshMiner.IsPlayerNearby(): Boolean;
+var
+  PlayerDots: TPointArray;
+begin
+  PlayerDots := Minimap.GetDots(ERSMinimapDot.PLAYER);
+  Result := Length(PlayerDots) > 0;
+end;
+
+function TVolcanicAshMiner.ShouldHopForPlayer(): Boolean;
+var
+  NowTime: UInt64;
+begin
+  Result := False;
+  if not ENABLEPLAYERDETECTION then
+    Exit;
+
+  NowTime := GetTickCount();
+
+  if Self.IsPlayerNearby() then
+  begin
+    if not Self.PlayerNearby then
+    begin
+      Self.PlayerNearby := True;
+      Self.PlayerDetectedTime := NowTime;
+      WriteLn('[PLAYER_DETECT] Player spotted on minimap!');
+    end;
+
+    if PLAYERDETECTIONDELAY = 0 then
+      Result := True
+    else if (NowTime - Self.PlayerDetectedTime) >= UInt64(PLAYERDETECTIONDELAY * 1000) then
+      Result := True;
+
+    if Result then
+      WriteLn('[PLAYER_DETECT] Timer met (' + IntToStr(PLAYERDETECTIONDELAY) + 's), hopping worlds!');
+  end
+  else
+  begin
+    if Self.PlayerNearby then
+    begin
+      Self.PlayerNearby := False;
+      Self.PlayerDetectedTime := 0;
+      WriteLn('[PLAYER_DETECT] Player left, timer reset.');
+    end;
+  end;
+end;
+
+procedure TVolcanicAshMiner.DoPlayerDetectionHop();
+var
+  CurrentWorld, TargetWorld, I: Int32;
+  AvailableWorlds, OriginalWorlds: TIntegerArray;
+begin
+  WriteLn('[PLAYER_DETECT] Logging out and hopping worlds...');
+
+  OriginalWorlds := Login.GetPlayer().Worlds;
+  if Length(OriginalWorlds) < 2 then
+  begin
+    WriteLn('[PLAYER_DETECT] Need at least 2 worlds configured! Disabling player detection.');
+    ENABLEPLAYERDETECTION := False;
+    Exit;
+  end;
+
+  if not Logout.Open() then
+  begin
+    WriteLn('[PLAYER_DETECT] Failed to open logout menu');
+    Exit;
+  end;
+
+  if not Logout.IsWorldSwitcherOpen() then
+    Logout.GetButton(ERSLogoutButton.WORLD_SWITCHER).Click(MOUSE_LEFT);
+  WaitUntil((CurrentWorld := WorldHopper.GetCurrentWorld()) <> 0, 65, 20000);
+
+  AvailableWorlds := [];
+  for I := 0 to High(OriginalWorlds) do
+    if OriginalWorlds[I] <> CurrentWorld then
+      AvailableWorlds += OriginalWorlds[I];
+
+  if Length(AvailableWorlds) = 0 then
+  begin
+    WriteLn('[PLAYER_DETECT] No other worlds available!');
+    Exit;
+  end;
+
+  TargetWorld := AvailableWorlds[Random(Length(AvailableWorlds))];
+  WriteLn('[PLAYER_DETECT] Target world: ' + ToStr(TargetWorld));
+
+  Logout.ClickLogout();
+  WaitUntil(not RSClient.IsLoggedIn(), 300, 10000);
+
+  Login.Players[Login.PlayerIndex].Worlds := [TargetWorld];
+  Login.LoginPlayer();
+  Login.Players[Login.PlayerIndex].Worlds := OriginalWorlds;
+
+  if not RSClient.IsLoggedIn() then
+    WaitUntil(RSClient.IsLoggedIn(), 500, 30000);
+
+  if RSClient.IsLoggedIn() then
+  begin
+    WriteLn('[PLAYER_DETECT] Logged back in on world ' + ToStr(TargetWorld));
+    Inc(Self.PlayerDetectionHops);
+    Self.PlayerNearby := False;
+    Self.PlayerDetectedTime := 0;
+  end;
+end;
+
+procedure TVolcanicAshMiner.Report();
+var
+  Runtime: UInt64;
+  AshPerHour: Int32;
+begin
+  Runtime := GetTimeRunning();
+  Self.GetAshGained();
+  if Runtime > 0 then
+    AshPerHour := Round((Self.AshGained * 3600000) / Runtime)
+  else
+    AshPerHour := 0;
+
+  WriteLn('||===============================||');
+  WriteLn('||  B.A.S.H. Volcanic Ash Miner  ||');
+  WriteLn('||===============================||');
+  WriteLn(PadR('|| Runtime: ' + SRL.MsToTime(Runtime, Time_Short), 33, ' ') + '||');
+  WriteLn(PadR('|| Volcanic Ash: ' + IntToStr(Self.AshGained), 33, ' ') + '||');
+  WriteLn(PadR('|| Ash/Hr: ' + IntToStr(AshPerHour), 33, ' ') + '||');
+  if STOPATCOUNT > 0 then
+    WriteLn(PadR('|| Stop at: ' + IntToStr(STOPATCOUNT), 33, ' ') + '||');
+  if ENABLEWORLDHOPPING then
+    WriteLn(PadR('|| World hops: ' + IntToStr(Self.WorldHopsCompleted), 33, ' ') + '||');
+  if ENABLEPLAYERDETECTION then
+    WriteLn(PadR('|| Detect hops: ' + IntToStr(Self.PlayerDetectionHops), 33, ' ') + '||');
+  WriteLn('||===============================||');
+end;
+
+procedure TVolcanicAshMiner.SendHourlyReport();
+var
+  EmbedIdx: Int32;
+  Runtime: UInt64;
+  AshPerHour: Int32;
+  Description: String;
+begin
+  if not (SENDHOURLYREPORTMSG and ENABLEWEBHOOKS) then
+    Exit;
+
+  Runtime := GetTimeRunning();
+  Self.GetAshGained();
+  if Runtime > 0 then
+    AshPerHour := Round((Self.AshGained * 3600000) / Runtime)
+  else
+    AshPerHour := 0;
+
+  try
+    Discord.Webhook.Content := '**Hourly Progress Report** :chart_with_upwards_trend:';
+    EmbedIdx := Discord.Webhook.AddEmbed();
+    Discord.Webhook.Embeds[EmbedIdx].Title := 'BigAussies Volcanic Ash Miner - Hourly Report';
+    Discord.Webhook.Embeds[EmbedIdx].Color := $808080;
+    Description :=
+      'Runtime: ' + SRL.MsToTime(Runtime, Time_Short) + LineEnding +
+      'Volcanic Ash: ' + FormatRoundedNumber(Self.AshGained) + LineEnding +
+      'Ash/Hr: ' + FormatRoundedNumber(AshPerHour);
+    if ENABLEPLAYERDETECTION then
+      Description += LineEnding + 'Detection Hops: ' + IntToStr(Self.PlayerDetectionHops);
+    if ENABLEWORLDHOPPING then
+      Description += LineEnding + 'World Hops: ' + IntToStr(Self.WorldHopsCompleted);
+    Discord.Webhook.Embeds[EmbedIdx].Description := Description;
+    if Discord.SendScreenshot(False) then
+      WriteLn('[Discord] Hourly report sent!')
+    else
+      WriteLn('[Discord] Failed to send hourly report: ' + Discord.LastError);
+  except
+    WriteLn('[Discord] Error sending hourly report: ' + GetExceptionMessage);
+  end;
+end;
+
+procedure TVolcanicAshMiner.SendSessionSummary();
+var
+  EmbedIdx: Int32;
+  Runtime: UInt64;
+  AshPerHour: Int32;
+  Description: String;
+begin
+  if not (SENDSESSIONSUMMARYMSG and ENABLEWEBHOOKS) then
+    Exit;
+
+  Runtime := GetTimeRunning();
+  Self.GetAshGained();
+  if Runtime > 0 then
+    AshPerHour := Round((Self.AshGained * 3600000) / Runtime)
+  else
+    AshPerHour := 0;
+
+  try
+    Discord.Webhook.Content := '**Session Complete!** :checkered_flag:';
+    EmbedIdx := Discord.Webhook.AddEmbed();
+    Discord.Webhook.Embeds[EmbedIdx].Title := 'BigAussies Volcanic Ash Miner - Session Summary';
+    Discord.Webhook.Embeds[EmbedIdx].Color := $0000FF;
+    Description :=
+      'Runtime: ' + SRL.MsToTime(Runtime, Time_Short) + LineEnding +
+      'Volcanic Ash: ' + FormatRoundedNumber(Self.AshGained) + LineEnding +
+      'Ash/Hr: ' + FormatRoundedNumber(AshPerHour);
+    if ENABLEWORLDHOPPING then
+      Description += LineEnding + 'World Hops: ' + IntToStr(Self.WorldHopsCompleted);
+    if ENABLEPLAYERDETECTION then
+      Description += LineEnding + 'Detection Hops: ' + IntToStr(Self.PlayerDetectionHops);
+    Discord.Webhook.Embeds[EmbedIdx].Description := Description;
+    if Discord.SendScreenshot(False) then
+      WriteLn('[Discord] Session summary sent!')
+    else
+      WriteLn('[Discord] Failed to send session summary: ' + Discord.LastError);
+  except
+    WriteLn('[Discord] Error sending session summary: ' + GetExceptionMessage);
+  end;
+end;
+
+procedure TVolcanicAshMiner.SendTerminationNotification();
+begin
+  WriteLn('Script has terminated, sending session summary');
+  Self.SendSessionSummary();
+end;
+
+procedure TVolcanicAshMiner.CheckHourlyReport();
+var
+  CurrentTime: Int64;
+begin
+  CurrentTime := GetTimeRunning();
+  if (CurrentTime - Self.LastHourlyReportTime) >= 3600000 then
+  begin
+    Self.SendHourlyReport();
+    Self.LastHourlyReportTime := CurrentTime;
+  end;
+end;
+
+procedure TVolcanicAshMiner.Init(MaxActions: UInt32; MaxTime: UInt64); override;
+var
+  Configured: Int32;
+  I: Int32;
+begin
+  inherited;
+
+  if AIChatbot.Enabled then
+  begin
+    WriteLn('[AI Chatbot] Enabled - initializing');
+    AIChatbot.Init();
+  end
+  else
+    WriteLn('[AI Chatbot] Disabled');
+
+  if not RSClient.IsLoggedIn() then
+    Login.LoginPlayer();
+
+  Self.SetupChunks();
+  Objects.Setup(Map.Objects(), @Map.Walker);
+  Self.SetupPiles();
+
+  Options.SetZoomLevel(SRL.TruncatedGauss(10, 20));
+
+  Configured := 0;
+  for I := 0 to High(Self.Piles) do
+    if Self.PileConfigured(I) then
+      Inc(Configured);
+
+  Self.StartAshCount := Inventory.CountItemStack('Volcanic ash');
+  Self.AshGained := 0;
+  Self.CurrentIndex := 0;
+  Self.LastReportTime := 0;
+  Self.LastHourlyReportTime := 0;
+  Self.WorldHopsCompleted := 0;
+  Self.PlayerDetectionHops := 0;
+  Self.PlayerNearby := False;
+  Self.PlayerDetectedTime := 0;
+  Self.ActiveRunTime.Start();
+
+  Self.SetupWorldHopping();
+
+  if ENABLEPLAYERDETECTION then
+    WriteLn('[PLAYER_DETECT] Enabled with ' + IntToStr(PLAYERDETECTIONDELAY) + 's delay.')
+  else
+    WriteLn('[PLAYER_DETECT] Player detection is disabled.');
+
+  if SENDSESSIONSUMMARYMSG and ENABLEWEBHOOKS then
+    AddOnTerminate(@Self.SendTerminationNotification);
+
+  WL.Activity.Init(5 * ONE_MINUTE);
+  WL.Activity.Restart();
+
+  APIClient.TimeStamp := GetTickCount();
+end;
+
+function TVolcanicAshMiner.GetState(): EAshState;
+begin
+  if WL.Activity.IsFinished() then
+  begin
+    WriteLn('[ACTIVITY] No activity detected in 5 minutes! Shutting down.');
+    Logout.ClickLogout();
+    TerminateScript('No activity detected in 5 minutes');
+  end;
+
+  if not RSClient.IsLoggedIn() then
+    Exit(EAshState.VA_LOGIN);
+
+  if Self.ShouldStop() then
+    Exit(EAshState.VA_END);
+
+  if Self.ReachedStopCount() then
+  begin
+    Self.TerminateStopCount();
+    Exit(EAshState.VA_END);
+  end;
+
+  if Inventory.IsFull() then
+  begin
+    if Inventory.ContainsItem('Soda ash') then
+      Exit(EAshState.VA_DROP_SODA);
+    Self.TerminateFullInventory();
+    Exit(EAshState.VA_END);
+  end;
+
+  if Self.ShouldHopForPlayer() then
+    Exit(EAshState.VA_HOP);
+
+  Exit(EAshState.VA_MINE);
+end;
+
+procedure TVolcanicAshMiner.DoMine();
+var
+  Idx: Int32;
+begin
+  Idx := Self.PickNextPileIndex();
+  if Idx < 0 then
+  begin
+    WriteLn('[MINE] No eligible piles');
+    Exit;
+  end;
+
+  Self.MinePile(Idx);
+end;
+
+procedure TVolcanicAshMiner.Run(MaxActions: UInt32; MaxTime: UInt64);
+begin
+  Self.Init(MaxActions, MaxTime);
+
+  repeat
+    Self.CheckHourlyReport();
+    Self.DoAntiban(True, True);
+
+    if Self.ShouldHopWorld() then
+    begin
+      Self.DoWorldHop();
+    end;
+
+    Self.State := Self.GetState();
+
+    case Self.State of
+      EAshState.VA_LOGIN:
+        if not Login.LoginPlayer() then
+          Break;
+      EAshState.VA_DROP_SODA:
+        begin
+          Self.DropSodaAsh();
+          if Inventory.IsFull() and (not Inventory.ContainsItem('Soda ash')) then
+            Self.TerminateFullInventory();
+        end;
+      EAshState.VA_HOP:
+        begin
+          Self.DoPlayerDetectionHop();
+        end;
+      EAshState.VA_MINE:
+        Self.DoMine();
+      EAshState.VA_END:
+        Break;
+    end;
+
+    if (GetTickCount() - Self.LastReportTime) >= 10000 then
+    begin
+      Self.Report();
+      Self.LastReportTime := GetTickCount();
+    end;
+  until Self.ShouldStop();
+
+  Self.Report();
+end;
+
+{$IFDEF SCRIPT_GUI}
+type
+  TConfig = record(TScriptForm)
+    NavPanel, ContentPanel, StatusPanel, DividerPanel, StatusDivider, StatusPad: TPanel;
+    BrandLabel: TLabel;
+    ScriptNav, AccountsNav, AntibanNav, AIChatNav: TImage;
+    StartChip: TImage;
+    ActiveNav: TImage;
+    ScriptSection, AccountsSection, AntibanSection, AIChatSection: TPanel;
+
+    StopAtCountInput: TLabeledEdit;
+    SouthSideCheckBox, NorthSideCheckBox: TLabeledCheckBox;
+
+    EnableWebhooksCheckBox, PingOnTerminatedCheckBox: TLabeledCheckBox;
+    WebHookInput: TLabeledEdit;
+    TestButton: TButton;
+    WebhookInfo: TLabel;
+
+    OverrideBreaksCheckBox, EnableWorldHoppingCheckBox, EnablePlayerDetectionCheckBox: TLabeledCheckBox;
+    EnablePreHoverCheckBox: TLabeledCheckBox;
+    ShortBreaksCheckBox, SleepBreaksCheckBox: TLabeledCheckBox;
+    SleepHourInput, SleepLengthInput: TLabeledEdit;
+    TasksEnabledCheckBox: TLabeledCheckBox;
+    TaskCameraCheckBox, TaskMouseCheckBox, TaskChatCheckBox, TaskGameTabsCheckBox, TaskBankCheckBox: TLabeledCheckBox;
+    CustomBreakIntervalInput, CustomBreakDurationInput, WorldHopIntervalInput: TLabeledEdit;
+    PlayerDetectionDelayCombo: TLabeledCombobox;
+    MaxActionsInput, MaxTimeInput: TLabeledEdit;
+
+    Username: String;
+    SavedWebhookURL: String;
+    FormReady: Boolean;
+  end;
+
+function TConfig.MakePanel(
+  parent: TWinControl;
+  left, top, width, height, color: Int32
+): TPanel;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetWidth(TControl.AdjustToDPI(width));
+  Result.SetHeight(TControl.AdjustToDPI(height));
+  Result.SetColor(color);
+  Result.SetBevelOuter(bvNone);
+end;
+
+procedure TConfig.PaintRoundChip(
+  img: TImage;
+  labelText: String;
+  fill, parentBg: Int32;
+  selected: Boolean = False;
+  centered: Boolean = False
+);
+var
+  bmp: TBitmap;
+  c: TCanvas;
+  w, h, r, tw, th, tx: Int32;
+begin
+  w := img.GetWidth();
+  h := img.GetHeight();
+  if (w <= 0) or (h <= 0) then
+    Exit;
+
+  r := TControl.AdjustToDPI(6);
+  if r * 2 > h then
+    r := h div 2;
+  if r * 2 > w then
+    r := w div 2;
+
+  bmp := img.GetPicture().GetBitmap();
+  bmp.SetWidth(w);
+  bmp.SetHeight(h);
+  c := bmp.GetCanvas();
+
+  c.GetBrush().SetColor(parentBg);
+  c.GetPen().SetColor(parentBg);
+  c.FillRect(0, 0, w, h);
+
+  c.GetBrush().SetColor(fill);
+  c.GetPen().SetColor(fill);
+  c.RoundRect(0, 0, w - 1, h - 1, r * 2, r * 2);
+
+  c.GetBrush().SetColor(fill);
+  c.GetFont().SetColor(VA_GUI_TEXT);
+  c.GetFont().SetSize(11);
+  if selected then
+    c.GetFont().SetStyle([fsBold])
+  else
+    c.GetFont().SetStyle([]);
+
+  tw := c.TextWidth(labelText);
+  th := c.TextHeight(labelText);
+  if centered then
+    tx := (w - tw) div 2
+  else
+    tx := TControl.AdjustToDPI(16);
+  c.TextOut(tx, (h - th) div 2, labelText);
+
+  img.SetHint(labelText);
+  img.SetShowHint(False);
+  img.Invalidate();
+end;
+
+function TConfig.MakeNavItem(
+  parent: TWinControl;
+  labelText: String;
+  left, top: Int32;
+  selected: Boolean = False
+): TImage;
+var
+  fill: Int32;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetWidth(TControl.AdjustToDPI(VA_GUI_NAV_W - 28));
+  Result.SetHeight(TControl.AdjustToDPI(VA_GUI_BTN_H));
+  Result.SetCursor(crHandPoint);
+
+  if selected then
+    fill := VA_GUI_ACCENT
+  else
+    fill := VA_GUI_NAV_IDLE;
+
+  Self.PaintRoundChip(Result, labelText, fill, VA_GUI_NAV, selected);
+end;
+
+function TConfig.MakeLabel(
+  parent: TWinControl;
+  labelText: String;
+  left, top, fontSize, fontColor: Int32;
+  bold: Boolean = False
+): TLabel;
+begin
+  Result.Create(parent);
+  Result.SetLeft(TControl.AdjustToDPI(left));
+  Result.SetTop(TControl.AdjustToDPI(top));
+  Result.SetCaption(labelText);
+  Result.GetFont().SetSize(fontSize);
+  Result.GetFont().SetColor(fontColor);
+  if bold then
+    Result.GetFont().SetStyle([fsBold]);
+end;
+
+procedure TConfig.AddCheck(
+  parent: TWinControl;
+  var box: TLabeledCheckBox;
+  ctrlName, labelText: String;
+  left, top: Int32;
+  checked: Boolean
+);
+begin
+  box.Create(parent);
+  box.SetLeft(TControl.AdjustToDPI(left));
+  box.SetTop(TControl.AdjustToDPI(top));
+  box.SetName(ctrlName);
+  box.SetFontColor(VA_GUI_TEXT);
+  box.SetCaption(labelText);
+  if checked then
+    box.CheckBox.SetChecked(True);
+end;
+
+procedure TConfig.AddEdit(
+  parent: TWinControl;
+  var box: TLabeledEdit;
+  ctrlName, labelText, text: String;
+  left, top, width: Int32
+);
+begin
+  box.Create(parent);
+  box.SetLeft(TControl.AdjustToDPI(left));
+  box.SetTop(TControl.AdjustToDPI(top));
+  box.SetWidth(TControl.AdjustToDPI(width));
+  box.SetName(ctrlName);
+  box.SetCaption(labelText);
+  box.SetText(text);
+  box.SetFontColor(VA_GUI_TEXT);
+end;
+
+procedure TConfig.AddHeader(parent: TPanel; titleText, subtitleText: String);
+var
+  header: TPanel;
+  headerW: Int32;
+begin
+  headerW := parent.GetWidth();
+  if headerW <= 0 then
+    headerW := TControl.AdjustToDPI(VA_GUI_W - VA_GUI_NAV_W - 2);
+
+  header := Self.MakePanel(parent, 0, 0, 1, 88, VA_GUI_CARD);
+  header.SetWidth(headerW);
+  header.SetHeight(TControl.AdjustToDPI(88));
+  Self.MakeLabel(header, titleText, 24, 18, 18, VA_GUI_TEXT, True);
+  Self.MakeLabel(header, subtitleText, 24, 52, 10, VA_GUI_MUTED, False);
+end;
+
+procedure TConfig.StyleNav(selected: TImage);
+begin
+  Self.ActiveNav := selected;
+  Self.PaintRoundChip(Self.ScriptNav, Self.ScriptNav.GetHint(), VA_GUI_NAV_IDLE, VA_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AccountsNav, Self.AccountsNav.GetHint(), VA_GUI_NAV_IDLE, VA_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AntibanNav, Self.AntibanNav.GetHint(), VA_GUI_NAV_IDLE, VA_GUI_NAV, False);
+  Self.PaintRoundChip(Self.AIChatNav, Self.AIChatNav.GetHint(), VA_GUI_NAV_IDLE, VA_GUI_NAV, False);
+  Self.PaintRoundChip(selected, selected.GetHint(), VA_GUI_ACCENT, VA_GUI_NAV, True);
+end;
+
+procedure TConfig.ShowSection(section: TPanel; selected: TImage);
+begin
+  Self.ScriptSection.SetVisible(False);
+  Self.AccountsSection.SetVisible(False);
+  Self.AntibanSection.SetVisible(False);
+  Self.AIChatSection.SetVisible(False);
+  section.SetVisible(True);
+  Self.StyleNav(selected);
+end;
+
+procedure TConfig.ShowScript({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.ScriptSection, Self.ScriptNav);
+end;
+
+procedure TConfig.ShowAccounts({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AccountsSection, Self.AccountsNav);
+end;
+
+procedure TConfig.ShowAntiban({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AntibanSection, Self.AntibanNav);
+end;
+
+procedure TConfig.ShowAIChat({$H-}sender: TObject); {$H+}
+begin
+  Self.ShowSection(Self.AIChatSection, Self.AIChatNav);
+end;
+
+procedure TConfig.UpdateAccountValues(sender: TObject);
+var
+  selector: TComboBox;
+  user, pass, pin: TEdit;
+  worlds: TMemo;
+  idx: Int32;
+  worldsStr: String;
+  i: Int32;
+begin
+  selector := TComboBox(Self.Form.GetChild('am_selector_combobox'));
+  idx := selector.GetItemIndex();
+
+  if (idx < 0) or (idx > High(Login.Players)) then Exit;
+
+  Self.SaveUserSettings();
+
+  Login.PlayerIndex := idx;
+
+  user := TEdit(Self.Form.GetChild('am_user_edit'));
+  pass := TEdit(Self.Form.GetChild('am_pass_edit'));
+  pin := TEdit(Self.Form.GetChild('am_pin_edit'));
+  worlds := TMemo(Self.Form.GetChild('am_worlds_memo'));
+
+  user.SetText(Login.Players[idx].User);
+  pass.SetText(Login.Players[idx].Password);
+  pin.SetText(Login.Players[idx].Pin);
+
+  worldsStr := '';
+  for i := 0 to High(Login.Players[idx].Worlds) do
+  begin
+    worldsStr += ToStr(Login.Players[idx].Worlds[i]);
+    if i < High(Login.Players[idx].Worlds) then
+      worldsStr += ', ';
+  end;
+  worlds.SetText(worldsStr);
+
+  Self.LoadUserSettings();
+end;
+
+procedure TConfig.InitializeAccountManager;
+var
+  selector: TComboBox;
+begin
+  selector := TComboBox(Self.Form.GetChild('am_selector_combobox'));
+  if selector <> nil then
+    selector.SetOnChange(@UpdateAccountValues);
+end;
+
+procedure TConfig.WebhooksCheckboxChanged({$H-}sender: TObject){$H+};
+var
+  showWebhook: Boolean;
+begin
+  showWebhook := Self.EnableWebhooksCheckBox.IsChecked();
+  if Assigned(Self.WebHookInput) then
+    Self.WebHookInput.SetVisible(showWebhook);
+  if Assigned(Self.TestButton) then
+    Self.TestButton.SetVisible(showWebhook);
+  if Assigned(Self.WebhookInfo) then
+    Self.WebhookInfo.SetVisible(showWebhook);
+end;
+
+procedure TConfig.OpenWebhookHelp({$H-}sender: TObject){$H+};
+begin
+  OpenWebPage('https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks');
+end;
+
+procedure TConfig.TestButtonClick({$H-}sender: TObject){$H+};
+begin
+  if Self.WebHookInput.GetText = '' then
+  begin
+    ShowMessage('Please enter a Webhook URL');
+    Exit;
+  end;
+  Discord.Webhook.Content := 'Test message from BigAussies Volcanic Ash Miner';
+  Discord.Webhook.URL := Self.WebHookInput.GetText;
+  Discord.Send();
+  ShowMessage('Test message sent. Please check Discord.');
+end;
+
+procedure TConfig.WorldHoppingCheckboxChanged({$H-}sender: TObject){$H+};
+begin
+  if Assigned(Self.WorldHopIntervalInput) then
+    Self.WorldHopIntervalInput.SetVisible(Self.EnableWorldHoppingCheckBox.IsChecked());
+end;
+
+procedure TConfig.OverrideBreaksCheckboxChanged({$H-}sender: TObject){$H+};
+begin
+  if Assigned(Self.CustomBreakIntervalInput) then
+    Self.CustomBreakIntervalInput.SetVisible(Self.OverrideBreaksCheckBox.IsChecked());
+  if Assigned(Self.CustomBreakDurationInput) then
+    Self.CustomBreakDurationInput.SetVisible(Self.OverrideBreaksCheckBox.IsChecked());
+  if Self.OverrideBreaksCheckBox.IsChecked() then
+    Self.ShortBreaksCheckBox.CheckBox.SetChecked(False);
+end;
+
+procedure TConfig.PlayerDetectionChanged({$H-}sender: TObject){$H+};
+begin
+  if Assigned(Self.PlayerDetectionDelayCombo) then
+    Self.PlayerDetectionDelayCombo.SetVisible(Self.EnablePlayerDetectionCheckBox.IsChecked());
+end;
+
+procedure TConfig.ShortBreaksCheckboxChanged({$H-}sender: TObject){$H+};
+begin
+  if Self.ShortBreaksCheckBox.IsChecked() then
+  begin
+    Self.OverrideBreaksCheckBox.CheckBox.SetChecked(False);
+    if Assigned(Self.CustomBreakIntervalInput) then
+      Self.CustomBreakIntervalInput.SetVisible(False);
+    if Assigned(Self.CustomBreakDurationInput) then
+      Self.CustomBreakDurationInput.SetVisible(False);
+  end;
+end;
+
+procedure TConfig.SleepBreaksCheckboxChanged({$H-}sender: TObject){$H+};
+var
+  enabled: Boolean;
+begin
+  enabled := Self.SleepBreaksCheckBox.IsChecked();
+  Self.SleepHourInput.SetEnabled(enabled);
+  Self.SleepLengthInput.SetEnabled(enabled);
+end;
+
+procedure TConfig.TasksEnabledCheckboxChanged({$H-}sender: TObject){$H+};
+var
+  enabled: Boolean;
+begin
+  enabled := Self.TasksEnabledCheckBox.IsChecked();
+  Self.TaskCameraCheckBox.SetEnabled(enabled);
+  Self.TaskMouseCheckBox.SetEnabled(enabled);
+  Self.TaskChatCheckBox.SetEnabled(enabled);
+  Self.TaskGameTabsCheckBox.SetEnabled(enabled);
+  Self.TaskBankCheckBox.SetEnabled(enabled);
+end;
+
+procedure TConfig.ApplyAntibanFromGUI();
+begin
+  if Assigned(Self.MaxActionsInput) then
+    WLSettings.Put('max_actions', StrToIntDef(Self.MaxActionsInput.GetText(), 0));
+  if Assigned(Self.MaxTimeInput) then
+    WLSettings.Put('max_time', StrToIntDef(Self.MaxTimeInput.GetText(), 0));
+
+  WLSettings.GetObject('antiban').Put('breaks', Self.ShortBreaksCheckBox.IsChecked());
+
+  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('enabled', Self.SleepBreaksCheckBox.IsChecked());
+  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('biohash', True);
+  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('hour', Trim(Self.SleepHourInput.GetText()));
+  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('length', StrToFloatDef(Self.SleepLengthInput.GetText(), 8));
+
+  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('enabled', Self.TasksEnabledCheckBox.IsChecked());
+  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('camera', Self.TaskCameraCheckBox.IsChecked());
+  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('mouse', Self.TaskMouseCheckBox.IsChecked());
+  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('chat', Self.TaskChatCheckBox.IsChecked());
+  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('gametabs', Self.TaskGameTabsCheckBox.IsChecked());
+  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('bank', Self.TaskBankCheckBox.IsChecked());
+
+  WLSettings.SaveConfig();
+end;
+
+procedure TConfig.LoadUserSettings();
+var
+  SavedEnableWorldHopping: Boolean;
+  SavedWorldHopInterval: Int32;
+  SavedWebhookURL: String;
+  SavedPingOnTerminated, SavedEnableWebhooks: Boolean;
+  SavedOverrideBreaks: Boolean;
+  SavedCustomBreakInterval, SavedCustomBreakDuration: Int32;
+  SavedEnablePlayerDetection: Boolean;
+  SavedPlayerDetectionDelay, SavedPlayerDetectionDelayIdx: Int32;
+  SavedStopAtCount: Int32;
+  SavedEnablePreHover: Boolean;
+  SavedUseSouthSide, SavedUseNorthSide: Boolean;
+begin
+  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
+    Self.Username := 'NoUserNameSelected'
+  else
+    Self.Username := Login.Players[Login.PlayerIndex].User;
+
+  if Self.Username = '' then Exit;
+
+  SavedStopAtCount := StrToIntDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'StopAtCount', 'Configs/BASettings.ini'), 0);
+  SavedEnableWorldHopping := StrToBoolDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'EnableWorldHopping', 'Configs/BASettings.ini'), False);
+  SavedWorldHopInterval := StrToIntDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'WorldHopInterval', 'Configs/BASettings.ini'), 45);
+  SavedEnablePlayerDetection := StrToBoolDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'EnablePlayerDetection', 'Configs/BASettings.ini'), False);
+  SavedPlayerDetectionDelay := StrToIntDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'PlayerDetectionDelay', 'Configs/BASettings.ini'), 0);
+  SavedEnablePreHover := StrToBoolDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'EnablePreHover', 'Configs/BASettings.ini'), True);
+  SavedUseSouthSide := StrToBoolDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'UseSouthSide', 'Configs/BASettings.ini'), False);
+  SavedUseNorthSide := StrToBoolDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'UseNorthSide', 'Configs/BASettings.ini'), False);
+
+  case SavedPlayerDetectionDelay of
+    10: SavedPlayerDetectionDelayIdx := 1;
+    20: SavedPlayerDetectionDelayIdx := 2;
+    30: SavedPlayerDetectionDelayIdx := 3;
+  else
+    SavedPlayerDetectionDelayIdx := 0;
+  end;
+
+  SavedWebhookURL := ReadINI(Self.Username + ' Webhook Settings', 'WebhookURL', 'Configs/BASettings.ini');
+  SavedEnableWebhooks := StrToBoolDef(ReadINI(Self.Username + ' Webhook Settings', 'EnableWebhooks', 'Configs/BASettings.ini'), False);
+  SavedPingOnTerminated := StrToBoolDef(ReadINI(Self.Username + ' Webhook Settings', 'PingOnTerminated', 'Configs/BASettings.ini'), True);
+
+  SavedOverrideBreaks := StrToBoolDef(ReadINI(Self.Username + ' Volcanic Ash Miner Antiban', 'OverrideBreaks', 'Configs/BASettings.ini'), False);
+  SavedCustomBreakInterval := StrToIntDef(ReadINI(Self.Username + ' Volcanic Ash Miner Antiban', 'CustomBreakInterval', 'Configs/BASettings.ini'), 60);
+  SavedCustomBreakDuration := StrToIntDef(ReadINI(Self.Username + ' Volcanic Ash Miner Antiban', 'CustomBreakDuration', 'Configs/BASettings.ini'), 5);
+
+  if Assigned(Self.StopAtCountInput) then
+    Self.StopAtCountInput.SetText(IntToStr(SavedStopAtCount));
+
+  if Assigned(Self.SouthSideCheckBox) then
+    Self.SouthSideCheckBox.SetChecked(SavedUseSouthSide);
+
+  if Assigned(Self.NorthSideCheckBox) then
+    Self.NorthSideCheckBox.SetChecked(SavedUseNorthSide);
+
+  if Assigned(Self.EnableWorldHoppingCheckBox) then
+  begin
+    Self.EnableWorldHoppingCheckBox.SetChecked(SavedEnableWorldHopping);
+    Self.WorldHoppingCheckboxChanged(nil);
+  end;
+
+  if Assigned(Self.WorldHopIntervalInput) then
+    Self.WorldHopIntervalInput.SetText(ToStr(SavedWorldHopInterval));
+
+  if Assigned(Self.EnableWebhooksCheckBox) then
+  begin
+    Self.EnableWebhooksCheckBox.SetChecked(SavedEnableWebhooks);
+    Self.WebhooksCheckboxChanged(nil);
+  end;
+
+  if Assigned(Self.WebHookInput) then
+    Self.WebHookInput.SetText(SavedWebhookURL);
+
+  if Assigned(Self.PingOnTerminatedCheckBox) then
+    Self.PingOnTerminatedCheckBox.SetChecked(SavedPingOnTerminated);
+
+  if Assigned(Self.OverrideBreaksCheckBox) then
+  begin
+    Self.OverrideBreaksCheckBox.SetChecked(SavedOverrideBreaks);
+    Self.OverrideBreaksCheckboxChanged(nil);
+  end;
+
+  if Assigned(Self.CustomBreakIntervalInput) then
+    Self.CustomBreakIntervalInput.SetText(IntToStr(SavedCustomBreakInterval));
+
+  if Assigned(Self.CustomBreakDurationInput) then
+    Self.CustomBreakDurationInput.SetText(IntToStr(SavedCustomBreakDuration));
+
+  if Assigned(Self.EnablePlayerDetectionCheckBox) then
+  begin
+    Self.EnablePlayerDetectionCheckBox.SetChecked(SavedEnablePlayerDetection);
+    Self.PlayerDetectionChanged(nil);
+  end;
+
+  if Assigned(Self.PlayerDetectionDelayCombo) then
+    Self.PlayerDetectionDelayCombo.SetItemIndex(SavedPlayerDetectionDelayIdx);
+
+  if Assigned(Self.EnablePreHoverCheckBox) then
+    Self.EnablePreHoverCheckBox.SetChecked(SavedEnablePreHover);
+end;
+
+procedure TConfig.SaveUserSettings();
+begin
+  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
+    Self.Username := 'NoUserNameSelected'
+  else
+    Self.Username := Login.Players[Login.PlayerIndex].User;
+
+  if Self.Username = '' then Exit;
+
+  if Assigned(Self.StopAtCountInput) then
+    STOPATCOUNT := StrToIntDef(Self.StopAtCountInput.GetText(), 0);
+
+  if Assigned(Self.SouthSideCheckBox) then
+    USESOUTHSIDE := Self.SouthSideCheckBox.IsChecked();
+
+  if Assigned(Self.NorthSideCheckBox) then
+    USENORTHSIDE := Self.NorthSideCheckBox.IsChecked();
+
+  if Assigned(Self.EnableWorldHoppingCheckBox) then
+    ENABLEWORLDHOPPING := Self.EnableWorldHoppingCheckBox.IsChecked();
+
+  if Assigned(Self.WorldHopIntervalInput) then
+    WORLDHOPINTERVAL := StrToIntDef(Self.WorldHopIntervalInput.GetText(), 45);
+
+  if Assigned(Self.EnableWebhooksCheckBox) then
+    ENABLEWEBHOOKS := Self.EnableWebhooksCheckBox.IsChecked();
+
+  if Assigned(Self.PingOnTerminatedCheckBox) then
+    PINGONTERMINATED := Self.PingOnTerminatedCheckBox.IsChecked();
+
+  SENDHOURLYREPORTMSG := True;
+  SENDSESSIONSUMMARYMSG := True;
+
+  if Assigned(Self.WebHookInput) then
+  begin
+    Self.SavedWebhookURL := Self.WebHookInput.GetText();
+    WEBHOOKURL := Self.SavedWebhookURL;
+  end;
+
+  if Assigned(Self.OverrideBreaksCheckBox) then
+    OVERRIDEBREAKS := Self.OverrideBreaksCheckBox.IsChecked();
+
+  if Assigned(Self.CustomBreakIntervalInput) then
+    CUSTOMBREAKINTERVAL := StrToIntDef(Self.CustomBreakIntervalInput.GetText(), 60);
+
+  if Assigned(Self.CustomBreakDurationInput) then
+    CUSTOMBREAKDURATION := StrToIntDef(Self.CustomBreakDurationInput.GetText(), 5);
+
+  if Assigned(Self.EnablePlayerDetectionCheckBox) then
+    ENABLEPLAYERDETECTION := Self.EnablePlayerDetectionCheckBox.IsChecked();
+
+  if Assigned(Self.EnablePreHoverCheckBox) then
+    ENABLEPREHOVER := Self.EnablePreHoverCheckBox.IsChecked();
+
+  if Assigned(Self.PlayerDetectionDelayCombo) then
+  begin
+    case Self.PlayerDetectionDelayCombo.GetItemIndex() of
+      1: PLAYERDETECTIONDELAY := 10;
+      2: PLAYERDETECTIONDELAY := 20;
+      3: PLAYERDETECTIONDELAY := 30;
+    else
+      PLAYERDETECTIONDELAY := 0;
+    end;
+  end;
+
+  WriteINI(Self.Username + ' Volcanic Ash Miner Settings', 'StopAtCount', ToStr(STOPATCOUNT), 'Configs/BASettings.ini');
+  WriteINI(Self.Username + ' Volcanic Ash Miner Settings', 'UseSouthSide', BoolToStr(USESOUTHSIDE, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI(Self.Username + ' Volcanic Ash Miner Settings', 'UseNorthSide', BoolToStr(USENORTHSIDE, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI(Self.Username + ' Volcanic Ash Miner Settings', 'EnableWorldHopping', BoolToStr(ENABLEWORLDHOPPING, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI(Self.Username + ' Volcanic Ash Miner Settings', 'WorldHopInterval', ToStr(WORLDHOPINTERVAL), 'Configs/BASettings.ini');
+  WriteINI(Self.Username + ' Volcanic Ash Miner Settings', 'EnablePlayerDetection', BoolToStr(ENABLEPLAYERDETECTION, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI(Self.Username + ' Volcanic Ash Miner Settings', 'PlayerDetectionDelay', IntToStr(PLAYERDETECTIONDELAY), 'Configs/BASettings.ini');
+  WriteINI(Self.Username + ' Volcanic Ash Miner Settings', 'EnablePreHover', BoolToStr(ENABLEPREHOVER, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI(Self.Username + ' Webhook Settings', 'WebhookURL', Self.SavedWebhookURL, 'Configs/BASettings.ini');
+  WriteINI(Self.Username + ' Webhook Settings', 'PingOnTerminated', BoolToStr(PINGONTERMINATED, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI(Self.Username + ' Webhook Settings', 'EnableWebhooks', BoolToStr(ENABLEWEBHOOKS, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI(Self.Username + ' Volcanic Ash Miner Antiban', 'OverrideBreaks', BoolToStr(OVERRIDEBREAKS, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI(Self.Username + ' Volcanic Ash Miner Antiban', 'CustomBreakInterval', IntToStr(CUSTOMBREAKINTERVAL), 'Configs/BASettings.ini');
+  WriteINI(Self.Username + ' Volcanic Ash Miner Antiban', 'CustomBreakDuration', IntToStr(CUSTOMBREAKDURATION), 'Configs/BASettings.ini');
+end;
+
+procedure TConfig.StartScript(Sender: TObject); override;
+begin
+  if Sender = nil then;
+
+  Self.SaveUserSettings();
+
+  if Assigned(Self.WebHookInput) then
+    Self.SavedWebhookURL := Self.WebHookInput.GetText()
+  else
+    Self.SavedWebhookURL := '';
+
+  WEBHOOKURL := Self.SavedWebhookURL;
+
+  Discord.SetWebhook(Self.SavedWebhookURL);
+  Discord.SetUsername('B.A.S.H. Bot');
+  Discord.SetAvatar('https://raw.githubusercontent.com/BigWaspBackup/BashLib/master/utils/assets/bash-logo.bmp');
+
+  Self.ApplyAntibanFromGUI();
+
+  try
+    Self._WarmBuildCache();
+  except
+  end;
+
+  AIChatbot.ApplyFromGUI();
+
+  Self.Form.SetOnClose(nil);
+  Self.Form.Close();
+end;
+
+procedure TConfig.BuildScriptSection(
+  SavedStopAtCount: Integer;
+  SavedUseSouthSide, SavedUseNorthSide, SavedEnablePlayerDetection: Boolean;
+  SavedPlayerDetectionDelayIdx: Integer
+);
+begin
+  Self.AddHeader(Self.ScriptSection, 'Action', 'Volcanic ash stop target, mining area, and player detection.');
+
+  Self.AddEdit(Self.ScriptSection, Self.StopAtCountInput, 'le_va_stop_count', 'Stop at Volcanic ash (0 = never)', IntToStr(SavedStopAtCount), 24, 110, VA_GUI_EDIT_W);
+  Self.StopAtCountInput.Edit.SetOnKeyPress(@Self.StopAtCountInput.Edit.NumberField);
+  Self.StopAtCountInput.SetHint('Logout and stop once this many Volcanic ash have been gained this session. 0 = unlimited.');
+
+  Self.MakeLabel(Self.ScriptSection, 'Mining area', 24, 168, 11, VA_GUI_MUTED, True);
+  Self.AddCheck(Self.ScriptSection, Self.SouthSideCheckBox, 'cb_va_south', 'South side (Reccomended)', 24, 190, SavedUseSouthSide);
+  Self.SouthSideCheckBox.SetHint('Only mine the south-side ash piles.');
+  Self.AddCheck(Self.ScriptSection, Self.NorthSideCheckBox, 'cb_va_north', 'North side', VA_GUI_COL2, 190, SavedUseNorthSide);
+  Self.NorthSideCheckBox.SetHint('Only mine the north-side ash piles. Uncheck both to use all piles at random.');
+
+  Self.MakeLabel(Self.ScriptSection, 'Player detection', 24, 248, 11, VA_GUI_MUTED, True);
+  Self.AddCheck(Self.ScriptSection, Self.EnablePlayerDetectionCheckBox, 'cb_va_player_detection', 'Hop on player detection', 24, 271, SavedEnablePlayerDetection);
+  Self.EnablePlayerDetectionCheckBox.SetHint('Hop worlds when another player is detected nearby on the minimap.');
+  Self.EnablePlayerDetectionCheckBox.CheckBox.SetOnChange(@Self.PlayerDetectionChanged);
+
+  with Self.PlayerDetectionDelayCombo do
+  begin
+    Create(Self.ScriptSection);
+    SetCaption('Detection delay');
+    SetLeft(TControl.AdjustToDPI(VA_GUI_COL2));
+    SetTop(TControl.AdjustToDPI(266));
+    SetWidth(TControl.AdjustToDPI(VA_GUI_EDIT_W));
+    Clear();
+    AddItem('Instant');
+    AddItem('10 seconds');
+    AddItem('20 seconds');
+    AddItem('30 seconds');
+    SetItemIndex(SavedPlayerDetectionDelayIdx);
+    SetStyle(csDropDownList);
+  end;
+
+  Self.PlayerDetectionChanged(nil);
+end;
+
+procedure TConfig.BuildAccountsSection(
+  SavedWebhookURL: String;
+  SavedEnableWebhooks: Boolean
+);
+var
+  am: TPanel;
+  selectorPanel, userPanel, passPanel, pinPanel, worldsPanel: TPanel;
+  addBtn, deleteBtn, generateBtn: TButton;
+  leftColW, passW, pinW, worldsLeft, btnW, btnGap: Int32;
+begin
+  Self.AddHeader(Self.AccountsSection, 'Accounts', 'Login account and optional Discord webhook notifications.');
+
+  am := Self.CreateAccountManager(Self.AccountsSection);
+  am.SetLeft(TControl.AdjustToDPI(16));
+  am.SetTop(TControl.AdjustToDPI(100));
+  am.SetColor(VA_GUI_BG);
+
+  leftColW := TControl.AdjustToDPI(280);
+  passW := Floor(leftColW * 0.6);
+  pinW := Floor(leftColW * 0.3);
+
+  selectorPanel := Self.Form.GetChild('am_selector_panel');
+  userPanel := Self.Form.GetChild('am_user_panel');
+  passPanel := Self.Form.GetChild('am_pass_panel');
+  pinPanel := Self.Form.GetChild('am_pin_panel');
+  worldsPanel := Self.Form.GetChild('am_worlds_panel');
+
+  if selectorPanel <> nil then
+    selectorPanel.SetWidth(leftColW);
+  if userPanel <> nil then
+    userPanel.SetWidth(leftColW);
+  if passPanel <> nil then
+    passPanel.SetWidth(passW);
+  if (pinPanel <> nil) and (selectorPanel <> nil) then
+  begin
+    pinPanel.SetWidth(pinW);
+    pinPanel.SetLeft(selectorPanel.GetLeft() + leftColW - pinW);
+  end;
+
+  if (worldsPanel <> nil) and (selectorPanel <> nil) then
+  begin
+    worldsLeft := selectorPanel.GetLeft() + leftColW + TControl.AdjustToDPI(48);
+    worldsPanel.SetLeft(worldsLeft);
+
+    addBtn := Self.Form.GetChild('am_add_button');
+    deleteBtn := Self.Form.GetChild('am_delete_button');
+    generateBtn := Self.Form.GetChild('am_generate_worlds_button');
+    btnGap := TControl.AdjustToDPI(8);
+    btnW := Floor((worldsPanel.GetWidth() - btnGap) / 2);
+
+    if generateBtn <> nil then
+    begin
+      generateBtn.SetLeft(worldsLeft);
+      generateBtn.SetWidth(worldsPanel.GetWidth());
+    end;
+    if addBtn <> nil then
+    begin
+      addBtn.SetLeft(worldsLeft);
+      addBtn.SetWidth(btnW);
+    end;
+    if deleteBtn <> nil then
+    begin
+      deleteBtn.SetLeft(worldsLeft + worldsPanel.GetWidth() - btnW - TControl.AdjustToDPI(1));
+      deleteBtn.SetWidth(btnW);
+    end;
+  end;
+
+  Self.InitializeAccountManager();
+
+  Self.MakeLabel(Self.AccountsSection, 'Discord', 24, 320, 11, VA_GUI_TEXT, True);
+
+  Self.AddCheck(Self.AccountsSection, Self.EnableWebhooksCheckBox, 'cb_va_webhooks', 'Discord notifications', 24, 350, SavedEnableWebhooks);
+  Self.EnableWebhooksCheckBox.SetTooltip('Send hourly progress and session summary messages to Discord.');
+  Self.EnableWebhooksCheckBox.CheckBox.SetOnChange(@Self.WebhooksCheckboxChanged);
+
+  Self.WebhookInfo := Self.MakeLabel(Self.AccountsSection, 'Click here to learn how to generate a Discord webhook URL', 24, 390, 10, VA_GUI_LINK, False);
+  Self.WebhookInfo.SetOnClick(@Self.OpenWebhookHelp);
+  Self.WebhookInfo.SetCursor(crHandPoint);
+
+  Self.AddEdit(Self.AccountsSection, Self.WebHookInput, 'le_va_webhook', 'Webhook URL', SavedWebhookURL, 24, 420, 520);
+  Self.WebHookInput.SetPasswordChar('*');
+
+  Self.TestButton.Create(Self.AccountsSection);
+  Self.TestButton.SetLeft(TControl.AdjustToDPI(560));
+  Self.TestButton.SetTop(TControl.AdjustToDPI(438));
+  Self.TestButton.SetWidth(TControl.AdjustToDPI(80));
+  Self.TestButton.SetHeight(TControl.AdjustToDPI(28));
+  Self.TestButton.SetCaption('Test');
+  Self.TestButton.SetOnClick(@Self.TestButtonClick);
+end;
+
+procedure TConfig.BuildAntibanSection(
+  SavedOverrideBreaks, SavedEnableWorldHopping, SavedEnablePreHover: Boolean;
+  SavedCustomBreakInterval, SavedCustomBreakDuration, SavedWorldHopInterval, SavedMaxActions, SavedMaxTime: Integer
+);
+var
+  tasks: TJSONObject;
+  sleepHour: String;
+  sleepLength: Single;
+begin
+  Antiban.SetupBiometrics();
+  tasks := WLSettings.GetObject('antiban').getJSONObject('tasks');
+  sleepHour := Antiban.GetSleepHour();
+  sleepLength := Antiban.GetSleepLength();
+
+  Self.AddHeader(Self.AntibanSection, 'Antiban', 'Breaks, sleeps, tasks, world hopping, and session limits.');
+
+  Self.MakeLabel(Self.AntibanSection, 'Session', 24, 100, 11, VA_GUI_MUTED, True);
+  Self.AddEdit(Self.AntibanSection, Self.MaxActionsInput, 'le_va_maxactions', 'Max actions (0 = unlimited)', IntToStr(SavedMaxActions), 24, 118, VA_GUI_EDIT_W);
+  Self.MaxActionsInput.Edit.SetOnKeyPress(@Self.MaxActionsInput.Edit.NumberField);
+  Self.AddEdit(Self.AntibanSection, Self.MaxTimeInput, 'le_va_maxtime', 'Max time minutes (0 = unlimited)', IntToStr(SavedMaxTime), VA_GUI_COL2, 118, VA_GUI_EDIT_W);
+  Self.MaxTimeInput.Edit.SetOnKeyPress(@Self.MaxTimeInput.Edit.NumberField);
+
+  Self.MakeLabel(Self.AntibanSection, 'Breaks and sleeps', 24, 168, 11, VA_GUI_MUTED, True);
+  Self.AddCheck(Self.AntibanSection, Self.ShortBreaksCheckBox, 'cb_va_short_breaks', 'Short breaks', 24, 190, WLSettings.GetObject('antiban').getBoolean('breaks'));
+  Self.ShortBreaksCheckBox.CheckBox.SetOnChange(@Self.ShortBreaksCheckboxChanged);
+  Self.ShortBreaksCheckBox.SetHint('Enables short randomized breaks during the session.');
+  Self.AddCheck(Self.AntibanSection, Self.SleepBreaksCheckBox, 'cb_va_sleep_breaks', 'Sleep breaks', VA_GUI_COL2, 190, WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('enabled'));
+  Self.SleepBreaksCheckBox.CheckBox.SetOnChange(@Self.SleepBreaksCheckboxChanged);
+  Self.SleepBreaksCheckBox.SetHint('Enables longer sleep breaks based on local time.');
+
+  Self.AddEdit(Self.AntibanSection, Self.SleepHourInput, 'le_va_sleep_hour', 'Sleep hour (HH:MM:SS)', sleepHour, 24, 218, VA_GUI_EDIT_W);
+  Self.SleepHourInput.Edit.SetOnKeyPress(@Self.SleepHourInput.Edit.TimeField);
+  Self.SleepHourInput.SetHint('Local PC time used as the base for sleep start.');
+  Self.AddEdit(Self.AntibanSection, Self.SleepLengthInput, 'le_va_sleep_length', 'Sleep length (hours)', ToStr(sleepLength), VA_GUI_COL2, 218, VA_GUI_EDIT_W);
+  Self.SleepLengthInput.Edit.SetOnKeyPress(@Self.SleepLengthInput.Edit.FloatField);
+  Self.SleepLengthInput.SetHint('Approximate sleep length in hours.');
+
+  Self.AddCheck(Self.AntibanSection, Self.OverrideBreaksCheckBox, 'cb_va_override_breaks', 'Override default breaks', 24, 280, SavedOverrideBreaks);
+  Self.OverrideBreaksCheckBox.SetHint('Replace WaspLib break intervals with your own schedule.');
+  Self.OverrideBreaksCheckBox.CheckBox.SetOnChange(@Self.OverrideBreaksCheckboxChanged);
+
+  Self.AddEdit(Self.AntibanSection, Self.CustomBreakIntervalInput, 'le_va_break_interval', 'Break interval (minutes)', IntToStr(SavedCustomBreakInterval), 24, 308, VA_GUI_EDIT_W);
+  Self.CustomBreakIntervalInput.Edit.SetOnKeyPress(@Self.CustomBreakIntervalInput.Edit.NumberField);
+  Self.CustomBreakIntervalInput.SetHint('How often to take breaks. Includes randomness.');
+  Self.AddEdit(Self.AntibanSection, Self.CustomBreakDurationInput, 'le_va_break_duration', 'Break duration (minutes)', IntToStr(SavedCustomBreakDuration), VA_GUI_COL2, 308, VA_GUI_EDIT_W);
+  Self.CustomBreakDurationInput.Edit.SetOnKeyPress(@Self.CustomBreakDurationInput.Edit.NumberField);
+  Self.CustomBreakDurationInput.SetHint('How long breaks should last. Includes randomness.');
+
+  Self.MakeLabel(Self.AntibanSection, 'Tasks', 24, 360, 11, VA_GUI_MUTED, True);
+  Self.AddCheck(Self.AntibanSection, Self.TasksEnabledCheckBox, 'cb_va_tasks', 'Enable antiban tasks', 24, 378, tasks.getBoolean('enabled'));
+  Self.TasksEnabledCheckBox.CheckBox.SetOnChange(@Self.TasksEnabledCheckboxChanged);
+  Self.TasksEnabledCheckBox.SetHint('Enables camera, mouse, chat, gametab, and bank antiban tasks.');
+
+  Self.AddCheck(Self.AntibanSection, Self.TaskCameraCheckBox, 'cb_va_task_camera', 'Camera', 24, 402, tasks.getBoolean('camera'));
+  Self.AddCheck(Self.AntibanSection, Self.TaskMouseCheckBox, 'cb_va_task_mouse', 'Mouse', VA_GUI_TASK_COL, 402, tasks.getBoolean('mouse'));
+  Self.AddCheck(Self.AntibanSection, Self.TaskChatCheckBox, 'cb_va_task_chat', 'Chat', 24, 421, tasks.getBoolean('chat'));
+  Self.AddCheck(Self.AntibanSection, Self.TaskGameTabsCheckBox, 'cb_va_task_gametabs', 'GameTabs', VA_GUI_TASK_COL, 421, tasks.getBoolean('gametabs'));
+  Self.AddCheck(Self.AntibanSection, Self.TaskBankCheckBox, 'cb_va_task_bank', 'Bank', 24, 440, tasks.getBoolean('bank'));
+  Self.AddCheck(Self.AntibanSection, Self.EnablePreHoverCheckBox, 'cb_va_prehover', 'Pre-Hover', VA_GUI_TASK_COL, 440, SavedEnablePreHover);
+  Self.EnablePreHoverCheckBox.SetHint('When enabled, sometimes pre-hovers the next visible ash pile while mining. Off = never pre-hover.');
+
+  Self.MakeLabel(Self.AntibanSection, 'World hopping', 24, 470, 11, VA_GUI_MUTED, True);
+
+  Self.AddCheck(Self.AntibanSection, Self.EnableWorldHoppingCheckBox, 'cb_va_worldhop', 'Enable world hopping', 24, 488, SavedEnableWorldHopping);
+  Self.EnableWorldHoppingCheckBox.SetHint('Hop worlds at random intervals. Requires at least 2 worlds in player setup.');
+  Self.EnableWorldHoppingCheckBox.CheckBox.SetOnChange(@Self.WorldHoppingCheckboxChanged);
+
+  Self.AddEdit(Self.AntibanSection, Self.WorldHopIntervalInput, 'le_va_hop_interval', 'World hop interval (minutes)', IntToStr(SavedWorldHopInterval), 24, 516, VA_GUI_EDIT_W);
+  Self.WorldHopIntervalInput.Edit.SetOnKeyPress(@Self.WorldHopIntervalInput.Edit.NumberField);
+  Self.WorldHopIntervalInput.SetHint('Interval in minutes between world hops.');
+
+  Self.SleepBreaksCheckboxChanged(nil);
+  Self.TasksEnabledCheckboxChanged(nil);
+  Self.OverrideBreaksCheckboxChanged(nil);
+  Self.ShortBreaksCheckboxChanged(nil);
+  Self.WorldHoppingCheckboxChanged(nil);
+end;
+
+procedure TConfig.BuildShell(
+  SavedStopAtCount: Integer;
+  SavedUseSouthSide, SavedUseNorthSide, SavedEnablePlayerDetection: Boolean;
+  SavedPlayerDetectionDelayIdx: Integer;
+  SavedWebhookURL: String;
+  SavedEnableWebhooks: Boolean;
+  SavedOverrideBreaks, SavedEnableWorldHopping, SavedEnablePreHover: Boolean;
+  SavedCustomBreakInterval, SavedCustomBreakDuration, SavedWorldHopInterval, SavedMaxActions, SavedMaxTime: Integer
+);
+var
+  tab: TTabSheet;
+  contentH, startW, startH, shellW, shellH, statusTop, statusH, mainLeft, mainW, navW, bottomInset: Int32;
+begin
+  Self.AddTab('Volcanic Ash Miner');
+  tab := Self.Tabs[High(Self.Tabs)];
+  Self.PageControl.SetShowTabs(False);
+
+  Self.Start.SetAlign(alNone);
+  Self.Start.SetVisible(False);
+  Self.Start.SetHeight(0);
+  Self.Start.SetWidth(0);
+
+  bottomInset := TControl.AdjustToDPI(VA_GUI_BOTTOM_INSET);
+  navW := TControl.AdjustToDPI(VA_GUI_NAV_W);
+  statusH := TControl.AdjustToDPI(VA_GUI_STATUS_H);
+  shellW := Self.Size.X;
+  shellH := Self.Size.Y;
+  mainLeft := navW + TControl.AdjustToDPI(2);
+  mainW := shellW - mainLeft;
+  statusTop := shellH - statusH - bottomInset;
+  contentH := statusTop;
+  startW := TControl.AdjustToDPI(132);
+  startH := TControl.AdjustToDPI(VA_GUI_BTN_H);
+
+  Self.NavPanel.Create(tab);
+  Self.NavPanel.SetLeft(0);
+  Self.NavPanel.SetTop(0);
+  Self.NavPanel.SetWidth(navW);
+  Self.NavPanel.SetHeight(shellH);
+  Self.NavPanel.SetColor(VA_GUI_NAV);
+  Self.NavPanel.SetBevelOuter(bvNone);
+
+  Self.DividerPanel.Create(tab);
+  Self.DividerPanel.SetLeft(navW);
+  Self.DividerPanel.SetTop(0);
+  Self.DividerPanel.SetWidth(TControl.AdjustToDPI(2));
+  Self.DividerPanel.SetHeight(shellH);
+  Self.DividerPanel.SetColor(VA_GUI_DIVIDER);
+  Self.DividerPanel.SetBevelOuter(bvNone);
+
+  Self.ContentPanel.Create(tab);
+  Self.ContentPanel.SetLeft(mainLeft);
+  Self.ContentPanel.SetTop(0);
+  Self.ContentPanel.SetWidth(mainW);
+  Self.ContentPanel.SetHeight(contentH);
+  Self.ContentPanel.SetColor(VA_GUI_BG);
+  Self.ContentPanel.SetBevelOuter(bvNone);
+
+  Self.StatusDivider.Create(tab);
+  Self.StatusDivider.SetLeft(mainLeft);
+  Self.StatusDivider.SetTop(statusTop);
+  Self.StatusDivider.SetWidth(mainW);
+  Self.StatusDivider.SetHeight(TControl.AdjustToDPI(2));
+  Self.StatusDivider.SetColor(VA_GUI_DIVIDER);
+  Self.StatusDivider.SetBevelOuter(bvNone);
+
+  Self.StatusPanel.Create(tab);
+  Self.StatusPanel.SetLeft(mainLeft);
+  Self.StatusPanel.SetTop(statusTop + Self.StatusDivider.GetHeight());
+  Self.StatusPanel.SetWidth(mainW);
+  Self.StatusPanel.SetHeight(statusH - Self.StatusDivider.GetHeight());
+  Self.StatusPanel.SetColor(VA_GUI_STATUS);
+  Self.StatusPanel.SetBevelOuter(bvNone);
+
+  Self.StatusPad.Create(tab);
+  Self.StatusPad.SetLeft(mainLeft);
+  Self.StatusPad.SetTop(Self.StatusPanel.GetTop() + Self.StatusPanel.GetHeight());
+  Self.StatusPad.SetWidth(mainW);
+  Self.StatusPad.SetHeight(shellH - Self.StatusPad.GetTop());
+  Self.StatusPad.SetColor(VA_GUI_STATUS);
+  Self.StatusPad.SetBevelOuter(bvNone);
+
+  Self.BrandLabel := Self.MakeLabel(Self.NavPanel, 'Ash Miner', 16, 28, 14, VA_GUI_TEXT, True);
+  Self.MakeLabel(Self.NavPanel, 'B.A.S.H', 16, 54, 9, VA_GUI_MUTED, False);
+
+  Self.ScriptNav := Self.MakeNavItem(Self.NavPanel, 'Action', 12, 100, True);
+  Self.AccountsNav := Self.MakeNavItem(Self.NavPanel, 'Accounts', 12, 152);
+  Self.AntibanNav := Self.MakeNavItem(Self.NavPanel, 'Antiban', 12, 204);
+  Self.AIChatNav := Self.MakeNavItem(Self.NavPanel, 'AI Chat', 12, 256);
+
+  Self.ScriptSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, VA_GUI_BG);
+  Self.AccountsSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, VA_GUI_BG);
+  Self.AntibanSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, VA_GUI_BG);
+  Self.AIChatSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, VA_GUI_BG);
+
+  Self.ScriptSection.SetWidth(mainW);
+  Self.ScriptSection.SetHeight(contentH);
+  Self.AccountsSection.SetWidth(mainW);
+  Self.AccountsSection.SetHeight(contentH);
+  Self.AntibanSection.SetWidth(mainW);
+  Self.AntibanSection.SetHeight(contentH);
+  Self.AIChatSection.SetWidth(mainW);
+  Self.AIChatSection.SetHeight(contentH);
+
+  Self.BuildScriptSection(
+    SavedStopAtCount, SavedUseSouthSide, SavedUseNorthSide,
+    SavedEnablePlayerDetection, SavedPlayerDetectionDelayIdx
+  );
+  Self.BuildAccountsSection(SavedWebhookURL, SavedEnableWebhooks);
+  Self.BuildAntibanSection(
+    SavedOverrideBreaks, SavedEnableWorldHopping, SavedEnablePreHover,
+    SavedCustomBreakInterval, SavedCustomBreakDuration, SavedWorldHopInterval,
+    SavedMaxActions, SavedMaxTime
+  );
+  AIChatbot.BuildSettings(Self.AIChatSection, mainW);
+
+  Self.ScriptNav.SetOnClick(@Self.ShowScript);
+  Self.AccountsNav.SetOnClick(@Self.ShowAccounts);
+  Self.AntibanNav.SetOnClick(@Self.ShowAntiban);
+  Self.AIChatNav.SetOnClick(@Self.ShowAIChat);
+
+  Self.StartChip.Create(Self.StatusPanel);
+  Self.StartChip.SetLeft(mainW - startW - TControl.AdjustToDPI(24));
+  Self.StartChip.SetTop((Self.StatusPanel.GetHeight() - startH) div 2 + 2);
+  Self.StartChip.SetWidth(startW);
+  Self.StartChip.SetHeight(startH);
+  Self.StartChip.SetCursor(crHandPoint);
+  Self.PaintRoundChip(Self.StartChip, 'Start', VA_GUI_START, VA_GUI_STATUS, True, True);
+  Self.StartChip.SetOnClick(@Self.StartScript);
+
+  Self.WebhooksCheckboxChanged(nil);
+  Self.OverrideBreaksCheckboxChanged(nil);
+  Self.WorldHoppingCheckboxChanged(nil);
+  Self.PlayerDetectionChanged(nil);
+  Self.ShowScript(Self.ScriptNav);
+end;
+
+procedure TConfig.Run(); override;
+var
+  SavedCustomBreakInterval, SavedCustomBreakDuration, SavedWorldHopInterval: Integer;
+  SavedPlayerDetectionDelay, SavedPlayerDetectionDelayIdx, SavedMaxActions, SavedMaxTime: Integer;
+  SavedEnableWebhooks: Boolean;
+  SavedOverrideBreaks, SavedEnableWorldHopping, SavedEnablePlayerDetection, SavedEnablePreHover: Boolean;
+  SavedWebhookURL: String;
+  SavedStopAtCount: Integer;
+  SavedUseSouthSide, SavedUseNorthSide: Boolean;
+begin
+  ClearDebug();
+  BashPromptIfUpdateAvailable();
+
+  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
+    Self.Username := 'NoUserNameSelected'
+  else
+    Self.Username := Login.Players[Login.PlayerIndex].User;
+
+  SavedStopAtCount := StrToIntDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'StopAtCount', 'Configs/BASettings.ini'), 0);
+  SavedUseSouthSide := StrToBoolDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'UseSouthSide', 'Configs/BASettings.ini'), False);
+  SavedUseNorthSide := StrToBoolDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'UseNorthSide', 'Configs/BASettings.ini'), False);
+  SavedEnableWorldHopping := StrToBoolDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'EnableWorldHopping', 'Configs/BASettings.ini'), False);
+  SavedWorldHopInterval := StrToIntDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'WorldHopInterval', 'Configs/BASettings.ini'), 45);
+  SavedEnablePlayerDetection := StrToBoolDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'EnablePlayerDetection', 'Configs/BASettings.ini'), False);
+  SavedPlayerDetectionDelay := StrToIntDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'PlayerDetectionDelay', 'Configs/BASettings.ini'), 0);
+  SavedEnablePreHover := StrToBoolDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'EnablePreHover', 'Configs/BASettings.ini'), True);
+
+  case SavedPlayerDetectionDelay of
+    10: SavedPlayerDetectionDelayIdx := 1;
+    20: SavedPlayerDetectionDelayIdx := 2;
+    30: SavedPlayerDetectionDelayIdx := 3;
+  else
+    SavedPlayerDetectionDelayIdx := 0;
+  end;
+
+  SavedWebhookURL := ReadINI(Self.Username + ' Webhook Settings', 'WebhookURL', 'Configs/BASettings.ini');
+  SavedEnableWebhooks := StrToBoolDef(ReadINI(Self.Username + ' Webhook Settings', 'EnableWebhooks', 'Configs/BASettings.ini'), False);
+
+  SavedOverrideBreaks := StrToBoolDef(ReadINI(Self.Username + ' Volcanic Ash Miner Antiban', 'OverrideBreaks', 'Configs/BASettings.ini'), False);
+  SavedCustomBreakInterval := StrToIntDef(ReadINI(Self.Username + ' Volcanic Ash Miner Antiban', 'CustomBreakInterval', 'Configs/BASettings.ini'), 60);
+  SavedCustomBreakDuration := StrToIntDef(ReadINI(Self.Username + ' Volcanic Ash Miner Antiban', 'CustomBreakDuration', 'Configs/BASettings.ini'), 5);
+
+  if WLSettings.Has('max_actions') then
+    SavedMaxActions := WLSettings.GetInt('max_actions')
+  else
+    SavedMaxActions := 0;
+  if WLSettings.Has('max_time') then
+    SavedMaxTime := WLSettings.GetInt('max_time')
+  else
+    SavedMaxTime := 0;
+
+  Self.SavedWebhookURL := SavedWebhookURL;
+
+  AIChatbot.Setup('Gemini', '');
+  AIChatbot.Enabled := False;
+  AIChatbot.LoadSettings();
+  AIChatbot.SetScriptDefaults('volcanic ash mining');
+
+  Self.Setup('BigAussies Volcanic Ash Miner', [VA_GUI_W, VA_GUI_H], False);
+  Self.BuildShell(
+    SavedStopAtCount,
+    SavedUseSouthSide, SavedUseNorthSide, SavedEnablePlayerDetection,
+    SavedPlayerDetectionDelayIdx,
+    SavedWebhookURL, SavedEnableWebhooks,
+    SavedOverrideBreaks, SavedEnableWorldHopping, SavedEnablePreHover,
+    SavedCustomBreakInterval, SavedCustomBreakDuration, SavedWorldHopInterval,
+    SavedMaxActions, SavedMaxTime
+  );
+
+  Self.LoadUserSettings();
+  Self.FormReady := True;
+
+  inherited;
+end;
+
+var
+  Config: TConfig;
+{$ENDIF}
+
+begin
+  Discord.Setup();
+  {$IFDEF SCRIPT_GUI}
+  Sync(@Config.Run);
+  {$ENDIF}
+  VolcanicAshMiner.Run(WLSettings.MaxActions, WLSettings.MaxTime);
+end.
