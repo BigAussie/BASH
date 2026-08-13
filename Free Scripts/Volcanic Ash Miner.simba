@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'c4a8f1e2-7b3d-4a9e-8c6f-1d2e3f4a5b6c'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '1'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '2'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -29,6 +29,7 @@ var
   ENABLEPLAYERDETECTION: Boolean         = False;
   PLAYERDETECTIONDELAY: Integer          = 0;
   ENABLEPREHOVER: Boolean                = True;
+  ENABLESLOWMODE: Boolean                = False;
   USESOUTHSIDE: Boolean                  = False;
   USENORTHSIDE: Boolean                  = False;
   OVERRIDEBREAKS: Boolean                = False;
@@ -46,6 +47,8 @@ const
   ASH_DEPLETED_CONFIRM  = 2;
   ASH_SOUTH_LO          = 0;
   ASH_SOUTH_HI          = 6;
+  ASH_SLOW_LO           = 0;
+  ASH_SLOW_HI           = 3;
   ASH_PILE_PRIMARY: TCTS2Color   = [9803424, 19, 0.12, 0.15];
   ASH_PILE_SECONDARY: TCTS2Color = [10461096, 19, 0.12, 0.19];
   ASH_PILE_CLUSTER_DIST = 15;
@@ -163,8 +166,19 @@ begin
 end;
 
 function TVolcanicAshMiner.GetAshGained(): Int32;
+var
+  Current: Int32;
 begin
-  Result := Max(0, Inventory.CountItemStack('Volcanic ash') - Self.StartAshCount);
+  Result := Self.AshGained;
+
+  if not Inventory.Open() then
+    Exit;
+
+  Current := Inventory.Items.CountStack('Volcanic ash');
+  if Current < 0 then
+    Exit;
+
+  Result := Max(0, Current - Self.StartAshCount);
   Self.AshGained := Result;
 end;
 
@@ -236,6 +250,9 @@ function TVolcanicAshMiner.PileInSelectedSide(Index: Int32): Boolean;
 var
   SideFilter: Boolean;
 begin
+  if ENABLESLOWMODE then
+    Exit(InRange(Index, ASH_SLOW_LO, ASH_SLOW_HI));
+
   SideFilter := USESOUTHSIDE or USENORTHSIDE;
   if not SideFilter then
     Exit(True);
@@ -259,7 +276,7 @@ begin
   BestDist := 999999.0;
   Candidates := [];
   Me := Map.Walker.Position();
-  UseRandom := (not USESOUTHSIDE) and (not USENORTHSIDE);
+  UseRandom := (not ENABLESLOWMODE) and (not USESOUTHSIDE) and (not USENORTHSIDE);
 
   for I := 0 to High(Self.Piles) do
   begin
@@ -289,6 +306,44 @@ begin
     Result := Candidates[Random(Length(Candidates))];
 end;
 
+procedure TVolcanicAshMiner.WaitUntilStationary();
+begin
+  if Minimap.HasFlag() then
+    Minimap.WaitFlag();
+  if Minimap.IsPlayerMoving() then
+    Minimap.WaitPlayerMoving();
+end;
+
+function TVolcanicAshMiner.HoverPileOnce(Index: Int32): Boolean;
+var
+  ATPA: T2DPointArray;
+begin
+  Result := False;
+  if Minimap.HasFlag() then
+    Exit;
+  if not Self.Piles[Index].Obj.Find(ATPA) or (Length(ATPA) = 0) or (Length(ATPA[0]) = 0) then
+    Exit;
+  Mouse.Move(ATPA[0].RandomValue());
+  Wait(40, 80);
+  Result := True;
+end;
+
+function TVolcanicAshMiner.WalkToPile(Index: Int32): Boolean;
+begin
+  Result := False;
+  if not Self.PileConfigured(Index) then
+    Exit;
+
+  if Map.Walker.Position().DistanceTo(Self.Piles[Index].Coord) <= 50 then
+  begin
+    Self.WaitUntilStationary();
+    Exit(True);
+  end;
+
+  Result := Map.Walker.WebWalk(Self.Piles[Index].Coord, 30, 0.15);
+  Self.WaitUntilStationary();
+end;
+
 procedure TVolcanicAshMiner.HoverNextPile(ExcludeIndex: Int32);
 var
   NextIdx, I: Int32;
@@ -299,11 +354,11 @@ begin
   if not ENABLEPREHOVER then
     Exit;
 
-  if Random(100) >= ASH_PREHOVER_CHANCE then
-  begin
-    WriteLn('[MINE] Pre-hover skipped (antiban chance)');
+  if Minimap.HasFlag() then
     Exit;
-  end;
+
+  if Random(100) >= ASH_PREHOVER_CHANCE then
+    Exit;
 
   NextIdx := -1;
   BestDist := 999999.0;
@@ -331,10 +386,7 @@ begin
   end;
 
   if NextIdx < 0 then
-  begin
-    WriteLn('[MINE] No nearby pile for pre-hover (max dist ' + IntToStr(ASH_PREHOVER_MAX_DIST) + ')');
     Exit;
-  end;
 
   if not Self.Piles[NextIdx].Obj.Find(ATPA) or (Length(ATPA) = 0) or (Length(ATPA[0]) = 0) then
   begin
@@ -361,15 +413,24 @@ end;
 
 function TVolcanicAshMiner.WaitMiningXP(CurrentIndex: Int32): Boolean;
 var
-  Idle, FlagGone: TCountDown;
-  Started, HoveredNext, FlagGoneActive: Boolean;
+  Idle, WaitXP: TCountDown;
+  Started, HoveredNext: Boolean;
   ColorMissStreak: Int32;
 begin
   Result := False;
   Started := False;
   HoveredNext := False;
-  FlagGoneActive := False;
   ColorMissStreak := 0;
+
+  XPBar.EarnedXP();
+
+  if Minimap.HasFlag() or Minimap.IsPlayerMoving() then
+  begin
+    Self.WaitUntilStationary();
+    XPBar.EarnedXP();
+  end;
+
+  WaitXP.Init(ASH_FLAG_GONE_MS);
   Idle.Init(ASH_XP_IDLE_MS);
 
   repeat
@@ -379,16 +440,23 @@ begin
     if Self.ReachedStopCount() then
       Exit(True);
 
+    if Minimap.HasFlag() or Minimap.IsPlayerMoving() then
+    begin
+      Self.WaitUntilStationary();
+      XPBar.EarnedXP();
+      WaitXP.Restart();
+      Continue;
+    end;
+
     if XPBar.EarnedXP() then
     begin
       Started := True;
       Result := True;
       Idle.Restart();
       WL.Activity.Restart();
-      FlagGoneActive := False;
       ColorMissStreak := 0;
 
-      if not HoveredNext then
+      if (not HoveredNext) and (not Minimap.HasFlag()) and (not Minimap.IsPlayerMoving()) then
       begin
         Self.HoverNextPile(CurrentIndex);
         HoveredNext := True;
@@ -397,38 +465,25 @@ begin
 
     if not Started then
     begin
-      if Minimap.HasFlag() then
-        FlagGoneActive := False
-      else
-      begin
-        if not FlagGoneActive then
-        begin
-          FlagGone.Init(ASH_FLAG_GONE_MS);
-          FlagGoneActive := True;
-        end
-        else if FlagGone.IsFinished() then
-        begin
-          Exit(False);
-        end;
-      end;
+      if WaitXP.IsFinished() then
+        Exit(False);
     end
     else
     begin
-      if not Self.PileHasAshColor(CurrentIndex) then
+      if not ENABLESLOWMODE then
       begin
-        Inc(ColorMissStreak);
-        if ColorMissStreak >= ASH_DEPLETED_CONFIRM then
+        if not Self.PileHasAshColor(CurrentIndex) then
         begin
-          Exit(True);
-        end;
-      end
-      else
-        ColorMissStreak := 0;
+          Inc(ColorMissStreak);
+          if ColorMissStreak >= ASH_DEPLETED_CONFIRM then
+            Exit(True);
+        end
+        else
+          ColorMissStreak := 0;
+      end;
 
       if Idle.IsFinished() then
-      begin
         Exit(True);
-      end;
     end;
 
     Wait(50, 100);
@@ -449,25 +504,36 @@ begin
 
   for Attempts := 1 to ASH_HOVER_ATTEMPTS do
   begin
-    if not Self.Piles[Index].Obj.WalkHover(2) then
+    Self.WaitUntilStationary();
+
+    if not Self.HoverPileOnce(Index) then
     begin
       if Self.IsEmptyUpText() then
       begin
+        WriteLn('[MINE] Empty ash pile — skipping');
         Self.Piles[Index].LastMinedAt := GetTickCount();
         Exit(False);
       end;
 
-      WriteLn('[MINE] Failed to hover pile ' + IntToStr(Index) + ' (' + IntToStr(Attempts) + '/' + IntToStr(ASH_HOVER_ATTEMPTS) + ')');
-      if Attempts >= ASH_HOVER_ATTEMPTS then
+      Self.WalkToPile(Index);
+      Self.WaitUntilStationary();
+
+      if not Self.HoverPileOnce(Index) then
       begin
-        Self.Piles[Index].LastMinedAt := GetTickCount();
-        Exit(False);
+        WriteLn('[MINE] Failed to hover pile ' + IntToStr(Index) + ' (' + IntToStr(Attempts) + '/' + IntToStr(ASH_HOVER_ATTEMPTS) + ')');
+        if Attempts >= ASH_HOVER_ATTEMPTS then
+        begin
+          WriteLn('[MINE] Giving up on pile ' + IntToStr(Index) + ' — moving on');
+          Self.Piles[Index].LastMinedAt := GetTickCount();
+          Exit(False);
+        end;
+        Continue;
       end;
-      Continue;
     end;
 
     if Self.IsEmptyUpText() then
     begin
+      WriteLn('[MINE] Empty ash pile — skipping');
       Self.Piles[Index].LastMinedAt := GetTickCount();
       Exit(False);
     end;
@@ -476,6 +542,7 @@ begin
     begin
       if Attempts >= ASH_HOVER_ATTEMPTS then
       begin
+        WriteLn('[MINE] Giving up on pile ' + IntToStr(Index) + ' — moving on');
         Self.Piles[Index].LastMinedAt := GetTickCount();
         Exit(False);
       end;
@@ -493,6 +560,7 @@ begin
       Exit;
     end;
   end;
+  WriteLn('[MINE] Giving up on pile ' + IntToStr(Index) + ' — moving on');
   Self.Piles[Index].LastMinedAt := GetTickCount();
 end;
 
@@ -848,7 +916,10 @@ begin
     if Self.PileConfigured(I) then
       Inc(Configured);
 
-  Self.StartAshCount := Inventory.CountItemStack('Volcanic ash');
+  Inventory.Open();
+  Self.StartAshCount := Inventory.Items.CountStack('Volcanic ash');
+  if Self.StartAshCount < 0 then
+    Self.StartAshCount := 0;
   Self.AshGained := 0;
   Self.CurrentIndex := 0;
   Self.LastReportTime := 0;
@@ -858,8 +929,12 @@ begin
   Self.PlayerNearby := False;
   Self.PlayerDetectedTime := 0;
   Self.ActiveRunTime.Start();
+  ItemFinder.Similarity := 0.9999999;
 
   Self.SetupWorldHopping();
+
+  if ENABLESLOWMODE then
+    WriteLn('[INIT] Slow mode: piles 0-3, leave on XP idle (no despawn check).');
 
   if ENABLEPLAYERDETECTION then
     WriteLn('[PLAYER_DETECT] Enabled with ' + IntToStr(PLAYERDETECTIONDELAY) + 's delay.')
@@ -918,6 +993,7 @@ begin
   if Idx < 0 then
   begin
     WriteLn('[MINE] No eligible piles');
+    Wait(400, 700);
     Exit;
   end;
 
@@ -980,7 +1056,7 @@ type
     ScriptSection, AccountsSection, AntibanSection, AIChatSection: TPanel;
 
     StopAtCountInput: TLabeledEdit;
-    SouthSideCheckBox, NorthSideCheckBox: TLabeledCheckBox;
+    SouthSideCheckBox, NorthSideCheckBox, SlowModeCheckBox: TLabeledCheckBox;
 
     EnableWebhooksCheckBox, PingOnTerminatedCheckBox: TLabeledCheckBox;
     WebHookInput: TLabeledEdit;
@@ -1375,7 +1451,7 @@ var
   SavedPlayerDetectionDelay, SavedPlayerDetectionDelayIdx: Int32;
   SavedStopAtCount: Int32;
   SavedEnablePreHover: Boolean;
-  SavedUseSouthSide, SavedUseNorthSide: Boolean;
+  SavedUseSouthSide, SavedUseNorthSide, SavedEnableSlowMode: Boolean;
 begin
   if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
     Self.Username := 'NoUserNameSelected'
@@ -1392,6 +1468,7 @@ begin
   SavedEnablePreHover := StrToBoolDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'EnablePreHover', 'Configs/BASettings.ini'), True);
   SavedUseSouthSide := StrToBoolDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'UseSouthSide', 'Configs/BASettings.ini'), False);
   SavedUseNorthSide := StrToBoolDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'UseNorthSide', 'Configs/BASettings.ini'), False);
+  SavedEnableSlowMode := StrToBoolDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'EnableSlowMode', 'Configs/BASettings.ini'), False);
 
   case SavedPlayerDetectionDelay of
     10: SavedPlayerDetectionDelayIdx := 1;
@@ -1417,6 +1494,9 @@ begin
 
   if Assigned(Self.NorthSideCheckBox) then
     Self.NorthSideCheckBox.SetChecked(SavedUseNorthSide);
+
+  if Assigned(Self.SlowModeCheckBox) then
+    Self.SlowModeCheckBox.SetChecked(SavedEnableSlowMode);
 
   if Assigned(Self.EnableWorldHoppingCheckBox) then
   begin
@@ -1482,6 +1562,9 @@ begin
   if Assigned(Self.NorthSideCheckBox) then
     USENORTHSIDE := Self.NorthSideCheckBox.IsChecked();
 
+  if Assigned(Self.SlowModeCheckBox) then
+    ENABLESLOWMODE := Self.SlowModeCheckBox.IsChecked();
+
   if Assigned(Self.EnableWorldHoppingCheckBox) then
     ENABLEWORLDHOPPING := Self.EnableWorldHoppingCheckBox.IsChecked();
 
@@ -1532,6 +1615,7 @@ begin
   WriteINI(Self.Username + ' Volcanic Ash Miner Settings', 'StopAtCount', ToStr(STOPATCOUNT), 'Configs/BASettings.ini');
   WriteINI(Self.Username + ' Volcanic Ash Miner Settings', 'UseSouthSide', BoolToStr(USESOUTHSIDE, 'true', 'false'), 'Configs/BASettings.ini');
   WriteINI(Self.Username + ' Volcanic Ash Miner Settings', 'UseNorthSide', BoolToStr(USENORTHSIDE, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI(Self.Username + ' Volcanic Ash Miner Settings', 'EnableSlowMode', BoolToStr(ENABLESLOWMODE, 'true', 'false'), 'Configs/BASettings.ini');
   WriteINI(Self.Username + ' Volcanic Ash Miner Settings', 'EnableWorldHopping', BoolToStr(ENABLEWORLDHOPPING, 'true', 'false'), 'Configs/BASettings.ini');
   WriteINI(Self.Username + ' Volcanic Ash Miner Settings', 'WorldHopInterval', ToStr(WORLDHOPINTERVAL), 'Configs/BASettings.ini');
   WriteINI(Self.Username + ' Volcanic Ash Miner Settings', 'EnablePlayerDetection', BoolToStr(ENABLEPLAYERDETECTION, 'true', 'false'), 'Configs/BASettings.ini');
@@ -1577,7 +1661,7 @@ end;
 
 procedure TConfig.BuildScriptSection(
   SavedStopAtCount: Integer;
-  SavedUseSouthSide, SavedUseNorthSide, SavedEnablePlayerDetection: Boolean;
+  SavedUseSouthSide, SavedUseNorthSide, SavedEnableSlowMode, SavedEnablePlayerDetection: Boolean;
   SavedPlayerDetectionDelayIdx: Integer
 );
 begin
@@ -1593,8 +1677,11 @@ begin
   Self.AddCheck(Self.ScriptSection, Self.NorthSideCheckBox, 'cb_va_north', 'North side', VA_GUI_COL2, 190, SavedUseNorthSide);
   Self.NorthSideCheckBox.SetHint('Only mine the north-side ash piles. Uncheck both to use all piles at random.');
 
-  Self.MakeLabel(Self.ScriptSection, 'Player detection', 24, 248, 11, VA_GUI_MUTED, True);
-  Self.AddCheck(Self.ScriptSection, Self.EnablePlayerDetectionCheckBox, 'cb_va_player_detection', 'Hop on player detection', 24, 271, SavedEnablePlayerDetection);
+  Self.AddCheck(Self.ScriptSection, Self.SlowModeCheckBox, 'cb_va_slow', 'Slow mode', 24, 218, SavedEnableSlowMode);
+  Self.SlowModeCheckBox.SetHint('Only mine piles 0-3. Leave a pile when XP stops instead of watching it despawn.');
+
+  Self.MakeLabel(Self.ScriptSection, 'Player detection', 24, 276, 11, VA_GUI_MUTED, True);
+  Self.AddCheck(Self.ScriptSection, Self.EnablePlayerDetectionCheckBox, 'cb_va_player_detection', 'Hop on player detection', 24, 299, SavedEnablePlayerDetection);
   Self.EnablePlayerDetectionCheckBox.SetHint('Hop worlds when another player is detected nearby on the minimap.');
   Self.EnablePlayerDetectionCheckBox.CheckBox.SetOnChange(@Self.PlayerDetectionChanged);
 
@@ -1603,7 +1690,7 @@ begin
     Create(Self.ScriptSection);
     SetCaption('Detection delay');
     SetLeft(TControl.AdjustToDPI(VA_GUI_COL2));
-    SetTop(TControl.AdjustToDPI(266));
+    SetTop(TControl.AdjustToDPI(294));
     SetWidth(TControl.AdjustToDPI(VA_GUI_EDIT_W));
     Clear();
     AddItem('Instant');
@@ -1788,7 +1875,7 @@ end;
 
 procedure TConfig.BuildShell(
   SavedStopAtCount: Integer;
-  SavedUseSouthSide, SavedUseNorthSide, SavedEnablePlayerDetection: Boolean;
+  SavedUseSouthSide, SavedUseNorthSide, SavedEnableSlowMode, SavedEnablePlayerDetection: Boolean;
   SavedPlayerDetectionDelayIdx: Integer;
   SavedWebhookURL: String;
   SavedEnableWebhooks: Boolean;
@@ -1891,7 +1978,7 @@ begin
   Self.AIChatSection.SetHeight(contentH);
 
   Self.BuildScriptSection(
-    SavedStopAtCount, SavedUseSouthSide, SavedUseNorthSide,
+    SavedStopAtCount, SavedUseSouthSide, SavedUseNorthSide, SavedEnableSlowMode,
     SavedEnablePlayerDetection, SavedPlayerDetectionDelayIdx
   );
   Self.BuildAccountsSection(SavedWebhookURL, SavedEnableWebhooks);
@@ -1931,7 +2018,7 @@ var
   SavedOverrideBreaks, SavedEnableWorldHopping, SavedEnablePlayerDetection, SavedEnablePreHover: Boolean;
   SavedWebhookURL: String;
   SavedStopAtCount: Integer;
-  SavedUseSouthSide, SavedUseNorthSide: Boolean;
+  SavedUseSouthSide, SavedUseNorthSide, SavedEnableSlowMode: Boolean;
 begin
   ClearDebug();
   BashPromptIfUpdateAvailable();
@@ -1944,6 +2031,7 @@ begin
   SavedStopAtCount := StrToIntDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'StopAtCount', 'Configs/BASettings.ini'), 0);
   SavedUseSouthSide := StrToBoolDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'UseSouthSide', 'Configs/BASettings.ini'), False);
   SavedUseNorthSide := StrToBoolDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'UseNorthSide', 'Configs/BASettings.ini'), False);
+  SavedEnableSlowMode := StrToBoolDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'EnableSlowMode', 'Configs/BASettings.ini'), False);
   SavedEnableWorldHopping := StrToBoolDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'EnableWorldHopping', 'Configs/BASettings.ini'), False);
   SavedWorldHopInterval := StrToIntDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'WorldHopInterval', 'Configs/BASettings.ini'), 45);
   SavedEnablePlayerDetection := StrToBoolDef(ReadINI(Self.Username + ' Volcanic Ash Miner Settings', 'EnablePlayerDetection', 'Configs/BASettings.ini'), False);
@@ -1984,7 +2072,7 @@ begin
   Self.Setup('BigAussies Volcanic Ash Miner', [VA_GUI_W, VA_GUI_H], False);
   Self.BuildShell(
     SavedStopAtCount,
-    SavedUseSouthSide, SavedUseNorthSide, SavedEnablePlayerDetection,
+    SavedUseSouthSide, SavedUseNorthSide, SavedEnableSlowMode, SavedEnablePlayerDetection,
     SavedPlayerDetectionDelayIdx,
     SavedWebhookURL, SavedEnableWebhooks,
     SavedOverrideBreaks, SavedEnableWorldHopping, SavedEnablePreHover,
