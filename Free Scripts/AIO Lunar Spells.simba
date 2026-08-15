@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := '1218ea6e-f502-46db-9b91-feb89baecbdc'}
-{$DEFINE SCRIPT_REVISION := '3'}  
+{$DEFINE SCRIPT_REVISION := '4'}  
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -863,6 +863,8 @@ begin
     requiredQuantity := 3
   else
     requiredQuantity := 5;
+  if (RawItemBank.Quantity > 0) and (RawItemBank.Quantity < requiredQuantity) then
+    requiredQuantity := RawItemBank.Quantity;
   attempts := 0;
   while (attempts < 5) and (not Bank.IsOpen()) do
   begin
@@ -1076,8 +1078,14 @@ begin
 
   XPBar.EarnedXP(); // This should activity.reset our timer
 
+  if (CHOSENSPELL = PLANK_MAKE) and Chat.FindLastMessage('coins', [CHAT_COLOR_BLACK]) then
+  begin
+    WriteLn('Out of gold for Plank Make. Logging out.');
+    Logout.ClickLogout;
+    TerminateScript();
+  end;
+
   if (Chat.FindLastMessage('You do not have enough', [CHAT_COLOR_BLACK])) or 
-    ((CHOSENSPELL = PLANK_MAKE) and Chat.FindLastMessage('coins', [CHAT_COLOR_BLACK])) or
     (Chat.FindLastMessage('You need a', [CHAT_COLOR_BLACK])) then
   begin
     TakeScreenshot('BlackTextError');
@@ -1521,11 +1529,22 @@ var
   CurrentCastingOrder: CastingOrder;
   FocusJustSwitched: boolean;
   LocalRawItemBank: TRSBankItem;
+  BankCoins, AffordableLogs, LogsToWithdraw: Int32;
 begin
   RawItemToBuy := 0;
   AstralRunesToBuy := 0;
   Array5QuantityToBuy := 0;
   OpenBankDepositItem(ProcessedItemBank);
+
+  case RawItem of
+    'Logs': CoinCostPerCast := 70;
+    'Oak logs': CoinCostPerCast := 175;
+    'Teak logs': CoinCostPerCast := 350;
+    'Mahogany logs': CoinCostPerCast := 1050;
+    'Ironwood logs': CoinCostPerCast := 3500;
+    'Camphor logs': CoinCostPerCast := 1750;
+    'Rosewood logs': CoinCostPerCast := 5250;
+  end;
 
   if not CoinsChecked then
   begin
@@ -1533,33 +1552,39 @@ begin
     Bank.ContainsItem(RawItemBank);
     RawItemCount := Bank.CountItemStack(RawItem);
     WriteLn('Amount of logs in bank ' + IntToStr(RawItemCount));
-    case RawItem of
-    'Logs': CoinsCount := ceil(RawItemCount * 70 / 1000) * 1000;
-    'Oak logs': CoinsCount := ceil(RawItemCount * 172 / 1000) * 1000;
-    'Teak logs': CoinsCount := ceil(RawItemCount * 350 / 1000) * 1000;
-    'Mahogany logs': CoinsCount := ceil(RawItemCount * 1050 / 1000) * 1000;
-    'Ironwood logs': CoinsCount := ceil(RawItemCount * 3500 / 1000) * 1000;
-    'Camphor logs': CoinsCount := ceil(RawItemCount * 1750 / 1000) * 1000;
-    'Rosewood logs': CoinsCount := ceil(RawItemCount * 5250 / 1000) * 1000;
-    end;
+    CoinsCount := ceil(RawItemCount * CoinCostPerCast / 1000) * 1000;
 
-    if BANKFILLERSCHECK then
+    Bank.ContainsItem(CoinsItem);
+    BankCoins := Bank.CountItemStack(CoinsItem);
+    WriteLn('Coins in bank: ' + IntToStr(BankCoins));
+    WriteLn('Coins needed: ' + IntToStr(CoinsCount));
+
+    if (BankCoins + Inventory.CountItemStack('Coins')) < CoinsCount then
+    begin
+      CoinsBank := TRSBankItem.Setup(CoinsItem, bank.QUANTITY_ALL, False);
+      WriteLn('Not enough gold for all logs. Taking all gold and processing what we can.');
+    end
+    else if BANKFILLERSCHECK then
       CoinsBank := TRSBankItem.Setup(CoinsItem, bank.QUANTITY_ALL, False)
     else
-      CoinsBank := TRSBankItem.Setup(CoinsItem, CoinsCount, False); 
-    WriteLn('Coins needed: ' + IntToStr(CoinsCount));
+      CoinsBank := TRSBankItem.Setup(CoinsItem, CoinsCount, False);
   end;
 
-  if not CoinsChecked and (Inventory.CountItem('Coins') < CoinsCount) and (Inventory.CountItem('Coins') = 0) then
+  if not CoinsChecked then
   begin
-    Bank.WithdrawItem(CoinsBank, True);
-    WaitUntil(Inventory.ContainsItem('Coins'), GetRandomRangeShort(ScriptSpeed), GetRandomRangeLong(ScriptSpeed));
     if Inventory.CountItemStack('Coins') < CoinsCount then
     begin
-      //WriteLn('ItemArray5 Count: ' + IntToStr(Inventory.CountItemStack(ItemArray5)));
-      WriteLn('You do not have enough gold to cover all the planks in your bank.');
+      Bank.WithdrawItem(CoinsBank, True);
+      WaitUntil(Inventory.ContainsItem('Coins'), GetRandomRangeShort(ScriptSpeed), GetRandomRangeLong(ScriptSpeed));
     end;
     CoinsChecked := True;
+
+    if (CoinsCount > 0) and (Inventory.CountItemStack('Coins') = 0) then
+    begin
+      WriteLn('No gold available for Plank Make. Logging out.');
+      Logout.ClickLogout();
+      TerminateScript();
+    end;
   end;
   
   WithdrawAstralRunes();
@@ -1590,14 +1615,26 @@ begin
   QuantityInput := Inventory.CountEmptySlots();
 
   if HasSawmillVoucher then
-  begin
-    LocalRawItemBank := TRSBankItem.Setup(RawItem, QuantityInput div 2, FALSE);
-  end
+    LogsToWithdraw := QuantityInput div 2
   else
+    LogsToWithdraw := QuantityInput;
+
+  if CoinCostPerCast > 0 then
   begin
-    LocalRawItemBank := TRSBankItem.Setup(RawItem, QuantityInput, FALSE);
+    AffordableLogs := Inventory.CountItemStack('Coins') div CoinCostPerCast;
+    if AffordableLogs < LogsToWithdraw then
+      LogsToWithdraw := AffordableLogs;
   end;
-  writeln('quantity input: ', QuantityInput);
+
+  if LogsToWithdraw < 1 then
+  begin
+    WriteLn('Not enough gold to make any more planks. Logging out.');
+    Logout.ClickLogout();
+    TerminateScript();
+  end;
+
+  LocalRawItemBank := TRSBankItem.Setup(RawItem, LogsToWithdraw, FALSE);
+  writeln('quantity input: ', QuantityInput, ' logs: ', LogsToWithdraw);
   WithdrawRawItem(RawItem, LocalRawItemBank, QuantityInput, BUYRAWMATERIALS);
 
   if (RawItemToBuy > 0) or (AstralRunesToBuy > 0) or (Array5QuantityToBuy > 0) then
