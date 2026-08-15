@@ -1,5 +1,5 @@
 {$DEFINE SCRIPT_ID := 'bfde3085-80dc-4bd6-870a-8cb3186a938c'}
-{$DEFINE SCRIPT_REVISION := '34'}
+{$DEFINE SCRIPT_REVISION := '36'}
 
 {.$DEFINE DEVELOPER_MODE}
 
@@ -4375,7 +4375,7 @@ begin
             'clanchat.publicChatIcons=false' + LineEnding +
             'fishing.onlyCurrent=false' + LineEnding +
             'gpu.vsyncMode=OFF' + LineEnding +
-            'runelite.loottrackerplugin=false' + LineEnding +
+            'runelite.loottrackerplugin=true' + LineEnding +
             'hiscore.autocomplete=true' + LineEnding +
             'itemidentification.showHerbs=false' + LineEnding +
             'timers.showOverload=true' + LineEnding +
@@ -4814,7 +4814,7 @@ begin
             'totem-fletching.renderPanel=false' + LineEnding +
             'implings.showgourmet=NONE' + LineEnding +
             'itemidentification.showLogs=false' + LineEnding +
-            'runelite.agilityplugin=false' + LineEnding +
+            'runelite.agilityplugin=true' + LineEnding +
             'chatcommands.sw=true' + LineEnding +
             'itemCharge.showBraceletOfClayCharges=true' + LineEnding +
             'timers.showPrayerRegeneration=true' + LineEnding +
@@ -5822,11 +5822,47 @@ begin
 end;
 
 
+procedure TWaspForm.CloseRuneLite();
+var
+  KillTask: TProcess;
+  window: TOSWindow;
+begin
+  try
+    KillTask.Init(nil);
+    KillTask.SetCommandLine('taskkill /f /im RuneLite.exe');
+    KillTask.SetOptions([poNoConsole]);
+    KillTask.Execute();
+    KillTask.Free();
+    WriteLn('[B.A.S.H] Closed RuneLite.');
+  except
+    WriteLn('[B.A.S.H] taskkill failed, trying window kill.');
+    for window in GetWindows() do
+      if Pos('runelite', LowerCase(window.GetTitle())) > 0 then
+        window.Kill();
+  end;
+
+  Wait(1000);
+end;
+
 procedure TWaspForm._InstallProfile(sender: TObject);
 var
   name: String;
   updatedExisting: Boolean;
 begin
+  if MessageDlg(
+    'B.A.S.H',
+    'RuneLite must be closed before installing the profile.' + LineEnding + LineEnding +
+    'Close RuneLite now?',
+    TMsgDlgType.mtWarning,
+    [mbYes, mbNo]
+  ) <> mrYes then
+  begin
+    WriteLn('[B.A.S.H] RuneLite profile install cancelled.');
+    Exit;
+  end;
+
+  Self.CloseRuneLite();
+
   if not WaspUpdater.InstallRLProfile(name, updatedExisting) then
   begin
     MessageDlg('B.A.S.H', 'Failed to install/update the RuneLite profile.', TMsgDlgType.mtError, []);
