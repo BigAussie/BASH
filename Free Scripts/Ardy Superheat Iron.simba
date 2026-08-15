@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := '39927741-0778-4c59-ae4f-8f8463eda121'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '4'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '5'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -692,6 +692,8 @@ procedure TConfig.Run(); override;
 var
   SavedMaxActions, SavedMaxTime: Integer;
 begin
+  BashPromptIfUpdateAvailable();
+
   if WLSettings.Has('max_actions') then
     SavedMaxActions := WLSettings.GetInt('max_actions')
   else

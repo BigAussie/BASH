@@ -1,5 +1,5 @@
 {$DEFINE SCRIPT_ID := 'bb216fcd-d3a6-4c47-9830-0b45ae3c91f8'}
-{$DEFINE SCRIPT_REVISION := '2'}
+{$DEFINE SCRIPT_REVISION := '3'}
 program SettingsSearcher;
 {$I BashLib/osr.simba}
 
@@ -13,5 +13,6 @@ end;
 
 begin
   ClearDebug();
+  BashPromptIfUpdateAvailable();
   SettingsHandler.RunDiagnostic();
 end.
