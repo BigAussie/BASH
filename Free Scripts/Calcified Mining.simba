@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'cf2ed007-5328-4914-b6fc-cd521759f893'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '7'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '10'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -9,13 +9,12 @@
 {
 ----------------------------------------------------------------------------------
 ~~~ Need Support? Contact Me ~~~
-Discord ID: big.aussie
+Website: https://bashscripts.shop/
 Discord Server: https://discord.gg/qsmKs5uKfR
 Email: thebigaussie@proton.me
 Github: https://github.com/BigAussie/BASH
 ----------------------------------------------------------------------------------
 }
-
 
 var
   POWERMINING: Boolean           = False;
@@ -24,9 +23,11 @@ var
   WEBHOOKURL: String             = '';
   DiscordUID: String             = ''; 
   PINGONTERMINATED: Boolean      = True; 
+  OVERRIDEBREAKS: Boolean        = False;
+  CUSTOMBREAKINTERVAL: Integer   = 60;
+  CUSTOMBREAKDURATION: Integer   = 5; 
 
 begin
-  WLSettings.Antiban.Chat := False;
   Mouse.Speed := Random(22, 28);
 end;
 
@@ -86,6 +87,48 @@ begin
   CamTorumMine.LoadNamesFromString('WAAAAHici1Y2iI2mAQYA/MUW8w==');  
 
   Self.WebGraph := CamTorumMine;
+end;
+
+procedure TAntiban.Setup(); override;
+begin
+  Self.Skills := [ERSSkill.MINING, ERSSkill.PRAYER, ERSSkill.TOTAL];
+  Self.MinZoom := 10;
+  Self.MaxZoom := 24;
+
+  inherited;
+
+  if OVERRIDEBREAKS then
+  begin
+    WriteLn('[ANTIBAN] Custom break override enabled:');
+    WriteLn('  - Break Interval: ', CUSTOMBREAKINTERVAL, ' minutes');
+    WriteLn('  - Break Duration: ', CUSTOMBREAKDURATION, ' minutes');
+
+    Self.Breaks := [];
+    Self.AddBreak(CUSTOMBREAKINTERVAL * ONE_MINUTE, CUSTOMBREAKDURATION * ONE_MINUTE, 0.33, 0.15);
+
+    WriteLn('[ANTIBAN] Custom breaks initialized successfully');
+  end
+  else
+    WriteLn('[ANTIBAN] Using WaspLib break system');
+end;
+
+function TBaseScript.DoAntiban(checkBreaks: Boolean = True; checkSleeps: Boolean = True): Boolean; override;
+begin
+  Antiban.DismissRandom();
+  Self.TimeRunning.Pause();
+  Self.OnAntiban := True;
+
+  checkBreaks := checkBreaks and (WLSettings.GetObject('antiban').getBoolean('breaks') or OVERRIDEBREAKS);
+  checkSleeps := checkSleeps and WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('enabled');
+
+  if WLSettings.GetObject('antiban').getJSONObject('tasks').getBoolean('enabled') or checkBreaks or checkSleeps then
+    Result := Antiban.DoAntiban(checkBreaks, checkSleeps);
+
+  Self.TimeRunning.Resume();
+  Self.OnAntiban := False;
+
+  if not RSClient.IsLoggedIn() then
+    Login.LoginPlayer();
 end;
 
 procedure CalcifiedMiner.SendWebhook(msg: String; FilePath: String = '');
@@ -272,9 +315,30 @@ procedure TRSMinimap.RotateWithinAngles(min, max: Int32);
 var
   minMaxAvg: Int32 := Floor((min + max) div 2);
   preferredAngle: Int32 := SRL.SkewedRand(minMaxAvg, min, max);
+  currentAngle, normMin, normMax: Int32;
 begin
   if preferredAngle < 0 then
     preferredAngle := preferredAngle + 360;
+
+  currentAngle := Round(Self.GetCompassAngle(True));
+  if currentAngle < 0 then
+    currentAngle := currentAngle + 360;
+
+  normMin := min;
+  normMax := max;
+  if normMin < 0 then
+    normMin := normMin + 360;
+  if normMax < 0 then
+    normMax := normMax + 360;
+
+  // Wrapping ranges (e.g. 267..10) are in-range on either side of 0.
+  if normMin <= normMax then
+  begin
+    if (currentAngle >= normMin) and (currentAngle <= normMax) then
+      Exit;
+  end
+  else if (currentAngle >= normMin) or (currentAngle <= normMax) then
+    Exit;
 
   Minimap.SetCompassAngle(preferredAngle);
 end;
@@ -290,6 +354,7 @@ var
   InitialShards: Integer;
   CurrentShards: Integer;
   MiningWetRock: Boolean;
+  CompassAngle: Double;
 begin
 
   if Inventory.ContainsItem('Gem bag') then
@@ -306,10 +371,10 @@ begin
       Exit;
     end;
     
-    if (Self.GetLocation() = WESTMINESITE) and ((Minimap.GetCompassAngle() < 10) or (Minimap.GetCompassAngle() > 95)) then
-      Minimap.RotateWithinAngles(15, 85);
-
-    if (Self.GetLocation() = EASTMINESITE) and ((Minimap.GetCompassAngle() > 10) or (Minimap.GetCompassAngle() < 267)) then
+    CompassAngle := Minimap.GetCompassAngle();
+    if (Self.GetLocation() = WESTMINESITE) and ((CompassAngle < 10) or (CompassAngle > 95)) then
+      Minimap.RotateWithinAngles(15, 85)
+    else if (Self.GetLocation() = EASTMINESITE) and ((CompassAngle > 10) and (CompassAngle < 267)) then
       Minimap.RotateWithinAngles(-93, 10);
 
     if (not IGNOREWATERFALLS) and WetCalcifiedRocks.Find(ATPA) and (not MiningWetRock) then
@@ -454,7 +519,6 @@ begin
 
   PrayerXP := Totalshards * 5; // Each bone shard is worth 5 prayer XP
   SunfirePrayerXP := Totalshards * 6; // Each bone shard is worth 6 prayer XP with Sunfire wine
-  APIClient.SubmitStats(APIClient.GetUUID());
 
   case Self.CurrentState of
     STATE_MINECALCIFIEDROCKS: CurrentStateName := 'Mining Calcified Rocks';
@@ -509,11 +573,7 @@ begin
   CalcifiedMoths := ('Calcified moth');
   itemsToKeep := ['Blessed bone shards', 'Gem bag', 'Open gem bag', 'Hammer', 'Imcando hammer', 'Gem bag', 'Bronze pickaxe', 'Adamant pickaxe', 'Crystal pickaxe', 'Dragon pickaxe', 'Rune pickaxe', 'Mithril pickaxe', 'Black pickaxe', 'Steel pickaxe', 'Iron pickaxe', 'Gilded pickaxe', 'Dragon pickaxe (or)', 'Infernal pickaxe (or)', '3rd age pickaxe', 'Infernal pickaxe'];
   StartXP := XPBar.Read();
-  Antiban.MinZoom := 15;
-  Antiban.MaxZoom := 30;
-  Antiban.Skills := [ERSSkill.MINING, ERSSkill.PRAYER, ERSSkill.TOTAL];
   SetupObjects();
-  Options.SetZoomLevel(RandomRange(10,24));
   CalcifiedMothValue := ItemData.GetAverage(29090);
   StartingShards := Inventory.CountItemStack('Blessed bone shards');
   if PINGONTERMINATED then
@@ -573,6 +633,13 @@ type
     WebhookInfo, DiscordUIDInfo: TLabel;
     WebHookInput, DiscordUIDInput: TLabeledEdit;
     MaxActionsInput, MaxTimeInput: TLabeledEdit;
+    ShortBreaksCheckBox, SleepBreaksCheckBox: TLabeledCheckBox;
+    SleepHourInput, SleepLengthInput: TLabeledEdit;
+    TasksEnabledCheckBox: TLabeledCheckBox;
+    TaskCameraCheckBox, TaskMouseCheckBox, TaskChatCheckBox, TaskGameTabsCheckBox, TaskBankCheckBox: TLabeledCheckBox;
+    OverrideBreaksCheckBox: TLabeledCheckBox;
+    CustomBreakIntervalInput, CustomBreakDurationInput: TLabeledEdit;
+    Username: String;
   end;
 
 function TConfig.MakePanel(
@@ -796,9 +863,79 @@ begin
   Self.PingOnTerminatedCheckBox.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
 end;
 
+procedure TConfig.OverrideBreaksCheckboxChanged(Sender: TObject);
+begin
+  if Sender = nil then;
+  Self.CustomBreakIntervalInput.SetVisible(Self.OverrideBreaksCheckBox.IsChecked());
+  Self.CustomBreakDurationInput.SetVisible(Self.OverrideBreaksCheckBox.IsChecked());
+  if Self.OverrideBreaksCheckBox.IsChecked() then
+    Self.ShortBreaksCheckBox.CheckBox.SetChecked(False);
+end;
+
+procedure TConfig.ShortBreaksCheckboxChanged(Sender: TObject);
+begin
+  if Sender = nil then;
+  if Self.ShortBreaksCheckBox.IsChecked() then
+  begin
+    Self.OverrideBreaksCheckBox.CheckBox.SetChecked(False);
+    Self.CustomBreakIntervalInput.SetVisible(False);
+    Self.CustomBreakDurationInput.SetVisible(False);
+  end;
+end;
+
+procedure TConfig.SleepBreaksCheckboxChanged(Sender: TObject);
+var
+  enabled: Boolean;
+begin
+  if Sender = nil then;
+  enabled := Self.SleepBreaksCheckBox.IsChecked();
+  Self.SleepHourInput.SetEnabled(enabled);
+  Self.SleepLengthInput.SetEnabled(enabled);
+end;
+
+procedure TConfig.TasksEnabledCheckboxChanged(Sender: TObject);
+var
+  enabled: Boolean;
+begin
+  if Sender = nil then;
+  enabled := Self.TasksEnabledCheckBox.IsChecked();
+  Self.TaskCameraCheckBox.SetEnabled(enabled);
+  Self.TaskMouseCheckBox.SetEnabled(enabled);
+  Self.TaskChatCheckBox.SetEnabled(enabled);
+  Self.TaskGameTabsCheckBox.SetEnabled(enabled);
+  Self.TaskBankCheckBox.SetEnabled(enabled);
+end;
+
+procedure TConfig.ApplyAntibanFromGUI();
+begin
+  WLSettings.Put('max_actions', StrToIntDef(Self.MaxActionsInput.GetText(), 0));
+  WLSettings.Put('max_time', StrToIntDef(Self.MaxTimeInput.GetText(), 0));
+
+  WLSettings.GetObject('antiban').Put('breaks', Self.ShortBreaksCheckBox.IsChecked());
+
+  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('enabled', Self.SleepBreaksCheckBox.IsChecked());
+  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('biohash', True);
+  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('hour', Trim(Self.SleepHourInput.GetText()));
+  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('length', StrToFloatDef(Self.SleepLengthInput.GetText(), 8));
+
+  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('enabled', Self.TasksEnabledCheckBox.IsChecked());
+  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('camera', Self.TaskCameraCheckBox.IsChecked());
+  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('mouse', Self.TaskMouseCheckBox.IsChecked());
+  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('chat', Self.TaskChatCheckBox.IsChecked());
+  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('gametabs', Self.TaskGameTabsCheckBox.IsChecked());
+  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('bank', Self.TaskBankCheckBox.IsChecked());
+
+  WLSettings.SaveConfig();
+end;
+
 procedure TConfig.StartScript(Sender: TObject); override;
 begin
   if Sender = nil then;
+
+  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
+    Self.Username := 'NoUserNameSelected'
+  else
+    Self.Username := Login.Players[Login.PlayerIndex].User;
 
   POWERMINING := Self.PowerMineCheckbox.IsChecked();
   IGNOREWATERFALLS := Self.IgnoreWaterfallsCheckBox.IsChecked();
@@ -807,9 +944,9 @@ begin
   WEBHOOKURL := Self.WebHookInput.GetText();
   PINGONTERMINATED := Self.PingOnTerminatedCheckBox.IsChecked();
 
-  WLSettings.Put('max_actions', StrToIntDef(Self.MaxActionsInput.GetText(), 0));
-  WLSettings.Put('max_time', StrToIntDef(Self.MaxTimeInput.GetText(), 0));
-  WLSettings.SaveConfig();
+  OVERRIDEBREAKS := Self.OverrideBreaksCheckBox.IsChecked();
+  CUSTOMBREAKINTERVAL := StrToIntDef(Self.CustomBreakIntervalInput.GetText(), 60);
+  CUSTOMBREAKDURATION := StrToIntDef(Self.CustomBreakDurationInput.GetText(), 5);
 
   WriteINI('Webhook Settings', 'DiscordUID', DiscordUID, 'Configs/BASettings.ini');
   WriteINI('Webhook Settings', 'WebhookURL', WEBHOOKURL, 'Configs/BASettings.ini');
@@ -817,6 +954,16 @@ begin
   WriteINI('Webhook Settings', 'EnableWebhooks', BoolToStr(ENABLEWEBHOOKS, 'true', 'false'), 'Configs/BASettings.ini');
   WriteINI('Calcified Mining Settings', 'PowerMining', BoolToStr(POWERMINING, 'true', 'false'), 'Configs/BASettings.ini');
   WriteINI('Calcified Mining Settings', 'IgnoreWaterfalls', BoolToStr(IGNOREWATERFALLS, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI(Self.Username + ' Calcified Mining Antiban', 'OverrideBreaks', BoolToStr(OVERRIDEBREAKS, 'true', 'false'), 'Configs/BASettings.ini');
+  WriteINI(Self.Username + ' Calcified Mining Antiban', 'CustomBreakInterval', IntToStr(CUSTOMBREAKINTERVAL), 'Configs/BASettings.ini');
+  WriteINI(Self.Username + ' Calcified Mining Antiban', 'CustomBreakDuration', IntToStr(CUSTOMBREAKDURATION), 'Configs/BASettings.ini');
+
+  Self.ApplyAntibanFromGUI();
+
+  WriteLn('Override Breaks: ', ToStr(OVERRIDEBREAKS));
+  WriteLn('Short Breaks: ', ToStr(WLSettings.GetObject('antiban').getBoolean('breaks')));
+  WriteLn('Sleep Breaks: ', ToStr(WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('enabled')));
+  WriteLn('Antiban Tasks: ', ToStr(WLSettings.GetObject('antiban').getJSONObject('tasks').getBoolean('enabled')));
 
   try
     Self._WarmBuildCache();
@@ -932,32 +1079,88 @@ begin
   Self.PingOnTerminatedCheckBox.SetTooltip('Enable to ping when the script terminates cleanly');
 end;
 
-procedure TConfig.BuildAntibanSection(SavedMaxActions, SavedMaxTime: Integer);
+procedure TConfig.BuildAntibanSection(
+  SavedOverrideBreaks: Boolean;
+  SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime: Integer
+);
+var
+  tasks: TJSONObject;
+  sleepHour: String;
+  sleepLength: Single;
 begin
-  Self.AddHeader(Self.AntibanSection, 'Antiban', 'Session limits.');
+  Antiban.SetupBiometrics();
+  tasks := WLSettings.GetObject('antiban').getJSONObject('tasks');
+  sleepHour := Antiban.GetSleepHour();
+  sleepLength := Antiban.GetSleepLength();
 
-  Self.AddEdit(Self.AntibanSection, Self.MaxActionsInput, 'le_cm_maxactions', 'Max actions (0 = unlimited)', IntToStr(SavedMaxActions), 24, 110, CM_GUI_EDIT_W);
+  Self.AddHeader(Self.AntibanSection, 'Antiban', 'Breaks, sleeps, tasks, and session limits.');
+
+  Self.MakeLabel(Self.AntibanSection, 'Session', 24, 100, 11, CM_GUI_MUTED, True);
+  Self.AddEdit(Self.AntibanSection, Self.MaxActionsInput, 'le_cm_maxactions', 'Max actions (0 = unlimited)', IntToStr(SavedMaxActions), 24, 118, CM_GUI_EDIT_W);
   Self.MaxActionsInput.Edit.SetOnKeyPress(@Self.MaxActionsInput.Edit.NumberField);
-  Self.AddEdit(Self.AntibanSection, Self.MaxTimeInput, 'le_cm_maxtime', 'Max time minutes (0 = unlimited)', IntToStr(SavedMaxTime), CM_GUI_COL2, 110, CM_GUI_EDIT_W);
+  Self.AddEdit(Self.AntibanSection, Self.MaxTimeInput, 'le_cm_maxtime', 'Max time minutes (0 = unlimited)', IntToStr(SavedMaxTime), CM_GUI_COL2, 118, CM_GUI_EDIT_W);
   Self.MaxTimeInput.Edit.SetOnKeyPress(@Self.MaxTimeInput.Edit.NumberField);
+
+  Self.MakeLabel(Self.AntibanSection, 'Breaks and sleeps', 24, 188, 11, CM_GUI_MUTED, True);
+  Self.AddCheck(Self.AntibanSection, Self.ShortBreaksCheckBox, 'cb_cm_short_breaks', 'Short breaks', 24, 210, WLSettings.GetObject('antiban').getBoolean('breaks'));
+  Self.ShortBreaksCheckBox.CheckBox.SetOnChange(@Self.ShortBreaksCheckboxChanged);
+  Self.ShortBreaksCheckBox.SetTooltip('Enables short randomized breaks during the session.');
+  Self.AddCheck(Self.AntibanSection, Self.SleepBreaksCheckBox, 'cb_cm_sleep_breaks', 'Sleep breaks', CM_GUI_COL2, 210, WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('enabled'));
+  Self.SleepBreaksCheckBox.CheckBox.SetOnChange(@Self.SleepBreaksCheckboxChanged);
+  Self.SleepBreaksCheckBox.SetTooltip('Enables longer sleep breaks based on local time.');
+
+  Self.AddEdit(Self.AntibanSection, Self.SleepHourInput, 'le_cm_sleep_hour', 'Sleep hour (HH:MM:SS)', sleepHour, 24, 238, CM_GUI_EDIT_W);
+  Self.SleepHourInput.Edit.SetOnKeyPress(@Self.SleepHourInput.Edit.TimeField);
+  Self.SleepHourInput.SetTooltip('Local PC time used as the base for sleep start.');
+  Self.AddEdit(Self.AntibanSection, Self.SleepLengthInput, 'le_cm_sleep_length', 'Sleep length (hours)', ToStr(sleepLength), CM_GUI_COL2, 238, CM_GUI_EDIT_W);
+  Self.SleepLengthInput.Edit.SetOnKeyPress(@Self.SleepLengthInput.Edit.FloatField);
+  Self.SleepLengthInput.SetTooltip('Approximate sleep length in hours.');
+
+  Self.AddCheck(Self.AntibanSection, Self.OverrideBreaksCheckBox, 'cb_cm_override_breaks', 'Override default breaks', 24, 300, SavedOverrideBreaks);
+  Self.OverrideBreaksCheckBox.CheckBox.SetOnChange(@Self.OverrideBreaksCheckboxChanged);
+  Self.OverrideBreaksCheckBox.SetTooltip('Replace WaspLib break intervals with your own schedule.');
+
+  Self.AddEdit(Self.AntibanSection, Self.CustomBreakIntervalInput, 'le_cm_break_interval', 'Break interval (minutes)', IntToStr(SavedCustomBreakInterval), 24, 328, CM_GUI_EDIT_W);
+  Self.CustomBreakIntervalInput.Edit.SetOnKeyPress(@Self.CustomBreakIntervalInput.Edit.NumberField);
+  Self.CustomBreakIntervalInput.SetTooltip('How often to take breaks. Includes randomness.');
+  Self.AddEdit(Self.AntibanSection, Self.CustomBreakDurationInput, 'le_cm_break_duration', 'Break duration (minutes)', IntToStr(SavedCustomBreakDuration), CM_GUI_COL2, 328, CM_GUI_EDIT_W);
+  Self.CustomBreakDurationInput.Edit.SetOnKeyPress(@Self.CustomBreakDurationInput.Edit.NumberField);
+  Self.CustomBreakDurationInput.SetTooltip('How long breaks should last. Includes randomness.');
+
+  Self.MakeLabel(Self.AntibanSection, 'Tasks', 24, 380, 11, CM_GUI_MUTED, True);
+  Self.AddCheck(Self.AntibanSection, Self.TasksEnabledCheckBox, 'cb_cm_tasks', 'Enable antiban tasks', 24, 398, tasks.getBoolean('enabled'));
+  Self.TasksEnabledCheckBox.CheckBox.SetOnChange(@Self.TasksEnabledCheckboxChanged);
+  Self.TasksEnabledCheckBox.SetTooltip('Enables camera, mouse, chat, gametab, and bank antiban tasks.');
+
+  Self.AddCheck(Self.AntibanSection, Self.TaskCameraCheckBox, 'cb_cm_task_camera', 'Camera', 24, 422, tasks.getBoolean('camera'));
+  Self.AddCheck(Self.AntibanSection, Self.TaskMouseCheckBox, 'cb_cm_task_mouse', 'Mouse', CM_GUI_COL2, 422, tasks.getBoolean('mouse'));
+  Self.AddCheck(Self.AntibanSection, Self.TaskChatCheckBox, 'cb_cm_task_chat', 'Chat', 24, 441, tasks.getBoolean('chat'));
+  Self.AddCheck(Self.AntibanSection, Self.TaskGameTabsCheckBox, 'cb_cm_task_gametabs', 'GameTabs', CM_GUI_COL2, 441, tasks.getBoolean('gametabs'));
+  Self.AddCheck(Self.AntibanSection, Self.TaskBankCheckBox, 'cb_cm_task_bank', 'Bank', 24, 460, tasks.getBoolean('bank'));
+
+  Self.SleepBreaksCheckboxChanged(nil);
+  Self.TasksEnabledCheckboxChanged(nil);
+  Self.OverrideBreaksCheckboxChanged(nil);
+  Self.ShortBreaksCheckboxChanged(nil);
 end;
 
 procedure TConfig.BuildShell(
   SavedIgnoreWaterfalls, SavedPowerMining, SavedEnableWebhooks, SavedPingOnTerminated: Boolean;
   SavedDiscordUID, SavedWebhookURL: String;
-  SavedMaxActions, SavedMaxTime: Integer
+  SavedOverrideBreaks: Boolean;
+  SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime: Integer
 );
 var
-  tab: TTabSheet;
   contentH, startW, startH, shellW, shellH, statusTop, statusH, mainLeft, mainW, navW, bottomInset: Int32;
 begin
-  Self.AddTab('Calcified Mining');
-  tab := Self.Tabs[High(Self.Tabs)];
-
   Self.Start.SetAlign(alNone);
   Self.Start.SetVisible(False);
   Self.Start.SetHeight(0);
   Self.Start.SetWidth(0);
+
+  Self.PageControl.SetVisible(False);
+  Self.PageControl.SetAlign(alNone);
+  Self.PageControl.SetBounds(0, 0, 0, 0);
 
   bottomInset := TControl.AdjustToDPI(CM_GUI_BOTTOM_INSET);
   navW := TControl.AdjustToDPI(CM_GUI_NAV_W);
@@ -971,7 +1174,7 @@ begin
   startW := TControl.AdjustToDPI(132);
   startH := TControl.AdjustToDPI(CM_GUI_BTN_H);
 
-  Self.NavPanel.Create(tab);
+  Self.NavPanel.Create(Self.Form);
   Self.NavPanel.SetLeft(0);
   Self.NavPanel.SetTop(0);
   Self.NavPanel.SetWidth(navW);
@@ -979,7 +1182,7 @@ begin
   Self.NavPanel.SetColor(CM_GUI_NAV);
   Self.NavPanel.SetBevelOuter(bvNone);
 
-  Self.DividerPanel.Create(tab);
+  Self.DividerPanel.Create(Self.Form);
   Self.DividerPanel.SetLeft(navW);
   Self.DividerPanel.SetTop(0);
   Self.DividerPanel.SetWidth(TControl.AdjustToDPI(2));
@@ -987,7 +1190,7 @@ begin
   Self.DividerPanel.SetColor(CM_GUI_DIVIDER);
   Self.DividerPanel.SetBevelOuter(bvNone);
 
-  Self.ContentPanel.Create(tab);
+  Self.ContentPanel.Create(Self.Form);
   Self.ContentPanel.SetLeft(mainLeft);
   Self.ContentPanel.SetTop(0);
   Self.ContentPanel.SetWidth(mainW);
@@ -995,7 +1198,7 @@ begin
   Self.ContentPanel.SetColor(CM_GUI_BG);
   Self.ContentPanel.SetBevelOuter(bvNone);
 
-  Self.StatusDivider.Create(tab);
+  Self.StatusDivider.Create(Self.Form);
   Self.StatusDivider.SetLeft(mainLeft);
   Self.StatusDivider.SetTop(statusTop);
   Self.StatusDivider.SetWidth(mainW);
@@ -1003,7 +1206,7 @@ begin
   Self.StatusDivider.SetColor(CM_GUI_DIVIDER);
   Self.StatusDivider.SetBevelOuter(bvNone);
 
-  Self.StatusPanel.Create(tab);
+  Self.StatusPanel.Create(Self.Form);
   Self.StatusPanel.SetLeft(mainLeft);
   Self.StatusPanel.SetTop(statusTop + Self.StatusDivider.GetHeight());
   Self.StatusPanel.SetWidth(mainW);
@@ -1011,7 +1214,7 @@ begin
   Self.StatusPanel.SetColor(CM_GUI_STATUS);
   Self.StatusPanel.SetBevelOuter(bvNone);
 
-  Self.StatusPad.Create(tab);
+  Self.StatusPad.Create(Self.Form);
   Self.StatusPad.SetLeft(mainLeft);
   Self.StatusPad.SetTop(Self.StatusPanel.GetTop() + Self.StatusPanel.GetHeight());
   Self.StatusPad.SetWidth(mainW);
@@ -1043,7 +1246,7 @@ begin
 
   Self.BuildScriptSection(SavedIgnoreWaterfalls, SavedPowerMining);
   Self.BuildAccountsSection(SavedEnableWebhooks, SavedPingOnTerminated, SavedDiscordUID, SavedWebhookURL);
-  Self.BuildAntibanSection(SavedMaxActions, SavedMaxTime);
+  Self.BuildAntibanSection(SavedOverrideBreaks, SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime);
   AIChatbot.BuildSettings(Self.AIChatSection, mainW);
 
   Self.ScriptNav.SetOnClick(@Self.ShowScript);
@@ -1061,6 +1264,7 @@ begin
   Self.StartChip.SetOnClick(@Self.StartScript);
 
   Self.WebhooksCheckboxChanged(nil);
+  Self.OverrideBreaksCheckboxChanged(nil);
   Self.ShowScript(Self.ScriptNav);
 end;
 
@@ -1068,9 +1272,15 @@ procedure TConfig.Run(); override;
 var
   SavedIgnoreWaterfalls, SavedPowerMining, SavedEnableWebhooks, SavedPingOnTerminated: Boolean;
   SavedDiscordUID, SavedWebhookURL: String;
-  SavedMaxActions, SavedMaxTime: Integer;
+  SavedOverrideBreaks: Boolean;
+  SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime: Integer;
 begin
   BashPromptIfUpdateAvailable();
+
+  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
+    Self.Username := 'NoUserNameSelected'
+  else
+    Self.Username := Login.Players[Login.PlayerIndex].User;
 
   SavedDiscordUID := ReadINI('Webhook Settings', 'DiscordUID', 'Configs/BASettings.ini');
   if SavedDiscordUID = '' then
@@ -1083,6 +1293,10 @@ begin
 
   SavedPowerMining := StrToBoolDef(ReadINI('Calcified Mining Settings', 'PowerMining', 'Configs/BASettings.ini'), POWERMINING);
   SavedIgnoreWaterfalls := StrToBoolDef(ReadINI('Calcified Mining Settings', 'IgnoreWaterfalls', 'Configs/BASettings.ini'), IGNOREWATERFALLS);
+
+  SavedOverrideBreaks := StrToBoolDef(ReadINI(Self.Username + ' Calcified Mining Antiban', 'OverrideBreaks', 'Configs/BASettings.ini'), False);
+  SavedCustomBreakInterval := StrToIntDef(ReadINI(Self.Username + ' Calcified Mining Antiban', 'CustomBreakInterval', 'Configs/BASettings.ini'), 60);
+  SavedCustomBreakDuration := StrToIntDef(ReadINI(Self.Username + ' Calcified Mining Antiban', 'CustomBreakDuration', 'Configs/BASettings.ini'), 5);
 
   if WLSettings.Has('max_actions') then
     SavedMaxActions := WLSettings.GetInt('max_actions')
@@ -1101,7 +1315,9 @@ begin
   Self.Setup('BigAussies Calcified Mining', [CM_GUI_W, CM_GUI_H], False);
   Self.BuildShell(
     SavedIgnoreWaterfalls, SavedPowerMining, SavedEnableWebhooks, SavedPingOnTerminated,
-    SavedDiscordUID, SavedWebhookURL, SavedMaxActions, SavedMaxTime
+    SavedDiscordUID, SavedWebhookURL,
+    SavedOverrideBreaks, SavedCustomBreakInterval, SavedCustomBreakDuration,
+    SavedMaxActions, SavedMaxTime
   );
 
   inherited;

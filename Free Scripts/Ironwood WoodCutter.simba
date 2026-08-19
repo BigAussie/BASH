@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := '8dc108d0-7e16-472e-839e-dfd7f64e9f08'}
-{$DEFINE SCRIPT_REVISION := '7'}
+{$DEFINE SCRIPT_REVISION := '9'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -9,10 +9,10 @@
 {
 ----------------------------------------------------------------------------------
 ~~~ Need Support? Contact Me ~~~
+Website: https://bashscripts.shop/
 Discord Server: https://discord.gg/qsmKs5uKfR
-Discord ID: big.aussie
 Email: thebigaussie@proton.me
-Github: https://github.com/BigAussie
+Github: https://github.com/BigAussie/BASH
 ----------------------------------------------------------------------------------
 }
 
@@ -57,7 +57,6 @@ type
     LogPrice: Int32;
     LogsBanked: Int32;
     TotalLogsProfit: Int64;
-    PreviousProfit: Int64;
     BankItemList: TRSItemArray;
 
     PrevXP: Int32;
@@ -201,6 +200,25 @@ begin
   begin
     WriteLn('[ANTIBAN] Using WaspLib break system');
   end;
+end;
+
+function TBaseScript.DoAntiban(checkBreaks: Boolean = True; checkSleeps: Boolean = True): Boolean; override;
+begin
+  Antiban.DismissRandom();
+  Self.TimeRunning.Pause();
+  Self.OnAntiban := True;
+
+  checkBreaks := checkBreaks and (WLSettings.GetObject('antiban').getBoolean('breaks') or OVERRIDEBREAKS);
+  checkSleeps := checkSleeps and WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('enabled');
+
+  if WLSettings.GetObject('antiban').getJSONObject('tasks').getBoolean('enabled') or checkBreaks or checkSleeps then
+    Result := Antiban.DoAntiban(checkBreaks, checkSleeps);
+
+  Self.TimeRunning.Resume();
+  Self.OnAntiban := False;
+
+  if not RSClient.IsLoggedIn() then
+    Login.LoginPlayer();
 end;
 
 function FormatRoundedNumber(Number: Int64): String;
@@ -551,15 +569,12 @@ begin
   Self.IsChopping := False;
   Self.LogsBanked := 0;
   Self.TotalLogsProfit := 0;
-  Self.PreviousProfit := 0;
 
   Self.BankItemList := [
     Self.LogItem,
     'Clue scroll (beginner)', 'Clue scroll (easy)', 'Clue scroll (medium)',
     'Clue scroll (hard)', 'Clue scroll (elite)'
   ];
-
-  APIClient.TimeStamp := GetTickCount();
 
   Self.PrevXP := XPBar.Read();
   Self.StartXP := Self.PrevXP;
@@ -945,7 +960,6 @@ var
   LogsPerHour: Int32;
   Profit: Int64;
   ProfitPerHour: Int32;
-  ProfitAPI: Int64;
 begin
   CurrentTime := GetTickCount();
 
@@ -972,11 +986,6 @@ begin
   end;
 
   Profit := Self.TotalLogsProfit;
-
-  ProfitAPI := (Profit - Self.PreviousProfit) * 2;
-  Self.PreviousProfit := Profit;
-  APIClient.UpdatePayload(0, ProfitAPI, 0);
-  APIClient.SubmitStats(APIClient.GetUUID());
 
   WriteLn('========================================');
   WriteLn('      BigAussie''s Ironwood Chopper     ');
@@ -1193,6 +1202,10 @@ type
     EnableWorldHoppingCheckBox, OverrideBreaksCheckBox: TLabeledCheckBox;
     WebHookInput, WorldHopIntervalInput, CustomBreakIntervalInput, CustomBreakDurationInput: TLabeledEdit;
     MaxActionsInput, MaxTimeInput: TLabeledEdit;
+    ShortBreaksCheckBox, SleepBreaksCheckBox: TLabeledCheckBox;
+    SleepHourInput, SleepLengthInput: TLabeledEdit;
+    TasksEnabledCheckBox: TLabeledCheckBox;
+    TaskCameraCheckBox, TaskMouseCheckBox, TaskChatCheckBox, TaskGameTabsCheckBox, TaskBankCheckBox: TLabeledCheckBox;
     TestButton: TButton;
     WebhookInfo: TLabel;
   end;
@@ -1441,6 +1454,64 @@ begin
   if Sender = nil then;
   Self.CustomBreakIntervalInput.SetVisible(Self.OverrideBreaksCheckBox.IsChecked());
   Self.CustomBreakDurationInput.SetVisible(Self.OverrideBreaksCheckBox.IsChecked());
+  if Self.OverrideBreaksCheckBox.IsChecked() then
+    Self.ShortBreaksCheckBox.CheckBox.SetChecked(False);
+end;
+
+procedure TConfig.ShortBreaksCheckboxChanged(Sender: TObject);
+begin
+  if Sender = nil then;
+  if Self.ShortBreaksCheckBox.IsChecked() then
+  begin
+    Self.OverrideBreaksCheckBox.CheckBox.SetChecked(False);
+    Self.CustomBreakIntervalInput.SetVisible(False);
+    Self.CustomBreakDurationInput.SetVisible(False);
+  end;
+end;
+
+procedure TConfig.SleepBreaksCheckboxChanged(Sender: TObject);
+var
+  enabled: Boolean;
+begin
+  if Sender = nil then;
+  enabled := Self.SleepBreaksCheckBox.IsChecked();
+  Self.SleepHourInput.SetEnabled(enabled);
+  Self.SleepLengthInput.SetEnabled(enabled);
+end;
+
+procedure TConfig.TasksEnabledCheckboxChanged(Sender: TObject);
+var
+  enabled: Boolean;
+begin
+  if Sender = nil then;
+  enabled := Self.TasksEnabledCheckBox.IsChecked();
+  Self.TaskCameraCheckBox.SetEnabled(enabled);
+  Self.TaskMouseCheckBox.SetEnabled(enabled);
+  Self.TaskChatCheckBox.SetEnabled(enabled);
+  Self.TaskGameTabsCheckBox.SetEnabled(enabled);
+  Self.TaskBankCheckBox.SetEnabled(enabled);
+end;
+
+procedure TConfig.ApplyAntibanFromGUI();
+begin
+  WLSettings.Put('max_actions', StrToIntDef(Self.MaxActionsInput.GetText(), 0));
+  WLSettings.Put('max_time', StrToIntDef(Self.MaxTimeInput.GetText(), 0));
+
+  WLSettings.GetObject('antiban').Put('breaks', Self.ShortBreaksCheckBox.IsChecked());
+
+  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('enabled', Self.SleepBreaksCheckBox.IsChecked());
+  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('biohash', True);
+  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('hour', Trim(Self.SleepHourInput.GetText()));
+  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('length', StrToFloatDef(Self.SleepLengthInput.GetText(), 8));
+
+  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('enabled', Self.TasksEnabledCheckBox.IsChecked());
+  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('camera', Self.TaskCameraCheckBox.IsChecked());
+  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('mouse', Self.TaskMouseCheckBox.IsChecked());
+  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('chat', Self.TaskChatCheckBox.IsChecked());
+  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('gametabs', Self.TaskGameTabsCheckBox.IsChecked());
+  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('bank', Self.TaskBankCheckBox.IsChecked());
+
+  WLSettings.SaveConfig();
 end;
 
 procedure TConfig.WorldHoppingCheckboxChanged(Sender: TObject);
@@ -1475,10 +1546,6 @@ begin
   CUSTOMBREAKINTERVAL := StrToIntDef(Self.CustomBreakIntervalInput.GetText(), 60);
   CUSTOMBREAKDURATION := StrToIntDef(Self.CustomBreakDurationInput.GetText(), 5);
 
-  WLSettings.Put('max_actions', StrToIntDef(Self.MaxActionsInput.GetText(), 0));
-  WLSettings.Put('max_time', StrToIntDef(Self.MaxTimeInput.GetText(), 0));
-  WLSettings.SaveConfig();
-
   WriteINI(Username + ' Ironwood Webhook Settings', 'WebhookURL', WEBHOOKURL, 'Configs/BAIronwoodSettings.ini');
   WriteINI(Username + ' Ironwood Webhook Settings', 'EnableWebhooks', BoolToStr(ENABLEWEBHOOKS, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
   WriteINI(Username + ' Ironwood Webhook Settings', 'HourlyReports', BoolToStr(SENDHOURLYREPORTMSG, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
@@ -1490,6 +1557,13 @@ begin
   WriteINI(Username + ' Ironwood Antiban Manager', 'OverrideBreaks', BoolToStr(OVERRIDEBREAKS, 'true', 'false'), 'Configs/BAIronwoodSettings.ini');
   WriteINI(Username + ' Ironwood Antiban Manager', 'CustomBreakInterval', IntToStr(CUSTOMBREAKINTERVAL), 'Configs/BAIronwoodSettings.ini');
   WriteINI(Username + ' Ironwood Antiban Manager', 'CustomBreakDuration', IntToStr(CUSTOMBREAKDURATION), 'Configs/BAIronwoodSettings.ini');
+
+  Self.ApplyAntibanFromGUI();
+
+  WriteLn('Override Breaks: ', ToStr(OVERRIDEBREAKS));
+  WriteLn('Short Breaks: ', ToStr(WLSettings.GetObject('antiban').getBoolean('breaks')));
+  WriteLn('Sleep Breaks: ', ToStr(WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('enabled')));
+  WriteLn('Antiban Tasks: ', ToStr(WLSettings.GetObject('antiban').getJSONObject('tasks').getBoolean('enabled')));
 
   Discord.SetWebhook(WEBHOOKURL);
 
@@ -1627,34 +1701,77 @@ procedure TConfig.BuildAntibanSection(
   SavedEnableWorldHopping, SavedOverrideBreaks: Boolean;
   SavedWorldHopInterval, SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime: Integer
 );
+var
+  tasks: TJSONObject;
+  sleepHour: String;
+  sleepLength: Single;
 begin
-  Self.AddHeader(Self.AntibanSection, 'Antiban', 'Breaks, world hopping, and session limits.');
+  Antiban.SetupBiometrics();
+  tasks := WLSettings.GetObject('antiban').getJSONObject('tasks');
+  sleepHour := Antiban.GetSleepHour();
+  sleepLength := Antiban.GetSleepLength();
 
-  Self.AddEdit(Self.AntibanSection, Self.MaxActionsInput, 'le_iw_maxactions', 'Max actions (0 = unlimited)', IntToStr(SavedMaxActions), 24, 110, IW_GUI_EDIT_W);
+  Self.AddHeader(Self.AntibanSection, 'Antiban', 'Breaks, sleeps, tasks, world hopping, and session limits.');
+
+  Self.MakeLabel(Self.AntibanSection, 'Session', 24, 100, 11, IW_GUI_MUTED, True);
+  Self.AddEdit(Self.AntibanSection, Self.MaxActionsInput, 'le_iw_maxactions', 'Max actions (0 = unlimited)', IntToStr(SavedMaxActions), 24, 118, IW_GUI_EDIT_W);
   Self.MaxActionsInput.Edit.SetOnKeyPress(@Self.MaxActionsInput.Edit.NumberField);
   Self.MaxActionsInput.SetTooltip('Stop after this many completed actions. 0 = no limit.');
-  Self.AddEdit(Self.AntibanSection, Self.MaxTimeInput, 'le_iw_maxtime', 'Max time minutes (0 = unlimited)', IntToStr(SavedMaxTime), IW_GUI_COL2, 110, IW_GUI_EDIT_W);
+  Self.AddEdit(Self.AntibanSection, Self.MaxTimeInput, 'le_iw_maxtime', 'Max time minutes (0 = unlimited)', IntToStr(SavedMaxTime), IW_GUI_COL2, 118, IW_GUI_EDIT_W);
   Self.MaxTimeInput.Edit.SetOnKeyPress(@Self.MaxTimeInput.Edit.NumberField);
   Self.MaxTimeInput.SetTooltip('Stop after this many minutes of runtime. 0 = no limit.');
 
-  Self.AddCheck(Self.AntibanSection, Self.OverrideBreaksCheckBox, 'cb_iw_override_breaks', 'Override default breaks', 24, 190, SavedOverrideBreaks);
+  Self.MakeLabel(Self.AntibanSection, 'Breaks and sleeps', 24, 188, 11, IW_GUI_MUTED, True);
+  Self.AddCheck(Self.AntibanSection, Self.ShortBreaksCheckBox, 'cb_iw_short_breaks', 'Short breaks', 24, 210, WLSettings.GetObject('antiban').getBoolean('breaks'));
+  Self.ShortBreaksCheckBox.CheckBox.SetOnChange(@Self.ShortBreaksCheckboxChanged);
+  Self.ShortBreaksCheckBox.SetTooltip('Enables short randomized breaks during the session.');
+  Self.AddCheck(Self.AntibanSection, Self.SleepBreaksCheckBox, 'cb_iw_sleep_breaks', 'Sleep breaks', IW_GUI_COL2, 210, WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('enabled'));
+  Self.SleepBreaksCheckBox.CheckBox.SetOnChange(@Self.SleepBreaksCheckboxChanged);
+  Self.SleepBreaksCheckBox.SetTooltip('Enables longer sleep breaks based on local time.');
+
+  Self.AddEdit(Self.AntibanSection, Self.SleepHourInput, 'le_iw_sleep_hour', 'Sleep hour (HH:MM:SS)', sleepHour, 24, 238, IW_GUI_EDIT_W);
+  Self.SleepHourInput.Edit.SetOnKeyPress(@Self.SleepHourInput.Edit.TimeField);
+  Self.SleepHourInput.SetTooltip('Local PC time used as the base for sleep start.');
+  Self.AddEdit(Self.AntibanSection, Self.SleepLengthInput, 'le_iw_sleep_length', 'Sleep length (hours)', ToStr(sleepLength), IW_GUI_COL2, 238, IW_GUI_EDIT_W);
+  Self.SleepLengthInput.Edit.SetOnKeyPress(@Self.SleepLengthInput.Edit.FloatField);
+  Self.SleepLengthInput.SetTooltip('Approximate sleep length in hours.');
+
+  Self.AddCheck(Self.AntibanSection, Self.OverrideBreaksCheckBox, 'cb_iw_override_breaks', 'Override default breaks', 24, 300, SavedOverrideBreaks);
   Self.OverrideBreaksCheckBox.SetTooltip('Replace default break timing with the custom interval and duration below.');
   Self.OverrideBreaksCheckBox.CheckBox.SetOnChange(@Self.OverrideBreaksCheckboxChanged);
 
-  Self.AddEdit(Self.AntibanSection, Self.CustomBreakIntervalInput, 'le_iw_break_interval', 'Break interval (minutes)', IntToStr(SavedCustomBreakInterval), 24, 230, IW_GUI_EDIT_W);
+  Self.AddEdit(Self.AntibanSection, Self.CustomBreakIntervalInput, 'le_iw_break_interval', 'Break interval (minutes)', IntToStr(SavedCustomBreakInterval), 24, 328, IW_GUI_EDIT_W);
   Self.CustomBreakIntervalInput.Edit.SetOnKeyPress(@Self.CustomBreakIntervalInput.Edit.NumberField);
   Self.CustomBreakIntervalInput.SetTooltip('How often to take breaks when override is enabled. Includes randomness.');
-  Self.AddEdit(Self.AntibanSection, Self.CustomBreakDurationInput, 'le_iw_break_duration', 'Break duration (minutes)', IntToStr(SavedCustomBreakDuration), IW_GUI_COL2, 230, IW_GUI_EDIT_W);
+  Self.AddEdit(Self.AntibanSection, Self.CustomBreakDurationInput, 'le_iw_break_duration', 'Break duration (minutes)', IntToStr(SavedCustomBreakDuration), IW_GUI_COL2, 328, IW_GUI_EDIT_W);
   Self.CustomBreakDurationInput.Edit.SetOnKeyPress(@Self.CustomBreakDurationInput.Edit.NumberField);
   Self.CustomBreakDurationInput.SetTooltip('How long each break lasts when override is enabled. Includes randomness.');
 
-  Self.AddCheck(Self.AntibanSection, Self.EnableWorldHoppingCheckBox, 'cb_iw_worldhop', 'Enable world hopping', 24, 310, SavedEnableWorldHopping);
+  Self.MakeLabel(Self.AntibanSection, 'Tasks', 24, 380, 11, IW_GUI_MUTED, True);
+  Self.AddCheck(Self.AntibanSection, Self.TasksEnabledCheckBox, 'cb_iw_tasks', 'Enable antiban tasks', 24, 398, tasks.getBoolean('enabled'));
+  Self.TasksEnabledCheckBox.CheckBox.SetOnChange(@Self.TasksEnabledCheckboxChanged);
+  Self.TasksEnabledCheckBox.SetTooltip('Enables camera, mouse, chat, gametab, and bank antiban tasks.');
+
+  Self.AddCheck(Self.AntibanSection, Self.TaskCameraCheckBox, 'cb_iw_task_camera', 'Camera', 24, 422, tasks.getBoolean('camera'));
+  Self.AddCheck(Self.AntibanSection, Self.TaskMouseCheckBox, 'cb_iw_task_mouse', 'Mouse', IW_GUI_COL2, 422, tasks.getBoolean('mouse'));
+  Self.AddCheck(Self.AntibanSection, Self.TaskChatCheckBox, 'cb_iw_task_chat', 'Chat', 24, 441, tasks.getBoolean('chat'));
+  Self.AddCheck(Self.AntibanSection, Self.TaskGameTabsCheckBox, 'cb_iw_task_gametabs', 'GameTabs', IW_GUI_COL2, 441, tasks.getBoolean('gametabs'));
+  Self.AddCheck(Self.AntibanSection, Self.TaskBankCheckBox, 'cb_iw_task_bank', 'Bank', 24, 460, tasks.getBoolean('bank'));
+
+  Self.MakeLabel(Self.AntibanSection, 'World hopping', 24, 490, 11, IW_GUI_MUTED, True);
+  Self.AddCheck(Self.AntibanSection, Self.EnableWorldHoppingCheckBox, 'cb_iw_worldhop', 'Enable world hopping', 24, 508, SavedEnableWorldHopping);
   Self.EnableWorldHoppingCheckBox.SetTooltip('Hop worlds on a timer. Needs at least 2 worlds saved on the account.');
   Self.EnableWorldHoppingCheckBox.CheckBox.SetOnChange(@Self.WorldHoppingCheckboxChanged);
 
-  Self.AddEdit(Self.AntibanSection, Self.WorldHopIntervalInput, 'le_iw_hop_interval', 'World hop interval (minutes)', IntToStr(SavedWorldHopInterval), 24, 350, IW_GUI_EDIT_W);
+  Self.AddEdit(Self.AntibanSection, Self.WorldHopIntervalInput, 'le_iw_hop_interval', 'World hop interval (minutes)', IntToStr(SavedWorldHopInterval), 24, 536, IW_GUI_EDIT_W);
   Self.WorldHopIntervalInput.Edit.SetOnKeyPress(@Self.WorldHopIntervalInput.Edit.NumberField);
   Self.WorldHopIntervalInput.SetTooltip('Minutes between world hops. Small random variation is applied.');
+
+  Self.SleepBreaksCheckboxChanged(nil);
+  Self.TasksEnabledCheckboxChanged(nil);
+  Self.OverrideBreaksCheckboxChanged(nil);
+  Self.ShortBreaksCheckboxChanged(nil);
+  Self.WorldHoppingCheckboxChanged(nil);
 end;
 
 procedure TConfig.BuildShell(
@@ -1665,16 +1782,16 @@ procedure TConfig.BuildShell(
   SavedWorldHopInterval, SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime: Integer
 );
 var
-  tab: TTabSheet;
   contentH, startW, startH, shellW, shellH, statusTop, statusH, mainLeft, mainW, navW, bottomInset: Int32;
 begin
-  Self.AddTab('Ironwood Chopper');
-  tab := Self.Tabs[High(Self.Tabs)];
-
   Self.Start.SetAlign(alNone);
   Self.Start.SetVisible(False);
   Self.Start.SetHeight(0);
   Self.Start.SetWidth(0);
+
+  Self.PageControl.SetVisible(False);
+  Self.PageControl.SetAlign(alNone);
+  Self.PageControl.SetBounds(0, 0, 0, 0);
 
   bottomInset := TControl.AdjustToDPI(IW_GUI_BOTTOM_INSET);
   navW := TControl.AdjustToDPI(IW_GUI_NAV_W);
@@ -1688,7 +1805,7 @@ begin
   startW := TControl.AdjustToDPI(132);
   startH := TControl.AdjustToDPI(IW_GUI_BTN_H);
 
-  Self.NavPanel.Create(tab);
+  Self.NavPanel.Create(Self.Form);
   Self.NavPanel.SetLeft(0);
   Self.NavPanel.SetTop(0);
   Self.NavPanel.SetWidth(navW);
@@ -1696,7 +1813,7 @@ begin
   Self.NavPanel.SetColor(IW_GUI_NAV);
   Self.NavPanel.SetBevelOuter(bvNone);
 
-  Self.DividerPanel.Create(tab);
+  Self.DividerPanel.Create(Self.Form);
   Self.DividerPanel.SetLeft(navW);
   Self.DividerPanel.SetTop(0);
   Self.DividerPanel.SetWidth(TControl.AdjustToDPI(2));
@@ -1704,7 +1821,7 @@ begin
   Self.DividerPanel.SetColor(IW_GUI_DIVIDER);
   Self.DividerPanel.SetBevelOuter(bvNone);
 
-  Self.ContentPanel.Create(tab);
+  Self.ContentPanel.Create(Self.Form);
   Self.ContentPanel.SetLeft(mainLeft);
   Self.ContentPanel.SetTop(0);
   Self.ContentPanel.SetWidth(mainW);
@@ -1712,7 +1829,7 @@ begin
   Self.ContentPanel.SetColor(IW_GUI_BG);
   Self.ContentPanel.SetBevelOuter(bvNone);
 
-  Self.StatusDivider.Create(tab);
+  Self.StatusDivider.Create(Self.Form);
   Self.StatusDivider.SetLeft(mainLeft);
   Self.StatusDivider.SetTop(statusTop);
   Self.StatusDivider.SetWidth(mainW);
@@ -1720,7 +1837,7 @@ begin
   Self.StatusDivider.SetColor(IW_GUI_DIVIDER);
   Self.StatusDivider.SetBevelOuter(bvNone);
 
-  Self.StatusPanel.Create(tab);
+  Self.StatusPanel.Create(Self.Form);
   Self.StatusPanel.SetLeft(mainLeft);
   Self.StatusPanel.SetTop(statusTop + Self.StatusDivider.GetHeight());
   Self.StatusPanel.SetWidth(mainW);
@@ -1728,7 +1845,7 @@ begin
   Self.StatusPanel.SetColor(IW_GUI_STATUS);
   Self.StatusPanel.SetBevelOuter(bvNone);
 
-  Self.StatusPad.Create(tab);
+  Self.StatusPad.Create(Self.Form);
   Self.StatusPad.SetLeft(mainLeft);
   Self.StatusPad.SetTop(Self.StatusPanel.GetTop() + Self.StatusPanel.GetHeight());
   Self.StatusPad.SetWidth(mainW);

@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'c4a8f1e2-7b3d-4a9e-8c6f-1d2e3f4a5b6c'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '2'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '3'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -909,8 +909,6 @@ begin
   Objects.Setup(Map.Objects(), @Map.Walker);
   Self.SetupPiles();
 
-  Options.SetZoomLevel(SRL.TruncatedGauss(10, 20));
-
   Configured := 0;
   for I := 0 to High(Self.Piles) do
     if Self.PileConfigured(I) then
@@ -946,8 +944,6 @@ begin
 
   WL.Activity.Init(5 * ONE_MINUTE);
   WL.Activity.Restart();
-
-  APIClient.TimeStamp := GetTickCount();
 end;
 
 function TVolcanicAshMiner.GetState(): EAshState;
@@ -1883,17 +1879,16 @@ procedure TConfig.BuildShell(
   SavedCustomBreakInterval, SavedCustomBreakDuration, SavedWorldHopInterval, SavedMaxActions, SavedMaxTime: Integer
 );
 var
-  tab: TTabSheet;
   contentH, startW, startH, shellW, shellH, statusTop, statusH, mainLeft, mainW, navW, bottomInset: Int32;
 begin
-  Self.AddTab('Volcanic Ash Miner');
-  tab := Self.Tabs[High(Self.Tabs)];
-  Self.PageControl.SetShowTabs(False);
-
   Self.Start.SetAlign(alNone);
   Self.Start.SetVisible(False);
   Self.Start.SetHeight(0);
   Self.Start.SetWidth(0);
+
+  Self.PageControl.SetVisible(False);
+  Self.PageControl.SetAlign(alNone);
+  Self.PageControl.SetBounds(0, 0, 0, 0);
 
   bottomInset := TControl.AdjustToDPI(VA_GUI_BOTTOM_INSET);
   navW := TControl.AdjustToDPI(VA_GUI_NAV_W);
@@ -1907,7 +1902,7 @@ begin
   startW := TControl.AdjustToDPI(132);
   startH := TControl.AdjustToDPI(VA_GUI_BTN_H);
 
-  Self.NavPanel.Create(tab);
+  Self.NavPanel.Create(Self.Form);
   Self.NavPanel.SetLeft(0);
   Self.NavPanel.SetTop(0);
   Self.NavPanel.SetWidth(navW);
@@ -1915,7 +1910,7 @@ begin
   Self.NavPanel.SetColor(VA_GUI_NAV);
   Self.NavPanel.SetBevelOuter(bvNone);
 
-  Self.DividerPanel.Create(tab);
+  Self.DividerPanel.Create(Self.Form);
   Self.DividerPanel.SetLeft(navW);
   Self.DividerPanel.SetTop(0);
   Self.DividerPanel.SetWidth(TControl.AdjustToDPI(2));
@@ -1923,7 +1918,7 @@ begin
   Self.DividerPanel.SetColor(VA_GUI_DIVIDER);
   Self.DividerPanel.SetBevelOuter(bvNone);
 
-  Self.ContentPanel.Create(tab);
+  Self.ContentPanel.Create(Self.Form);
   Self.ContentPanel.SetLeft(mainLeft);
   Self.ContentPanel.SetTop(0);
   Self.ContentPanel.SetWidth(mainW);
@@ -1931,7 +1926,7 @@ begin
   Self.ContentPanel.SetColor(VA_GUI_BG);
   Self.ContentPanel.SetBevelOuter(bvNone);
 
-  Self.StatusDivider.Create(tab);
+  Self.StatusDivider.Create(Self.Form);
   Self.StatusDivider.SetLeft(mainLeft);
   Self.StatusDivider.SetTop(statusTop);
   Self.StatusDivider.SetWidth(mainW);
@@ -1939,7 +1934,7 @@ begin
   Self.StatusDivider.SetColor(VA_GUI_DIVIDER);
   Self.StatusDivider.SetBevelOuter(bvNone);
 
-  Self.StatusPanel.Create(tab);
+  Self.StatusPanel.Create(Self.Form);
   Self.StatusPanel.SetLeft(mainLeft);
   Self.StatusPanel.SetTop(statusTop + Self.StatusDivider.GetHeight());
   Self.StatusPanel.SetWidth(mainW);
@@ -1947,7 +1942,7 @@ begin
   Self.StatusPanel.SetColor(VA_GUI_STATUS);
   Self.StatusPanel.SetBevelOuter(bvNone);
 
-  Self.StatusPad.Create(tab);
+  Self.StatusPad.Create(Self.Form);
   Self.StatusPad.SetLeft(mainLeft);
   Self.StatusPad.SetTop(Self.StatusPanel.GetTop() + Self.StatusPanel.GetHeight());
   Self.StatusPad.SetWidth(mainW);

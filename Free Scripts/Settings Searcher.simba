@@ -1,7 +1,17 @@
 {$DEFINE SCRIPT_ID := 'bb216fcd-d3a6-4c47-9830-0b45ae3c91f8'}
-{$DEFINE SCRIPT_REVISION := '3'}
+{$DEFINE SCRIPT_REVISION := '4'}
 program SettingsSearcher;
 {$I BashLib/osr.simba}
+
+{
+----------------------------------------------------------------------------------
+~~~ Need Support? Contact Me ~~~
+Website: https://bashscripts.shop/
+Discord Server: https://discord.gg/qsmKs5uKfR
+Email: thebigaussie@proton.me
+Github: https://github.com/BigAussie/BASH
+----------------------------------------------------------------------------------
+}
 
 { Runs the BASHLib include setting handler standalone for setups that are experiencing issues}
 

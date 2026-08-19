@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'cba5ca58-c6d2-48bc-b625-f54e300b4760'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '3'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '4'}
 {$DEFINE BASH_FARM_WITH_BIRDHOUSE}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
@@ -10,7 +10,7 @@
 {
 ----------------------------------------------------------------------------------
 ~~~ Need Support? Contact Me ~~~
-Discord ID: big.aussie
+Website: https://bashscripts.shop/
 Discord Server: https://discord.gg/qsmKs5uKfR
 Email: thebigaussie@proton.me
 Github: https://github.com/BigAussie/BASH
