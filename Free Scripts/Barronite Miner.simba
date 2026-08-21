@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := '6201fd4a-a3b1-408e-a420-13cfc8c218f7'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '7'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '8'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -519,6 +519,8 @@ begin
 
   WriteLn('========================================');
   WriteLn('     BigAussies Barronite Miner      ');
+  WriteLn('    ', Antiban.BreakScheduleText());
+  WriteLn('    ', Antiban.SleepScheduleText());
   WriteLn('           Version: ' + {$MACRO SCRIPT_REVISION});
   WriteLn('========================================');
 end;
@@ -870,7 +872,7 @@ begin
   WLSettings.GetObject('antiban').Put('breaks', Self.ShortBreaksCheckBox.IsChecked());
 
   WLSettings.GetObject('antiban').getJSONObject('sleep').Put('enabled', Self.SleepBreaksCheckBox.IsChecked());
-  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('biohash', True);
+  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('biohash', False);
   WLSettings.GetObject('antiban').getJSONObject('sleep').Put('hour', Trim(Self.SleepHourInput.GetText()));
   WLSettings.GetObject('antiban').getJSONObject('sleep').Put('length', StrToFloatDef(Self.SleepLengthInput.GetText(), 8));
 
@@ -1003,11 +1005,24 @@ var
   tasks: TJSONObject;
   sleepHour: String;
   sleepLength: Single;
+  wasBio: Boolean;
 begin
   Antiban.SetupBiometrics();
   tasks := WLSettings.GetObject('antiban').getJSONObject('tasks');
+  wasBio := WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('biohash');
+  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('biohash', True);
   sleepHour := Antiban.GetSleepHour();
   sleepLength := Antiban.GetSleepLength();
+  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('biohash', wasBio);
+  if (not wasBio) and (WLSettings.GetObject('antiban').getJSONObject('sleep').getString('hour') <> '') then
+  begin
+    sleepHour := WLSettings.GetObject('antiban').getJSONObject('sleep').getString('hour');
+    sleepLength := WLSettings.GetObject('antiban').getJSONObject('sleep').getDouble('length');
+  end;
+  if sleepHour = '' then
+    sleepHour := '23:00:00';
+  if sleepLength <= 0 then
+    sleepLength := 8;
 
   Self.AddHeader(Self.AntibanSection, 'Antiban', 'Breaks, sleeps, tasks, and session limits.');
 

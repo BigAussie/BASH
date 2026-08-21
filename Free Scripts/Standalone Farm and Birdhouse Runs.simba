@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'cba5ca58-c6d2-48bc-b625-f54e300b4760'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '4'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '5'}
 {$DEFINE BASH_FARM_WITH_BIRDHOUSE}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
@@ -334,6 +334,8 @@ begin
   end;
   if Self.DoBHRuns then
     WriteLn(padR('| Next BH: ' + SRL.MsToTime(BASHBirdHouseRunner.ScriptIntervalTimer.TimeRemaining(), TTimeFormat.Time_Short), 36, ' ') + '|');
+  WriteLn('   ', Antiban.BreakScheduleText());
+  WriteLn('   ', Antiban.SleepScheduleText());
   WriteLn('|===================================|');
 end;
 
