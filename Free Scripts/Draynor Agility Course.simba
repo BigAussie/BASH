@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'e03d0524-9b81-4cb9-98f6-d9fe1243c778'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '5'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '6'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -23,7 +23,6 @@ var
   PINGONTERMINATED: Boolean              = True; 
   ENABLEREMOTEINPUT: Boolean             = True;
   TELEPORTMOUSE: Boolean                 = False;
-  RUNELITEMODE: Boolean                  = False;
   OVERRIDEBREAKS: Boolean        = False;
   CUSTOMBREAKINTERVAL: Integer   = 60;
   CUSTOMBREAKDURATION: Integer   = 5;
@@ -64,6 +63,7 @@ Type
     XPGained: Integer;
     LapCount: Integer;
     StartingMarks: Integer;
+    PluginMode: Boolean;
   end;
 
 procedure DraynorAgility.HighlightRect(Rect: TRectangle; Color, Opacity: Integer);
@@ -241,8 +241,8 @@ begin
   WriteLn('    ', Antiban.SleepScheduleText());
   WriteLn('========================================');
   WriteLn('    BigAussies Draynor Roof-Hopper   ');
-  if RUNELITEMODE then
-    WriteLn('           Version: ' + {$MACRO SCRIPT_REVISION} + ' NEON MODE')
+  if Self.PluginMode then
+    WriteLn('           Version: ' + {$MACRO SCRIPT_REVISION} + ' PLUGIN')
   else
     WriteLn('           Version: ' + {$MACRO SCRIPT_REVISION});
   WriteLn('========================================');
@@ -325,7 +325,10 @@ begin
 
   Minimap.WaitPlayerMoving(300, SRL.NormalRange(3000, 4500));
 
-  if RUNELITEMODE then
+  if not Self.PluginMode then
+    Self.DetectAgilityPlugin();
+
+  if Self.PluginMode then
     Finder.Colors += CTS2(1710796, 6, 0.01, 4.44)
   else
     Finder.Colors += CTS2(2207426, 3, 0.03, 0.39);
@@ -373,6 +376,77 @@ begin
   end;
 end;
 
+function DraynorAgility.GetPluginObstacleColor(): TCTS2Color;
+begin
+  Result := CTS2(1823792, 8, 0.26, 3.04);
+end;
+
+function DraynorAgility.DetectAgilityPlugin(): Boolean;
+var
+  TPA: TPointArray;
+begin
+  Result := Self.PluginMode;
+  if Result then
+    Exit;
+
+  if SRL.FindColors(TPA, Self.GetPluginObstacleColor(), MainScreen.Bounds) >= 20 then
+  begin
+    Self.PluginMode := True;
+    WriteLn('[PLUGIN] Agility overlay detected - Plugin mode enabled');
+    Exit(True);
+  end;
+end;
+
+function DraynorAgility.PluginClickPoint(TPA: TPointArray): TPoint;
+var
+  Box: TBox;
+  PadX, PadY: Int32;
+begin
+  Box := TPA.Bounds;
+  PadX := Max(8, (Box.Width * 15) div 100);
+  PadY := Max(8, (Box.Height * 15) div 100);
+
+  if (Box.Width > (PadX * 2) + 2) and (Box.Height > (PadY * 2) + 2) then
+  begin
+    Box := Box.Expand(-PadX, -PadY);
+    Result := SRL.RandomPoint(Box);
+  end
+  else
+    Result := Box.Middle();
+end;
+
+function DraynorAgility.TryFindPluginOverlay(Obs: TObstacle; MSRect: TRectangle): Boolean;
+var
+  TPA: TPointArray;
+  ATPA: T2DPointArray;
+  Finder: TRSObjectFinder;
+  ClickPt: TPoint;
+begin
+  Result := False;
+
+  Finder.Colors := [Self.GetPluginObstacleColor()];
+  Finder.ClusterDistance := 8;
+  Finder.MinShortSide := 6;
+  Finder.MinLongSide := 8;
+
+  ATPA := MainScreen.FindObject(Finder, MSRect.Expand(25).Bounds);
+  if Length(ATPA) < 1 then
+    Exit;
+
+  for TPA in ATPA do
+  begin
+    ClickPt := Self.PluginClickPoint(TPA);
+
+    if TELEPORTMOUSE then
+      Mouse.Teleport(ClickPt)
+    else
+      Mouse.Move(ClickPt);
+
+    if MainScreen.IsUpText(Obs.UpText, 75) then
+      Exit(True);
+  end;
+end;
+
 function DraynorAgility.FindObstacle(Obs: TObstacle): Boolean;
 var
   Pt, Tile: TPoint;
@@ -385,11 +459,21 @@ var
 begin
   if (not RSClient.IsLoggedIn) then Exit(False);
 
+  if not Self.PluginMode then
+    Self.DetectAgilityPlugin();
+
   for Tile in Obs.MMTiles do
   begin
     if WLSettings.RemoteInput.Enabled then
       RSClient.Image.Clear(Mainscreen.Bounds);
     MSRect := Map.GetTileMS(Tile, 0);
+
+    if Self.PluginMode then
+    begin
+      if Self.TryFindPluginOverlay(Obs, MSRect) then
+        Exit(True);
+      Continue;
+    end;
 
     if MainScreen.IsVisible(MSRect.Mean) then
     begin
@@ -555,10 +639,7 @@ begin
     Index   := 0;
     UpText  := ['imb'];
     MMTiles := [[8316, 37315]]; 
-    if RUNELITEMODE then
-      Colors := [CTS2(1164328, 9, 0.27, 1.94), CTS2(1842388, 3, 0.01, 5.92)]
-    else
-      Colors := [CTS2(3428709, 4, 0.08, 0.30)];
+    Colors := [CTS2(3428709, 4, 0.08, 0.30)];
     XP      := 2;
     NextLoc := TIGHTROPE1;
     MaxTime := 7500;
@@ -570,10 +651,7 @@ begin
     Index   := 1;
     UpText  := ['oss'];
     MMTiles := [[8296, 37322]];
-    if RUNELITEMODE then
-      Colors := [CTS2(1164328, 9, 0.27, 1.94), CTS2(1842388, 3, 0.01, 5.92)]
-    else
-      Colors   := [CTS2(3821917, 6, 0.16, 0.11)];
+    Colors   := [CTS2(3821917, 6, 0.16, 0.11)];
     XP      := 8;
     NextLoc := TIGHTROPE2;
     MaxTime := 7500;
@@ -583,10 +661,7 @@ begin
     Index    := 2;
     UpText   := ['oss'];
     MMTiles  := [[8272, 37330]];
-    if RUNELITEMODE then
-      Colors := [CTS2(1164328, 9, 0.27, 1.94), CTS2(1842388, 3, 0.01, 5.92)]
-    else
-      Colors := [CTS2(3821917, 6, 0.16, 0.11)];
+    Colors := [CTS2(3821917, 6, 0.16, 0.11)];
     XP       := 7;
     NextLoc  := NARROWWALL;
     MaxTime  := 7500;
@@ -596,14 +671,9 @@ begin
     Index   := 3;
     UpText  := ['ance']; 
     MMTiles := [[8262, 37374]];
-    if RUNELITEMODE then
-      Colors := [CTS2(1164328, 9, 0.27, 1.94), CTS2(1842388, 3, 0.01, 5.92)]
-    else
-    begin
-      Colors := [CTS2(1776416, 1, 0.01, 0.01)];
-      AngleMin := 40;
-      AngleMax := 83;
-    end;
+    Colors := [CTS2(1776416, 1, 0.01, 0.01)];
+    AngleMin := 40;
+    AngleMax := 83;
     XP      := 7;
     NextLoc := WALL;
     MaxTime := 4500;
@@ -614,8 +684,6 @@ begin
     Index   := 4;
     UpText  := ['ump'];
     MMTiles := [[8256, 37406]];
-    if RUNELITEMODE then
-      Colors := [CTS2(1164328, 9, 0.27, 1.94), CTS2(1842388, 3, 0.01, 5.92)];
     XP      := 10;
     NextLoc := GAP;
     MaxTime := 4500;
@@ -625,8 +693,6 @@ begin
     Index   := 5;
     UpText  := ['ump'];
     MMTiles := [[8284, 37410]];
-    if RUNELITEMODE then
-      Colors := [CTS2(1164328, 9, 0.27, 1.94), CTS2(1842388, 3, 0.01, 5.92)];
     XP      := 4;
     NextLoc := CRATE;
     MaxTime := 3500;
@@ -636,10 +702,7 @@ begin
     Index   := 6;
     UpText  := ['imb'];
     MMTiles := [[8312, 37388]];
-    if RUNELITEMODE then
-      Colors := [CTS2(1164328, 9, 0.27, 1.94), CTS2(1842388, 3, 0.01, 5.92)]
-    else
-      Colors := [CTS2(862515, 2, 0.44, 9.19)];
+    Colors := [CTS2(862515, 2, 0.44, 9.19)];
     XP      := 79;
     NextLoc := FINISH;
     MaxTime := 6000;
@@ -650,6 +713,9 @@ begin
   AddOnTerminate(@Self.Free);
   RunningTime.Start();
   ActiveTimer.Start();
+
+  Self.PluginMode := False;
+  Self.DetectAgilityPlugin();
 end;
 
 procedure DraynorAgility.Run(MaxActions: UInt32; MaxTime: UInt64);
@@ -777,7 +843,7 @@ type
     ActiveNav: TImage;
     ScriptSection, AccountsSection, AntibanSection: TPanel;
 
-    TeleportMouseCheckBox, RuneliteModeCheckBox: TLabeledCheckBox;
+    TeleportMouseCheckBox: TLabeledCheckBox;
     StopAtLevelInputBox: TLabeledEdit;
 
     EnableWebhooksCheckBox, PingOnTerminatedCheckBox: TLabeledCheckBox;
@@ -1009,16 +1075,6 @@ begin
   Self.PingOnTerminatedCheckBox.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
 end;
 
-procedure TConfig.RuneliteModeCheckboxChanged(Sender: TObject);
-begin
-  if Sender = nil then;
-  if Self.RuneliteModeCheckBox.IsChecked() then
-  begin
-    if MessageDlg('Confirmation', 'This mode ONLY supports Runelite 32BIT Client. You must have all plugins disabled except for Agility. The plugins colors must be default. Are you sure you want to enable Runelite mode?', mtConfirmation, [mbYes, mbNo]) = mrNo then
-      Self.RuneliteModeCheckBox.SetChecked(False);
-  end;
-end;
-
 procedure TConfig.OverrideBreaksCheckboxChanged(Sender: TObject);
 begin
   if Sender = nil then;
@@ -1098,7 +1154,6 @@ begin
   ENABLEWEBHOOKS := Self.EnableWebhooksCheckBox.IsChecked();
   PINGONTERMINATED := Self.PingOnTerminatedCheckBox.IsChecked();
   TELEPORTMOUSE := Self.TeleportMouseCheckBox.IsChecked();
-  RUNELITEMODE := Self.RuneliteModeCheckBox.IsChecked();
   STOP_AT_LEVEL := StrToIntDef(Self.StopAtLevelInputBox.GetText(), -1);
   ENABLEREMOTEINPUT := WLSettings.RemoteInput.Enabled;
 
