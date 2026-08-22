@@ -1162,7 +1162,6 @@ begin
   CUSTOMBREAKDURATION := StrToIntDef(Self.CustomBreakDurationInput.GetText(), 5);
 
   WriteINI('Draynor Agility Settings', 'TeleportMouse', BoolToStr(TELEPORTMOUSE, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI('Draynor Agility Settings', 'RuneliteMode', BoolToStr(RUNELITEMODE, 'true', 'false'), 'Configs/BASettings.ini');
   WriteINI('Draynor Agility Settings', 'StopAtLevel', IntToStr(STOP_AT_LEVEL), 'Configs/BASettings.ini');
   WriteINI('Webhook Settings', 'DiscordUID', DiscordUID, 'Configs/BASettings.ini');
   WriteINI('Webhook Settings', 'WebhookURL', WEBHOOKURL, 'Configs/BASettings.ini');
@@ -1189,7 +1188,7 @@ begin
 end;
 
 procedure TConfig.BuildScriptSection(
-  SavedTeleportMouse, SavedRuneliteMode: Boolean;
+  SavedTeleportMouse: Boolean;
   SavedStopAtLevel: Integer
 );
 begin
@@ -1198,11 +1197,7 @@ begin
   Self.AddCheck(Self.ScriptSection, Self.TeleportMouseCheckBox, 'cb_da_teleport_mouse', 'Teleport Mouse mode', 24, 110, SavedTeleportMouse);
   Self.TeleportMouseCheckBox.SetTooltip('Instead of moving the mouse to obstacles the mouse will be teleported.');
 
-  Self.AddCheck(Self.ScriptSection, Self.RuneliteModeCheckBox, 'cb_da_runelite', 'Runelite mode', 24, 150, SavedRuneliteMode);
-  Self.RuneliteModeCheckBox.SetTooltip('Enable or Disable Runelite mode.');
-  Self.RuneliteModeCheckBox.CheckBox.SetOnChange(@Self.RuneliteModeCheckboxChanged);
-
-  Self.AddEdit(Self.ScriptSection, Self.StopAtLevelInputBox, 'le_da_stop_level', 'Stop at Level (-1 = never)', IntToStr(SavedStopAtLevel), 24, 210, DA_GUI_EDIT_W);
+  Self.AddEdit(Self.ScriptSection, Self.StopAtLevelInputBox, 'le_da_stop_level', 'Stop at Level (-1 = never)', IntToStr(SavedStopAtLevel), 24, 150, DA_GUI_EDIT_W);
   Self.StopAtLevelInputBox.Edit.SetOnKeyPress(@Self.StopAtLevelInputBox.Edit.NumberField);
   Self.StopAtLevelInputBox.SetTooltip('Enter -1 to never stop.');
 end;
@@ -1386,7 +1381,7 @@ begin
 end;
 
 procedure TConfig.BuildShell(
-  SavedTeleportMouse, SavedRuneliteMode: Boolean;
+  SavedTeleportMouse: Boolean;
   SavedStopAtLevel: Integer;
   SavedDiscordUID, SavedWebhookURL: String;
   SavedEnableWebhooks, SavedPingOnTerminated: Boolean;
@@ -1483,7 +1478,7 @@ begin
   Self.AntibanSection.SetWidth(mainW);
   Self.AntibanSection.SetHeight(contentH);
 
-  Self.BuildScriptSection(SavedTeleportMouse, SavedRuneliteMode, SavedStopAtLevel);
+  Self.BuildScriptSection(SavedTeleportMouse, SavedStopAtLevel);
   Self.BuildAccountsSection(SavedDiscordUID, SavedWebhookURL, SavedEnableWebhooks, SavedPingOnTerminated);
   Self.BuildAntibanSection(SavedOverrideBreaks, SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime);
 
@@ -1508,7 +1503,7 @@ end;
 procedure TConfig.Run(); override;
 var
   SavedDiscordUID, SavedWebhookURL: String;
-  SavedPingOnTerminated, SavedEnableWebhooks, SavedRemoteInput, SavedTeleportMouse, SavedRuneliteMode: Boolean;
+  SavedPingOnTerminated, SavedEnableWebhooks, SavedRemoteInput, SavedTeleportMouse: Boolean;
   SavedOverrideBreaks: Boolean;
   SavedStopAtLevel, SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime: Integer;
 begin
@@ -1525,7 +1520,6 @@ begin
   SavedPingOnTerminated := StrToBoolDef(ReadINI('Webhook Settings', 'PingOnTerminated', 'Configs/BASettings.ini'), True);
   SavedRemoteInput := StrToBoolDef(ReadINI('WaspLib Settings', 'EnableRemoteInput', 'Configs/BASettings.ini'), False);
   SavedTeleportMouse := StrToBoolDef(ReadINI('Draynor Agility Settings', 'TeleportMouse', 'Configs/BASettings.ini'), False);
-  SavedRuneliteMode := StrToBoolDef(ReadINI('Draynor Agility Settings', 'RuneliteMode', 'Configs/BASettings.ini'), False);
   SavedStopAtLevel := StrToIntDef(ReadINI('Draynor Agility Settings', 'StopAtLevel', 'Configs/BASettings.ini'), -1);
 
   SavedOverrideBreaks := StrToBoolDef(ReadINI(Self.Username + ' Draynor Agility Antiban', 'OverrideBreaks', 'Configs/BASettings.ini'), False);
@@ -1546,7 +1540,7 @@ begin
 
   Self.Setup('BigAussies Draynor RoofHopper', [DA_GUI_W, DA_GUI_H], False);
   Self.BuildShell(
-    SavedTeleportMouse, SavedRuneliteMode, SavedStopAtLevel,
+    SavedTeleportMouse, SavedStopAtLevel,
     SavedDiscordUID, SavedWebhookURL, SavedEnableWebhooks, SavedPingOnTerminated,
     SavedOverrideBreaks, SavedCustomBreakInterval, SavedCustomBreakDuration,
     SavedMaxActions, SavedMaxTime
