@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'cba5ca58-c6d2-48bc-b625-f54e300b4760'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '6'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '7'}
 {$DEFINE BASH_FARM_WITH_BIRDHOUSE}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
@@ -351,6 +351,30 @@ begin
   Result := Self.DoBHRuns and BASHBirdHouseRunner.CanDoBirdHouseRun();
 end;
 
+function TScript.MsUntilNextRun(): Int32;
+var
+  remaining: UInt32;
+begin
+  Result := 5 * ONE_MINUTE;
+
+  if Self.DoFarmRuns then
+  begin
+    remaining := BASHFarmRunner.ReadyTimer.TimeRemaining();
+    if (remaining > 0) and (remaining < Result) then
+      Result := remaining;
+  end;
+
+  if Self.DoBHRuns then
+  begin
+    remaining := BASHBirdHouseRunner.ScriptIntervalTimer.TimeRemaining();
+    if (remaining > 0) and (remaining < Result) then
+      Result := remaining;
+  end;
+
+  if Result < ONE_SECOND then
+    Result := ONE_SECOND;
+end;
+
 procedure TScript.WaitForNext();
 begin
   WriteLn('[BASH Farm+BH] Waiting for next run');
@@ -360,20 +384,23 @@ begin
 
   Self.Report();
 
-  if RSClient.IsLoggedIn() then
-    Logout.ClickLogout();
-
   repeat
+    if RSClient.IsLoggedIn() then
+    begin
+      WriteLn('[BASH Farm+BH] Logging out until next run');
+      Logout.ClickLogout();
+    end;
+
     if Self.DoBHRuns then
       WriteLn('[BASH Farm+BH] Next BH in ' + SRL.MsToTime(BASHBirdHouseRunner.ScriptIntervalTimer.TimeRemaining(), Time_Short));
 
     if Self.DoFarmRuns then
       WriteLn('[BASH Farm+BH] Next farm in ' + SRL.MsToTime(BASHFarmRunner.ReadyTimer.TimeRemaining(), Time_Short));
 
-    Antiban.LoseFocus(300000);
-    Self.DoAntiban();
+    Antiban.LoseFocus(Self.MsUntilNextRun());
   until Self.FarmReady() or Self.BHReady();
 
+  WriteLn('[BASH Farm+BH] Next run ready, logging in');
   if not RSClient.IsLoggedIn() then
     Login.LoginPlayer();
 end;
@@ -468,7 +495,10 @@ begin
           Self.Report();
         end;
       EState.WAIT_FOR_NEXT:
-        Self.WaitForNext();
+        begin
+          Self.WaitForNext();
+          Continue;
+        end;
     end;
 
     Self.DoAntiban();

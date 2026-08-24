@@ -1,5 +1,5 @@
 {$DEFINE SCRIPT_ID := 'bfde3085-80dc-4bd6-870a-8cb3186a938c'}
-{$DEFINE SCRIPT_REVISION := '36'}
+{$DEFINE SCRIPT_REVISION := '38'}
 
 {.$DEFINE DEVELOPER_MODE}
 
@@ -3957,7 +3957,7 @@ begin
             'metronome.tickVolume=96' + LineEnding +
             'prayer.prayerBarHideIfNotPraying=true' + LineEnding +
             'worldmap.runecraftingAltarIcon=true' + LineEnding +
-            'entityhider.hidePlayers=true' + LineEnding +
+            'entityhider.hidePlayers=false' + LineEnding +
             'totem-fletching.entTrailColor=-1769482' + LineEnding +
             'runecraft.showSoul=true' + LineEnding +
             'timers.showSpellbookSwap=true' + LineEnding +
@@ -4492,6 +4492,8 @@ begin
             'driftnet.tagAnnette=true' + LineEnding +
             'itemCharge.showWateringCanCharges=true' + LineEnding +
             'runelite.totemfletchingplugin=true' + LineEnding +
+            'runelite.woodcuttingplugin=true' + LineEnding +
+            'runelite.entityhiderplugin=true' + LineEnding +
             'entityhider.hideNPCs=false' + LineEnding +
             'itemCharge.expeditiousNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
             'loottracker.showRaidsLootValue=true' + LineEnding +
@@ -4937,7 +4939,7 @@ begin
             'metronome.tockVolume=0' + LineEnding +
             'grounditems.ownershipFilterMode=ALL' + LineEnding +
             'itemidentification.identificationType=SHORT' + LineEnding +
-            'entityhider.hidePlayers2D=true' + LineEnding +
+            'entityhider.hidePlayers2D=false' + LineEnding +
             'slayer.infobox=true' + LineEnding +
             'totem-fletching.totemFillAlpha=80' + LineEnding +
             'objectindicators.highlightClickbox=false' + LineEnding +
@@ -4977,7 +4979,7 @@ begin
             'implings.showspawn=false' + LineEnding +
             'grounditems.itemHighlightMode=BOTH' + LineEnding +
             'nightmareZone.absorptioncoloroverthreshold=-256' + LineEnding +
-            'entityhider.hideRandomEvents=false' + LineEnding +
+            'entityhider.hideRandomEvents=true' + LineEnding +
             'randomevents.notifyFlippa={"enabled"\:false,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
             'keyremapping.down=83\:0' + LineEnding +
             'itemCharge.showSackCharges=true' + LineEnding +
