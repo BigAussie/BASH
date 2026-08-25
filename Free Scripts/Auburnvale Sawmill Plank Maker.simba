@@ -1,0 +1,1415 @@
+{$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'c8e4a1b7-3f26-4d9e-a5c0-1b7e9d4f2a86'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '2'}
+{$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
+{$DEFINE BASH_FARM_WITH_BIRDHOUSE}
+{$I SRL-B/osr.simba}
+{$I BashLib/osr.simba}
+{$I BashLib/optional/handlers/discord.simba}
+{$I BashLib/optional/handlers/aichat.simba}
+{$I BashLib/optional/handlers/bashbirdhouse/bashbirdhouserunner.simba}
+{$I BashLib/optional/handlers/bashfarm/bashfarmrunner.simba}
+{$SCOPEDENUMS OFF}
+{$IFDEF SCRIPT_GUI}
+{$I BashLib/optional/handlers/bashgui.simba}
+{$ENDIF}
+
+{
+----------------------------------------------------------------------------------
+~~~ Need Support? Contact Me ~~~
+Website: https://bashscripts.shop/
+Discord Server: https://discord.gg/qsmKs5uKfR
+Email: thebigaussie@proton.me
+Github: https://github.com/BigAussie/BASH
+----------------------------------------------------------------------------------
+}
+
+var
+  BANKRETURNMETHOD: String     = 'Runes';
+  SCRIPTMODE: String           = 'Fast';
+
+type
+  EMillState = (
+    STATE_LOGIN,
+    STATE_LEVEL_UP,
+    STATE_SIDE_RUNS,
+    STATE_OPEN_BOOTH,
+    STATE_RESTOCK,
+    STATE_WALK_OPERATOR,
+    STATE_CONVERT_LOGS
+  );
+
+  AuburnvalePlankMaker = record(TBaseBankScript)
+    CurrentState: EMillState;
+    RunningTime, ActiveTimer, ActivityTimer: TStopwatch;
+    WorldList: TIntegerArray;
+    MillOperator: TRSNPCV2;
+    LogName, PlankName: TRSItem;
+    CoinFee: Int32;
+    PlanksMade, PlankGoal: Int32;
+    BankAttempts: Integer;
+    ForceRestock: Boolean;
+    FarmRunInProgress: Boolean;
+    BirdhouseRunInProgress: Boolean;
+    LastSystemUpdateCheck: UInt64;
+    LastReportAt: UInt64;
+  end;
+
+  TConfig = record(TBASHPremiumGUI)
+    LogsOpt: TLabeledCombobox;
+    ModeOpt: TLabeledCombobox;
+    BankReturnMethodCombo: TLabeledComboBox;
+    MaxPlanksInput: TLabeledEdit;
+    SavedLogsIndex: Int32;
+  end;
+  TScriptGUI = TConfig;
+
+var
+  MillRun: AuburnvalePlankMaker;
+
+{$IFDEF SCRIPT_GUI}
+var
+  Config: TConfig;
+{$ENDIF}
+
+const
+  BA_SETTINGS_FILE = 'Configs/BASettings.ini';
+  BA_ASP_SETTINGS = ' Auburnvale Sawmill Settings';
+  BA_ASP_ANTIBAN = ' Auburnvale Sawmill Antiban';
+
+  ASP_AUBURNVALE_REGION: TBox = [20, 53, 28, 46];
+  ASP_TOWN_BOX: TBox = [1280, 36850, 1860, 37400];
+  ASP_CIVITAS_BOX: TBox = [2572, 37822, 2756, 37930];
+  ASP_MILL_TILE: TPoint = [1484, 36954];
+  ASP_MILL_WALK_BOX: TBox = [1480, 36966, 1496, 36994];
+  ASP_MILL_FIND_BOX: TBox = [1452, 36934, 1520, 36974];
+  ASP_BANK_HUB: TPoint = [1552, 37018];
+  ASP_MILL_PANTS_COLOR: TCTS2Color = [10794178, 6, 0.05, 0.47]; // CTS2(10794178, 6, 0.05, 0.47)
+  ASP_MILL_BODY_COLOR: TCTS2Color = [3641523, 5, 0.04, 0.31]; // CTS2(3641523, 5, 0.04, 0.31)
+  ASP_MILL_PAIR_DIST = 30;
+  ASP_MILL_UPTEXT_COLOR: TCTS2Color = [841175, 10, 0.09, 1.94]; // CTS2(841175, 10, 0.09, 1.94)
+  ASP_MILL_UPTEXT_BOX: TBox = [139, 3, 202, 15];
+  ASP_MILL_UPTEXT: TStringArray = ['erator'];
+  ASP_MILL_OPTIONS: TStringArray = ['Buy-plank'];
+  ASP_MODE_CHOICES: TStringArray = ['Fast', 'Normal'];
+  ASP_KEEP_ITEMS: TRSItemArray = [
+    'Coins',
+    'Coin pouch',
+    'Sawmill coupon (wood plank)',
+    'Sawmill coupon (oak plank)',
+    'Sawmill voucher'
+  ];
+  ASP_LOG_CHOICES: TStringArray = [
+    'Logs',
+    'Oak logs',
+    'Teak logs',
+    'Mahogany logs',
+    'Camphor logs',
+    'Ironwood logs',
+    'Rosewood logs'
+  ];
+  ASP_PLANK_CHOICES: TStringArray = [
+    'Plank',
+    'Oak plank',
+    'Teak plank',
+    'Mahogany plank',
+    'Camphor plank',
+    'Ironwood plank',
+    'Rosewood plank'
+  ];
+  ASP_COIN_FEES: TIntegerArray = [100, 250, 500, 1500, 2500, 5000, 7500];
+  ASP_RETURN_METHODS: TStringArray = [
+    'Runes',
+    'Basic quetzal whistle',
+    'Enhanced quetzal whistle',
+    'Perfected quetzal whistle',
+    'Perfected quetzal whistle(i)'
+  ];
+
+function CurrentLoginName(): String;
+begin
+  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
+    Result := 'NoUserNameSelected'
+  else
+    Result := Login.Players[Login.PlayerIndex].User;
+end;
+
+function MillReturnUsesWhistle(Method: String): Boolean;
+var
+  i: Int32;
+begin
+  if SameText(Method, 'Quetzal') or SameText(Method, 'Quetzal whistle') then
+    Exit(True);
+
+  for i := 0 to High(ASP_RETURN_METHODS) do
+    if SameText(ASP_RETURN_METHODS[i], Method) then
+      Exit(not SameText(Method, 'Runes'));
+
+  Result := False;
+end;
+
+function PickReturnMethodIndex(Method: String): Int32;
+var
+  i: Int32;
+begin
+  if SameText(Method, 'Quetzal') or SameText(Method, 'Quetzal whistle') then
+    Method := 'Perfected quetzal whistle';
+
+  for i := 0 to High(ASP_RETURN_METHODS) do
+    if SameText(ASP_RETURN_METHODS[i], Method) then
+      Exit(i);
+
+  Result := 0;
+end;
+
+function PickModeIndex(Mode: String): Int32;
+var
+  i: Int32;
+begin
+  for i := 0 to High(ASP_MODE_CHOICES) do
+    if SameText(ASP_MODE_CHOICES[i], Mode) then
+      Exit(i);
+
+  Result := 0;
+end;
+
+function MillModeIsFast(): Boolean;
+begin
+  Result := not SameText(SCRIPTMODE, 'Normal');
+end;
+
+function ProductIndexOf(LogChoice: String): Int32;
+var
+  i: Int32;
+begin
+  Result := 1;
+  for i := 0 to High(ASP_LOG_CHOICES) do
+    if SameText(ASP_LOG_CHOICES[i], LogChoice) then
+      Exit(i);
+end;
+
+procedure ApplyChosenProduct(LogChoice: String);
+var
+  idx: Int32;
+begin
+  idx := ProductIndexOf(LogChoice);
+  MillRun.LogName := ASP_LOG_CHOICES[idx];
+  MillRun.PlankName := ASP_PLANK_CHOICES[idx];
+  MillRun.CoinFee := ASP_COIN_FEES[idx];
+end;
+
+procedure BurstCoinPouch();
+begin
+  if not Inventory.ContainsItem('Coin pouch') then
+    Exit;
+  Inventory.ClickItem('Coin pouch', 'Open-all');
+  WaitUntil(not Inventory.ContainsItem('Coin pouch'), 80, 4000);
+end;
+
+function EnsurePlayerLoggedIn(): Boolean;
+begin
+  Result := RSClient.IsLoggedIn();
+  if Result then
+    Exit;
+  if not Login.LoginPlayer() then
+    TerminateScript('Could not log in player');
+  Result := True;
+end;
+
+{$IFDEF SCRIPT_GUI}
+procedure TConfig.InitGUI(); override;
+begin
+  Self.BrandTitle := 'Auburnvale Mill';
+  Self.WindowTitle := 'BigAussies Auburnvale Sawmill';
+  Self.WebhookTestPrefix := 'Test message from BigAussies Auburnvale Sawmill';
+  Self.HasFarm := True;
+  Self.HasAIChat := True;
+  Self.LegacyAntibanSection := BA_ASP_ANTIBAN;
+end;
+
+procedure TConfig.SetupAIChat(); override;
+begin
+  inherited;
+  AIChatbot.SetScriptDefaults('auburnvale sawmill plank maker');
+end;
+
+procedure TConfig.LoadActionSettings(); override;
+begin
+  Self.SavedLogsIndex := StrToIntDef(ReadINI(Self.Username + BA_ASP_SETTINGS, 'LogsOptIndex', BA_SETTINGS_FILE), 1);
+  ENABLEFARMRUNS := StrToBoolDef(ReadINI(Self.Username + BA_ASP_SETTINGS, 'EnableFarmRuns', BA_SETTINGS_FILE), False);
+  BIRDHOUSEENABLED := StrToBoolDef(ReadINI(Self.Username + BA_ASP_SETTINGS, 'EnableBirdhouseRuns', BA_SETTINGS_FILE), False);
+  BANKRETURNMETHOD := ReadINI(Self.Username + BA_ASP_SETTINGS, 'BankReturnMethod', BA_SETTINGS_FILE);
+  if BANKRETURNMETHOD = '' then
+    BANKRETURNMETHOD := 'Runes';
+  SCRIPTMODE := ReadINI(Self.Username + BA_ASP_SETTINGS, 'ScriptMode', BA_SETTINGS_FILE);
+  if SCRIPTMODE = '' then
+    SCRIPTMODE := 'Fast';
+end;
+
+procedure TConfig.BuildActionSection(); override;
+begin
+  Self.AddHeader(Self.ActionSection, 'Sawmill', 'Choose logs to convert');
+
+  Self.AddCombo(Self.ActionSection, Self.LogsOpt, 'lcb_asp_logs', 'Logs to convert', 24, 110, ASP_LOG_CHOICES, Self.SavedLogsIndex);
+  Self.AddEdit(Self.ActionSection, Self.MaxPlanksInput, 'le_asp_plankgoal', 'Planks to make (0 = unlimited)',
+    ReadINI(Self.Username + BA_ASP_SETTINGS, 'PlankGoal', BA_SETTINGS_FILE), 24, 180, BASH_GUI_EDIT_W);
+  if Trim(Self.MaxPlanksInput.GetText()) = '' then
+    Self.MaxPlanksInput.SetText('0');
+  Self.MaxPlanksInput.Edit.SetOnKeyPress(@Self.MaxPlanksInput.Edit.NumberField);
+
+  Self.AddCombo(Self.ActionSection, Self.ModeOpt, 'lcb_asp_mode', 'Script mode',
+    24, 250, ASP_MODE_CHOICES, PickModeIndex(ReadINI(Self.Username + BA_ASP_SETTINGS, 'ScriptMode', BA_SETTINGS_FILE)));
+  Self.ModeOpt.SetTooltip('Fast can miss sometimes but overall is still faster and smoother depending on computer.');
+
+  Self.AddSideRunChecks(300);
+  Self.AddCombo(Self.ActionSection, Self.BankReturnMethodCombo, 'lcb_asp_bank_return', 'Bank return method',
+    BASH_GUI_COL2, 300, ASP_RETURN_METHODS, PickReturnMethodIndex(BANKRETURNMETHOD));
+  Self.BankReturnMethodCombo.SetTooltip('How farm and birdhouse runs return to Auburnvale. Runes: Civitas then Renu. Whistle: Quetzal whistle.');
+  Self.SideRunReturnCombo := Self.BankReturnMethodCombo;
+end;
+
+procedure TConfig.ApplyActionSettings(); override;
+begin
+  ApplyChosenProduct(Self.GetSelectedString(Self.LogsOpt));
+  SCRIPTMODE := Trim(Self.GetSelectedString(Self.ModeOpt));
+  if SCRIPTMODE = '' then
+    SCRIPTMODE := 'Fast';
+  MillRun.PlankGoal := StrToIntDef(Self.MaxPlanksInput.GetText(), 0);
+
+  WriteINI(Self.Username + BA_ASP_SETTINGS, 'LogsOpt', Self.GetSelectedString(Self.LogsOpt), BA_SETTINGS_FILE);
+  WriteINI(Self.Username + BA_ASP_SETTINGS, 'LogsOptIndex', IntToStr(Self.LogsOpt.GetItemIndex()), BA_SETTINGS_FILE);
+  WriteINI(Self.Username + BA_ASP_SETTINGS, 'ScriptMode', SCRIPTMODE, BA_SETTINGS_FILE);
+  WriteINI(Self.Username + BA_ASP_SETTINGS, 'ScriptModeIndex', IntToStr(Self.ModeOpt.GetItemIndex()), BA_SETTINGS_FILE);
+  WriteINI(Self.Username + BA_ASP_SETTINGS, 'PlankGoal', IntToStr(MillRun.PlankGoal), BA_SETTINGS_FILE);
+
+  if Assigned(Self.EnableFarmRunsCheckBox) then
+    ENABLEFARMRUNS := Self.EnableFarmRunsCheckBox.IsChecked();
+  if Assigned(Self.EnableBirdhouseRunsCheckBox) then
+    BIRDHOUSEENABLED := Self.EnableBirdhouseRunsCheckBox.IsChecked();
+  if Assigned(Self.BankReturnMethodCombo) then
+  begin
+    BANKRETURNMETHOD := Trim(Self.GetSelectedString(Self.BankReturnMethodCombo));
+    if BANKRETURNMETHOD = '' then
+      BANKRETURNMETHOD := 'Runes';
+  end;
+
+  WriteINI(Self.Username + BA_ASP_SETTINGS, 'EnableFarmRuns', BoolToStr(ENABLEFARMRUNS, 'true', 'false'), BA_SETTINGS_FILE);
+  WriteINI(Self.Username + BA_ASP_SETTINGS, 'EnableBirdhouseRuns', BoolToStr(BIRDHOUSEENABLED, 'true', 'false'), BA_SETTINGS_FILE);
+  WriteINI(Self.Username + BA_ASP_SETTINGS, 'BankReturnMethod', BANKRETURNMETHOD, BA_SETTINGS_FILE);
+
+  WriteLn('Settings saved:');
+  WriteLn('Logs: ', MillRun.LogName);
+  WriteLn('Planks: ', MillRun.PlankName);
+  WriteLn('Script mode: ', SCRIPTMODE);
+  WriteLn('Enable Farm Runs: ', ToStr(ENABLEFARMRUNS));
+  WriteLn('Enable Birdhouse Runs: ', ToStr(BIRDHOUSEENABLED));
+  WriteLn('Bank return method: ', BANKRETURNMETHOD);
+end;
+
+{$IFDEF SCRIPT_GUI}
+{$I BashLib/optional/handlers/bashgui_host_scriptgui.simba}
+{$ENDIF}
+
+{$ENDIF}
+
+procedure OnBreakStart(Task: PBreakTask);
+var
+  T: PBreakTask;
+begin
+  T := Task;
+  MillRun.ActivityTimer.Pause();
+  MillRun.ActiveTimer.Pause();
+end;
+
+procedure OnBreakFinish(Task: PBreakTask);
+var
+  T: PBreakTask;
+begin
+  T := Task;
+  MillRun.ActivityTimer.Resume();
+  MillRun.ActiveTimer.Resume();
+end;
+
+procedure OnSleepStart(Task: PSleepTask);
+var
+  T: PSleepTask;
+begin
+  T := Task;
+  MillRun.ActivityTimer.Pause();
+  MillRun.ActiveTimer.Pause();
+end;
+
+procedure OnSleepFinish(Task: PSleepTask);
+var
+  T: PSleepTask;
+begin
+  T := Task;
+  MillRun.ActivityTimer.Resume();
+  MillRun.ActiveTimer.Resume();
+end;
+
+procedure TAntiban.Setup(); override;
+begin
+  Self.Skills := [ERSSkill.CONSTRUCTION, ERSSkill.TOTAL];
+  Self.MinZoom := 0;
+  Self.MaxZoom := 20;
+
+  Self.OnStartBreak := @OnBreakStart;
+  Self.OnFinishBreak := @OnBreakFinish;
+  Self.OnStartSleep := @OnSleepStart;
+  Self.OnFinishSleep := @OnSleepFinish;
+
+  inherited;
+
+  if OVERRIDEBREAKS then
+  begin
+    WriteLn('[ANTIBAN] Custom break override enabled');
+    Self.Breaks := [];
+    Self.AddBreak(CUSTOMBREAKINTERVAL * ONE_MINUTE, CUSTOMBREAKDURATION * ONE_MINUTE, 0.33, 0.15);
+  end;
+end;
+
+function TBaseScript.DoAntiban(checkBreaks: Boolean = True; checkSleeps: Boolean = True): Boolean; override;
+begin
+  MillRun.ActivityTimer.Pause();
+  MillRun.ActiveTimer.Pause();
+
+  Antiban.DismissRandom();
+  Self.TimeRunning.Pause();
+  Self.OnAntiban := True;
+
+  checkBreaks := checkBreaks and (WLSettings.GetObject('antiban').getBoolean('breaks') or OVERRIDEBREAKS);
+  checkSleeps := checkSleeps and WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('enabled');
+
+  if WLSettings.GetObject('antiban').getJSONObject('tasks').getBoolean('enabled') or checkBreaks or checkSleeps then
+    Result := Antiban.DoAntiban(checkBreaks, checkSleeps);
+
+  Self.TimeRunning.Resume();
+  Self.OnAntiban := False;
+
+  if not RSClient.IsLoggedIn() then
+  begin
+    if Length(MillRun.WorldList) > 0 then
+      Login.SwitchToWorld(MillRun.WorldList[Random(0, High(MillRun.WorldList))]);
+    Login.LoginPlayer();
+  end;
+
+  MillRun.ActivityTimer.Resume();
+  MillRun.ActiveTimer.Resume();
+end;
+
+procedure AuburnvalePlankMaker.PrintProgress();
+var
+  elapsed: Int64;
+  hours: Double;
+  report: TStringArray;
+  i: Int32;
+begin
+  elapsed := Self.RunningTime.ElapsedTime();
+  hours := Max(elapsed / 3600000, 0.0001);
+
+  WriteLn('========================================');
+  WriteLn('     B.A.S.H Auburnvale Sawmill         ');
+  WriteLn('========================================');
+  WriteLn('   Runtime: ', SRL.MsToTime(elapsed, Time_Short));
+  WriteLn('   Mode: ', SCRIPTMODE);
+  WriteLn('   Making: ', Self.PlankName, ' from ', Self.LogName);
+  WriteLn('   Planks made: ', IntToStr(Self.PlanksMade));
+  WriteLn('   Planks/Hr: ', IntToStr(Round(Self.PlanksMade / hours)));
+  WriteLn('   ', Antiban.BreakScheduleText());
+  WriteLn('   ', Antiban.SleepScheduleText());
+  WriteLn('========================================');
+  WriteLn('    Revision: ' + {$MACRO SCRIPT_REVISION});
+  WriteLn('========================================');
+
+  if ENABLEFARMRUNS then
+  begin
+    report := BASHFarmRunner.GetReportStrings();
+    for i := 0 to High(report) do
+      WriteLn(report[i]);
+  end;
+
+  if BIRDHOUSEENABLED then
+  begin
+    report := BASHBirdHouseRunner.GetReportStrings();
+    for i := 0 to High(report) do
+      WriteLn(report[i]);
+  end;
+
+  Self.LastReportAt := GetTickCount();
+end;
+
+procedure AuburnvalePlankMaker.WatchForServerReset();
+var
+  chatText: String;
+begin
+  if (GetTickCount() - Self.LastSystemUpdateCheck) < 30000 then
+    Exit;
+
+  Self.LastSystemUpdateCheck := GetTickCount();
+  chatText := Chat.GetChat();
+  if chatText.Contains('System update in') then
+  begin
+    WriteLn('[FAILSAFE] System update detected - logging out');
+    Logout.ClickLogout();
+    TerminateScript('System update - safe logout completed');
+  end;
+end;
+
+procedure AuburnvalePlankMaker.ApplyWalkerDefaults();
+begin
+  BASHRebindMap(False);
+  Self.BindTownBanks();
+  Map.Walker.FancyMouse := False;
+  Map.Walker.ClickRandomness := 2;
+  Map.Walker.MinEnergy := 28;
+end;
+
+procedure AuburnvalePlankMaker.BindTownBanks();
+var
+/// Load north/west only.
+  i, j: Int32;
+  mapObj: PRSMapObject;
+  p, north, west: TPoint;
+  cluster, kept: TPointArray;
+  keptRots, rots: TSingleArray;
+  isObj, keepPt: Boolean;
+begin
+  Banks.MapObjects := [];
+  Banks.ObjectsCache := [];
+  Banks.NPCsCache := [];
+  Banks._SetupMapObjects();
+
+  SetLength(cluster, 0);
+  for i := 0 to High(Banks.MapObjects) do
+  begin
+    mapObj := Banks.MapObjects[i];
+    for j := 0 to High(mapObj^.Coordinates) do
+    begin
+      p := mapObj^.Coordinates[j];
+      if p.DistanceTo(ASP_BANK_HUB) <= 16 then
+        cluster += p;
+    end;
+  end;
+
+  if Length(cluster) = 0 then
+  begin
+    for i := High(Banks.MapObjects) downto 0 do
+    begin
+      mapObj := Banks.MapObjects[i];
+      for j := High(mapObj^.Coordinates) downto 0 do
+        if mapObj^.Coordinates[j].DistanceTo(ASP_BANK_HUB) > 16 then
+        begin
+          Delete(mapObj^.Coordinates, j, 1);
+          if (mapObj^.MapObjectType = ERSMapObjectType.OBJ) and (j <= High(PRSObjectV2(mapObj)^.Rotations)) then
+            Delete(PRSObjectV2(mapObj)^.Rotations, j, 1);
+        end;
+      if Length(mapObj^.Coordinates) = 0 then
+        Delete(Banks.MapObjects, i, 1);
+    end;
+    Exit;
+  end;
+
+  north := cluster[0];
+  west := cluster[0];
+  for j := 1 to High(cluster) do
+  begin
+    if cluster[j].Y > north.Y then
+      north := cluster[j];
+    if cluster[j].X < west.X then
+      west := cluster[j];
+  end;
+
+  for i := High(Banks.MapObjects) downto 0 do
+  begin
+    mapObj := Banks.MapObjects[i];
+    isObj := mapObj^.MapObjectType = ERSMapObjectType.OBJ;
+    if isObj then
+      rots := PRSObjectV2(mapObj)^.Rotations;
+
+    SetLength(kept, 0);
+    SetLength(keptRots, 0);
+    for j := 0 to High(mapObj^.Coordinates) do
+    begin
+      p := mapObj^.Coordinates[j];
+      keepPt := ((p.X = north.X) and (p.Y = north.Y)) or
+                ((p.X = west.X) and (p.Y = west.Y));
+      if not keepPt then
+        Continue;
+      kept += p;
+      if isObj and (j <= High(rots)) then
+        keptRots += rots[j];
+    end;
+
+    mapObj^.Coordinates := kept;
+    if isObj then
+      PRSObjectV2(mapObj)^.Rotations := keptRots;
+    if Length(mapObj^.Coordinates) = 0 then
+      Delete(Banks.MapObjects, i, 1);
+  end;
+end;
+
+procedure AuburnvalePlankMaker.BindTownTargets();
+begin
+  Self.MillOperator := [];
+  Self.MillOperator.SetupEx(6, [1, 1, 6], [ASP_MILL_TILE]);
+  Self.MillOperator.SetupUpText(ASP_MILL_UPTEXT);
+  Self.MillOperator.Finder := [];
+  Self.MillOperator.Finder.ColorClusters += [
+    ASP_MILL_BODY_COLOR,
+    ASP_MILL_PANTS_COLOR,
+    ASP_MILL_PAIR_DIST
+  ];
+  Self.MillOperator.Finder.ClusterDistance := 8;
+  Self.MillOperator.Filter.Finder := True;
+  Self.MillOperator.TrackTarget := True;
+  Self.MillOperator.Walker := @Map.Walker;
+end;
+
+procedure AuburnvalePlankMaker.LoadTownMap();
+var
+  chunks: array of TRSMapChunk;
+  vale: TRSMapChunk;
+begin
+  SetLength(chunks, 0);
+
+  vale.Chunk := ASP_AUBURNVALE_REGION;
+  vale.Planes := [0];
+  chunks += vale;
+
+  if ENABLEFARMRUNS then
+    BASHAppendChunks(chunks, BASHFarmRunner.CollectChunks());
+  if BIRDHOUSEENABLED then
+    BASHAppendChunks(chunks, BASHBirdHouseRunner.CollectChunks());
+
+  WriteLn('[MAP] Setup: ', Length(chunks), ' region(s). This can take a few minutes');
+  Map.SetupChunks(chunks, 8);
+  Self.ApplyWalkerDefaults();
+end;
+
+procedure AuburnvalePlankMaker.RefreshTownAfterTravel();
+begin
+  Self.ApplyWalkerDefaults();
+  Self.BindTownTargets();
+end;
+
+function AuburnvalePlankMaker.OpenTownBank(): Boolean;
+var
+  mapObj: PRSMapObject;
+begin
+  Inc(Self.BankAttempts);
+  BurstCoinPouch();
+
+  if Bank.IsOpen() or BankPin.IsOpen() then
+    Exit(True);
+
+  Self.BindTownBanks();
+  mapObj := Banks.GetClosest();
+  if (mapObj = nil) or (Length(mapObj^.Coordinates) = 0) then
+    Exit(False);
+
+  if not MillModeIsFast() then
+    Exit(Banks.WalkOpen(mapObj));
+
+  Self.ClickOnceTowardBank();
+
+  Result := mapObj^.WalkClick() or
+            (MainScreen.IsUpText('Bank') and ChooseOption.Select(['Bank B', 'Bank E']));
+  if not Result then
+    Exit;
+
+  Minimap.WaitMoving();
+  Result := WaitUntil(Bank.IsOpen() or BankPin.IsOpen(), 300, 3000);
+end;
+
+function AuburnvalePlankMaker.OpenBoothForRun(): Boolean;
+var
+  bankTimeout: TCountdown;
+begin
+  Result := Bank.IsOpen() or BankPin.IsOpen();
+  if Result then
+    Exit(True);
+
+  bankTimeout.Init(45000);
+  while (not bankTimeout.IsFinished()) and (not Bank.IsOpen()) and (not BankPin.IsOpen()) do
+  begin
+    if RSInterface.IsOpen() and (not Bank.IsOpen()) and (not BankPin.IsOpen()) then
+      RSInterface.Close();
+
+    if Self.OpenTownBank() then
+      Break;
+
+    if WaitUntil(Bank.IsOpen() or BankPin.IsOpen(), 80, 1200) then
+      Break;
+  end;
+
+  Result := Bank.IsOpen() or BankPin.IsOpen();
+end;
+
+function AuburnvalePlankMaker.PullWhistleForReturn(): Boolean;
+var
+  item: TRSItem;
+begin
+  Result := False;
+
+  for item in QUETZAL_WHISTLES do
+  begin
+    if not SameText(BANKRETURNMETHOD, item) then
+      Continue;
+    if Inventory.ContainsItem(item) then
+      Exit(True);
+    WriteLn('[RETURN] Withdrawing ', item);
+    if Bank.WithdrawItem([item, 1, False], False) and
+       WaitUntil(Inventory.ContainsItem(item), 65, 3000) then
+      Exit(True);
+    WriteLn('[RETURN] ERROR: Could not withdraw ', item);
+    Exit(False);
+  end;
+
+  for item in QUETZAL_WHISTLES do
+    if Inventory.ContainsItem(item) then
+      Exit(True);
+
+  for item in QUETZAL_WHISTLES do
+  begin
+    WriteLn('[RETURN] Withdrawing ', item);
+    if Bank.WithdrawItem([item, 1, False], False) and
+       WaitUntil(Inventory.ContainsItem(item), 65, 3000) then
+      Exit(True);
+  end;
+
+  WriteLn('[RETURN] ERROR: No quetzal whistle found');
+end;
+
+procedure AuburnvalePlankMaker.TravelHomeByBird(returnMethod: String);
+const
+  TELEPORT_WAIT = 10000;
+  TELEPORT_TRIES = 3;
+var
+  tries: Int32;
+  reached: Boolean;
+begin
+  if Map.Position.InBox(ASP_TOWN_BOX) then
+  begin
+    WriteLn('[RETURN] Already in Auburnvale');
+    Exit;
+  end;
+
+  Quetzal.EnsureRenu();
+
+  if MillReturnUsesWhistle(returnMethod) then
+  begin
+    WriteLn('[RETURN] Quetzal whistle to Auburnvale');
+    if not Quetzal.TravelFromWhistle(EQuetzalLanding.AUBURNVALE) then
+      TerminateScript('Quetzal whistle travel failure - unable to return to Auburnvale');
+    Exit;
+  end;
+
+  reached := False;
+  for tries := 1 to TELEPORT_TRIES do
+  begin
+    if Magic.CastSpell(ERSSpell.CIVITAS_ILLA_FORTIS_TELEPORT) then
+    begin
+      if WaitUntil(Map.Position.InBox(ASP_CIVITAS_BOX), 65, TELEPORT_WAIT) then
+      begin
+        reached := True;
+        Break;
+      end;
+    end;
+  end;
+
+  if not reached then
+    TerminateScript('Teleport failure - unable to return');
+
+  if not Quetzal.TravelFromRenu(EQuetzalLanding.AUBURNVALE) then
+    TerminateScript('Quetzal Renu travel failure - unable to return to Auburnvale');
+end;
+
+procedure AuburnvalePlankMaker.FinishRunAtBooth();
+const
+  MAX_BANK_ATTEMPTS = 5;
+var
+  bankAttempts, I: Int32;
+  bankSuccess: Boolean;
+begin
+  bankSuccess := Bank.IsOpen() or BankPin.IsOpen();
+
+  if not bankSuccess then
+  begin
+    for bankAttempts := 1 to MAX_BANK_ATTEMPTS do
+    begin
+      Self.OpenTownBank();
+      if Bank.IsOpen() or BankPin.IsOpen() then
+      begin
+        bankSuccess := True;
+        Break;
+      end;
+      if bankAttempts < MAX_BANK_ATTEMPTS then
+        Antiban.RandomRotate();
+    end;
+  end;
+
+  if not bankSuccess then
+  begin
+    WriteLn('[RUN] ERROR: Failed to open booth after run');
+    Self.ForceRestock := True;
+    Exit;
+  end;
+
+  Bank.DepositAll();
+  WaitUntil(Inventory.CountEmptySlots() = 28, 65, 5000);
+  Self.ForceRestock := True;
+  Self.BankAttempts := 0;
+
+  for I := 0 to High(Antiban.tasks) do
+    Antiban.Tasks[I].Countdown.Resume;
+end;
+
+function TBASHFarmRunner.OnStart(): Boolean; override;
+var
+  I: Int32;
+  useWhistle: Boolean;
+begin
+  for I := 0 to High(Antiban.tasks) do
+    Antiban.Tasks[I].Countdown.Pause;
+
+  useWhistle := MillReturnUsesWhistle(BANKRETURNMETHOD);
+
+  if not MillRun.OpenBoothForRun() then
+  begin
+    WriteLn('[FARM] Error: Could not open bank');
+    Exit(False);
+  end;
+
+  if useWhistle then
+  begin
+    Self.ExtraRuneNames := [];
+    Self.ExtraRuneQtys := [];
+  end
+  else
+  begin
+    Self.ExtraRuneNames := ['Fire rune', 'Earth rune', 'Law rune'];
+    Self.ExtraRuneQtys := [1, 1, 2];
+  end;
+
+  Result := inherited;
+
+  if useWhistle then
+  begin
+    if not Bank.IsOpen() then
+      MillRun.OpenBoothForRun();
+    if Bank.IsOpen() then
+    begin
+      if not MillRun.PullWhistleForReturn() then
+        WriteLn('[FARM] WARNING: Could not withdraw quetzal whistle');
+      Bank.Close();
+      WaitUntil(not Bank.IsOpen(), 65, 5000);
+    end;
+  end;
+end;
+
+procedure TBASHFarmRunner.OnComplete(); override;
+begin
+  WriteLn('[FARM] Returning to Auburnvale');
+  MillRun.TravelHomeByBird(BANKRETURNMETHOD);
+  MillRun.RefreshTownAfterTravel();
+  MillRun.FinishRunAtBooth();
+  inherited;
+end;
+
+function TBASHBirdHouseRunner.OnStart(): Boolean; override;
+var
+  I: Int32;
+begin
+  for I := 0 to High(Antiban.tasks) do
+    Antiban.Tasks[I].Countdown.Pause;
+
+  if not MillRun.OpenBoothForRun() then
+  begin
+    WriteLn('[BIRDHOUSE] Error: Could not open bank, disabling birdhouse runs');
+    Self.IsDisabled := True;
+    Exit(False);
+  end;
+
+  Bank.DepositAll();
+  if not WaitUntil(Inventory.CountEmptySlots() = 28, 65, 5000) then
+    WriteLn('[BIRDHOUSE] Inventory is not empty after deposit');
+
+  if SameText(BANKRETURNMETHOD, 'Runes') then
+  begin
+    if not (Bank.WithdrawItem(['Fire rune', 1, False], False) and
+            WaitUntil(Inventory.CountItemStack('Fire rune') >= 1, 65, 3000)) then
+    begin
+      Self.IsDisabled := True;
+      Exit(False);
+    end;
+    if not (Bank.WithdrawItem(['Earth rune', 1, False], False) and
+            WaitUntil(Inventory.CountItemStack('Earth rune') >= 1, 65, 3000)) then
+    begin
+      Self.IsDisabled := True;
+      Exit(False);
+    end;
+    if not (Bank.WithdrawItem(['Law rune', 2, False], False) and
+            WaitUntil(Inventory.CountItemStack('Law rune') >= 2, 65, 3000)) then
+    begin
+      Self.IsDisabled := True;
+      Exit(False);
+    end;
+  end
+  else
+  begin
+    if not MillRun.PullWhistleForReturn() then
+    begin
+      Self.IsDisabled := True;
+      Bank.DepositAll();
+      if Bank.IsOpen() then
+        Bank.Close();
+      Exit(False);
+    end;
+  end;
+
+  if not Self.WithdrawNextRun() then
+  begin
+    Self.IsDisabled := True;
+    Bank.DepositAll();
+    if Bank.IsOpen() then
+      Bank.Close();
+    Exit(False);
+  end;
+
+  if Bank.IsOpen() then
+    Bank.Close();
+  WaitUntil(not Bank.IsOpen(), 65, 5000);
+
+  Result := inherited;
+end;
+
+procedure TBASHBirdHouseRunner.OnComplete(); override;
+begin
+  WriteLn('[BIRDHOUSE] Returning to Auburnvale');
+  MillRun.TravelHomeByBird(BANKRETURNMETHOD);
+  MillRun.RefreshTownAfterTravel();
+  MillRun.FinishRunAtBooth();
+  inherited;
+end;
+
+procedure AuburnvalePlankMaker.RunFarmCycle();
+begin
+  WriteLn('[FARM] Starting farm run');
+  Self.FarmRunInProgress := True;
+  Map.Walker.AdaptiveWalk := True;
+  BASHFarmRunner.DoFarmRun();
+  Map.Walker.AdaptiveWalk := False;
+  Map.Walker.ScreenWalk := False;
+  Self.FarmRunInProgress := False;
+end;
+
+procedure AuburnvalePlankMaker.RunBirdhouseCycle();
+begin
+  WriteLn('[BIRDHOUSE] Starting birdhouse run');
+  Self.BirdhouseRunInProgress := True;
+  Map.Walker.AdaptiveWalk := True;
+  BASHBirdHouseRunner.DoBirdHouseRun();
+  Map.Walker.AdaptiveWalk := False;
+  Map.Walker.ScreenWalk := False;
+  Self.BirdhouseRunInProgress := False;
+end;
+
+function AuburnvalePlankMaker.RunsAreDue(): Boolean;
+begin
+  Result := False;
+  if Self.FarmRunInProgress or Self.BirdhouseRunInProgress then
+    Exit;
+  if ENABLEFARMRUNS and BASHFarmRunner.CanDoFarmRun() then
+    Exit(True);
+  if BIRDHOUSEENABLED and BASHBirdHouseRunner.CanDoBirdHouseRun() then
+    Exit(True);
+end;
+
+procedure AuburnvalePlankMaker.DoDueRuns();
+begin
+  if not Self.RunsAreDue() then
+    Exit;
+
+  if ENABLEFARMRUNS and (not Self.FarmRunInProgress) and BASHFarmRunner.CanDoFarmRun() then
+  begin
+    Self.RunFarmCycle();
+    if BIRDHOUSEENABLED and (not Self.BirdhouseRunInProgress) and BASHBirdHouseRunner.CanDoBirdHouseRun() then
+      Self.RunBirdhouseCycle();
+  end
+  else if BIRDHOUSEENABLED and (not Self.BirdhouseRunInProgress) and BASHBirdHouseRunner.CanDoBirdHouseRun() then
+  begin
+    Self.RunBirdhouseCycle();
+    if ENABLEFARMRUNS and (not Self.FarmRunInProgress) and BASHFarmRunner.CanDoFarmRun() then
+      Self.RunFarmCycle();
+  end;
+
+  Self.ForceRestock := True;
+end;
+
+function AuburnvalePlankMaker.HasLogsReady(): Boolean;
+begin
+  Result := Inventory.ContainsItem(Self.LogName);
+end;
+
+function AuburnvalePlankMaker.HasEnoughCoins(): Boolean;
+var
+  coins, needed: Int32;
+begin
+  BurstCoinPouch();
+  coins := Inventory.CountItemStack('Coins');
+  needed := Max(Self.CoinFee, Self.CoinFee * Max(1, Inventory.CountItem(Self.LogName)));
+  if Inventory.ContainsAny(['Sawmill coupon (wood plank)', 'Sawmill coupon (oak plank)', 'Sawmill voucher']) then
+    Exit(True);
+  Result := coins >= needed;
+end;
+
+procedure AuburnvalePlankMaker.RestockFromBooth();
+var
+  madeNow: Int32;
+begin
+  if not Bank.IsOpen() then
+    Exit;
+
+  madeNow := Inventory.CountItem(Self.PlankName);
+  if madeNow > 0 then
+  begin
+    Inc(Self.PlanksMade, madeNow);
+    Self.TotalActions := Self.PlanksMade;
+  end;
+
+  BurstCoinPouch();
+  Bank.DepositRandomItems(ASP_KEEP_ITEMS);
+  WaitUntil(not Inventory.ContainsItem(Self.PlankName), 70, 4500);
+
+  if not Inventory.ContainsItem('Coins') then
+  begin
+    WriteLn('[BANK] Withdrawing coins');
+    if not Bank.WithdrawItem(['Coins', Bank.QUANTITY_ALL, False], True) then
+      TerminateScript('Could not withdraw coins');
+    WaitUntil(Inventory.ContainsItem('Coins'), 70, 4000);
+  end;
+
+  if Inventory.CountItemStack('Coins') < Self.CoinFee then
+    TerminateScript('Not enough coins.');
+
+  WriteLn('[BANK] Withdrawing all ', Self.LogName);
+  if not Self.Withdraw([Self.LogName, Bank.QUANTITY_ALL, False]) then
+    TerminateScript('Could not withdraw ' + Self.LogName);
+
+  WaitUntil(Inventory.ContainsItem(Self.LogName), 70, 4000);
+
+  Self.ForceRestock := False;
+  Self.BankAttempts := 0;
+  Self.PrintProgress();
+
+  Bank.Close();
+  WaitUntil(not Bank.IsOpen(), 80, 3500);
+end;
+
+function AuburnvalePlankMaker.HasOperatorUpTextColor(): Boolean;
+var
+  tpa: TPointArray;
+begin
+  Result := SRL.FindColors(tpa, ASP_MILL_UPTEXT_COLOR, ASP_MILL_UPTEXT_BOX) > 0;
+end;
+
+function AuburnvalePlankMaker.FindOperatorColor(out clickPt: TPoint): Boolean;
+var
+  atpa: T2DPointArray;
+  body, pants: TPointArray;
+  seed, clickBox: TBox;
+  i: Int32;
+begin
+  Result := False;
+  atpa := MainScreen.FindObject(Self.MillOperator.Finder);
+  if Length(atpa) = 0 then
+    Exit;
+
+  for i := 0 to High(atpa) do
+  begin
+    if Length(atpa[i]) < 3 then
+      Continue;
+
+    seed := atpa[i].Bounds();
+    clickBox := seed.Expand(28);
+    clickBox.LimitTo(MainScreen.Bounds);
+
+    if SRL.FindColors(body, ASP_MILL_BODY_COLOR, clickBox) < 3 then
+      Continue;
+    if SRL.FindColors(pants, ASP_MILL_PANTS_COLOR, clickBox) < 1 then
+      Continue;
+
+    clickBox := body.Bounds();
+    clickPt := [clickBox.Middle.X, clickBox.Y1 + Max(3, clickBox.Height() div 4)];
+    Mouse.Move(clickPt);
+    if Self.HasOperatorUpTextColor() then
+      Exit(True);
+  end;
+end;
+
+function AuburnvalePlankMaker.ClickOperatorColor(): Boolean;
+var
+  clickPt: TPoint;
+begin
+  Result := False;
+  if Make.IsOpen() then
+    Exit(True);
+  if ChooseOption.IsOpen() then
+    Exit(ChooseOption.Select(ASP_MILL_OPTIONS));
+  if not Self.FindOperatorColor(clickPt) then
+    Exit;
+
+  Mouse.Click(MOUSE_RIGHT);
+  Result := ChooseOption.IsOpen() and ChooseOption.Select(ASP_MILL_OPTIONS);
+end;
+
+function AuburnvalePlankMaker.ClickMinimapToward(tile: TPoint; scatter: Int32 = 6): Boolean;
+var
+  me, dest, mm, clickMM: TPoint;
+  line, onMM: TPointArray;
+  lo: Int32;
+begin
+  Result := False;
+  me := Map.Position();
+  dest := tile;
+  if scatter > 0 then
+  begin
+    dest.X += Random(-scatter, scatter);
+    dest.Y += Random(-scatter, scatter);
+  end;
+
+  mm := Map.Walker.PointToMM(me, dest, Minimap.GetCompassAngle(False));
+  line := Minimap.Center.LineTo(mm);
+  onMM := Minimap.Filter(line);
+  if Length(onMM) = 0 then
+  begin
+    if not Minimap.IsPointOn(mm) then
+      Exit;
+    clickMM := mm;
+  end
+  else
+  begin
+    lo := Length(onMM) * 2 div 5;
+    if lo > High(onMM) then
+      lo := 0;
+    clickMM := onMM[Random(lo, High(onMM))];
+  end;
+
+  Result := Map.Walker.Click(clickMM, Random(3, 8));
+end;
+
+procedure AuburnvalePlankMaker.EnsureCameraNorth();
+begin
+  if not RSClient.IsLoggedIn() then
+    Exit;
+  if Bank.IsOpen() or BankPin.IsOpen() or Make.IsOpen() then
+    Exit;
+  if Abs(SRL.DeltaAngle(Minimap.GetCompassAngle(), 0)) <= 5 then
+    Exit;
+
+  Minimap.SetCompassAngle(0);
+end;
+
+function AuburnvalePlankMaker.InMillFindRange(): Boolean;
+begin
+  Result := Map.Position.InBox(ASP_MILL_FIND_BOX);
+end;
+
+procedure AuburnvalePlankMaker.WalkUntilMillFindRange();
+var
+  me, dest: TPoint;
+begin
+  me := Map.Position();
+  if me.InBox(ASP_MILL_FIND_BOX) or Make.IsOpen() then
+    Exit;
+
+  dest := me;
+  if dest.X < ASP_MILL_FIND_BOX.X1 then
+    dest.X := ASP_MILL_FIND_BOX.X1
+  else if dest.X > ASP_MILL_FIND_BOX.X2 then
+    dest.X := ASP_MILL_FIND_BOX.X2;
+  if dest.Y < ASP_MILL_FIND_BOX.Y1 then
+    dest.Y := ASP_MILL_FIND_BOX.Y1
+  else if dest.Y > ASP_MILL_FIND_BOX.Y2 then
+    dest.Y := ASP_MILL_FIND_BOX.Y2;
+
+  Map.Walker.WalkBlind(dest, 2);
+  WaitUntil(Self.InMillFindRange() or Make.IsOpen(), 40, 4000);
+end;
+
+function AuburnvalePlankMaker.ClickOnceTowardMill(): Boolean;
+var
+  me: TPoint;
+begin
+  me := Map.Position();
+  if me.InBox(ASP_MILL_WALK_BOX) then
+    Exit(True);
+  Result := Self.ClickMinimapToward(SRL.RandomPoint(ASP_MILL_WALK_BOX), 0);
+end;
+
+function AuburnvalePlankMaker.ClickOnceTowardBank(): Boolean;
+var
+  bankObj: PRSMapObject;
+  dest, me: TPoint;
+begin
+  Result := False;
+  if Bank.IsOpen() or BankPin.IsOpen() then
+    Exit(True);
+
+  me := Map.Position();
+  dest := ASP_BANK_HUB;
+  bankObj := Banks.GetClosest();
+  if (bankObj <> nil) and (Length(bankObj^.Coordinates) > 0) then
+    dest := bankObj^.Coordinates.NearestPoint(me);
+
+  if me.InRange(dest, 8) then
+    Exit(True);
+
+  Result := Self.ClickMinimapToward(dest);
+end;
+
+procedure AuburnvalePlankMaker.WaitToClickOperator();
+var
+  started: UInt64;
+  delayMs: Int32;
+begin
+  if Make.IsOpen() then
+    Exit;
+
+  started := GetTickCount();
+  if Map.Position.InBox(ASP_MILL_WALK_BOX) then
+    delayMs := Round(SRL.TruncatedGauss(80, 450))
+  else
+    delayMs := Round(SRL.TruncatedGauss(450, 2400));
+
+  WaitUntil(
+    Make.IsOpen() or
+    ((GetTickCount() - started) >= delayMs) or
+    Map.Position.InBox(ASP_MILL_WALK_BOX),
+    40,
+    4500
+  );
+end;
+
+function AuburnvalePlankMaker.OpenMillMenu(): Boolean;
+begin
+  Result := False;
+  BurstCoinPouch();
+
+  if MillModeIsFast() then
+  begin
+    if not Make.IsOpen() then
+    begin
+      Self.ClickOnceTowardMill();
+      Self.WaitToClickOperator();
+      WaitUntil(Self.ClickOperatorColor() or Make.IsOpen(), 30, 5000);
+    end;
+
+    if not WaitUntil(Make.IsOpen(), 40, 8000) then
+      Exit;
+
+    Exit(Self.ConvertHeldLogs());
+  end;
+
+  if Make.IsOpen() then
+    Exit(True);
+
+  Self.WalkUntilMillFindRange();
+  WaitUntil(Self.ClickOperatorColor() or Make.IsOpen(), 40, 5000);
+  Result := Make.IsOpen(5000);
+end;
+
+function AuburnvalePlankMaker.ConvertHeldLogs(): Boolean;
+var
+  millSlot, logsBefore, planksBefore: Int32;
+begin
+  Result := False;
+  if not Make.IsOpen() then
+    Exit;
+
+  millSlot := ProductIndexOf(ToStr(Self.LogName));
+
+  if MillModeIsFast() then
+  begin
+    Keyboard.PressKey(VK_1 + millSlot);
+    Self.ForceRestock := True;
+    Self.ClickOnceTowardBank();
+    Exit(True);
+  end;
+
+  logsBefore := Inventory.CountItem(Self.LogName);
+  planksBefore := Inventory.CountItem(Self.PlankName);
+
+  if not Make.Select(millSlot, Make.QUANTITY_ALL, True) then
+    if not Make.Select(ToStr(Self.PlankName), Make.QUANTITY_ALL, True) then
+      Exit;
+
+  Result := WaitUntil(
+    (Inventory.CountItem(Self.LogName) < logsBefore) or
+    (Inventory.CountItem(Self.PlankName) > planksBefore) or
+    (not Inventory.ContainsItem(Self.LogName)),
+    80,
+    5000
+  );
+  if Result then
+    Self.ForceRestock := True;
+end;
+
+function AuburnvalePlankMaker.ReachedPlankGoal(): Boolean;
+begin
+  Result := (Self.PlankGoal > 0) and (Self.PlanksMade >= Self.PlankGoal);
+end;
+
+function AuburnvalePlankMaker.PickState(): EMillState;
+begin
+  if not RSClient.IsLoggedIn() then
+    Exit(STATE_LOGIN);
+
+  if Chat.LeveledUp() then
+    Exit(STATE_LEVEL_UP);
+
+  if Self.ReachedPlankGoal() then
+  begin
+    Self.PrintProgress();
+    TerminateScript('Plank goal reached');
+  end;
+
+  if Self.RunsAreDue() then
+    Exit(STATE_SIDE_RUNS);
+
+  if Bank.IsOpen() or BankPin.IsOpen() then
+    Exit(STATE_RESTOCK);
+
+  if Self.ForceRestock then
+    Exit(STATE_OPEN_BOOTH);
+
+  if Self.HasLogsReady() then
+  begin
+    if Make.IsOpen() then
+      Exit(STATE_CONVERT_LOGS);
+    Exit(STATE_WALK_OPERATOR);
+  end;
+
+  Exit(STATE_OPEN_BOOTH);
+end;
+
+procedure AuburnvalePlankMaker.Init(MaxActions: UInt32; MaxTime: UInt64); override;
+begin
+  inherited;
+
+  if AIChatbot.Enabled then
+  begin
+    WriteLn('[AI Chatbot] Enabled - initializing');
+    AIChatbot.Init();
+  end
+  else
+    WriteLn('[AI Chatbot] Disabled');
+
+  ClearDebug();
+
+  if (RSClient.Mode <> ERSClientMode.FIXED) then
+  begin
+    WriteLn('[FAILSAFE] ERROR: FIXED CLASSIC is required.');
+    TerminateScript('Screen mode not supported');
+  end;
+
+  if not RSClient.IsLoggedIn() then
+    Login.LoginPlayer();
+
+  Self.LastSystemUpdateCheck := 0;
+  Self.LastReportAt := GetTickCount();
+  Self.PlanksMade := 0;
+  Self.BankAttempts := 0;
+  Self.ForceRestock := False;
+  Self.FarmRunInProgress := False;
+  Self.BirdhouseRunInProgress := False;
+
+  Antiban.Setup();
+  Self.ActiveTimer.Start();
+  Self.RunningTime.Start();
+  Self.ActivityTimer.Start();
+  Self.WorldList := Login.GetPlayer.Worlds;
+
+  if ENABLEFARMRUNS then
+  begin
+    WriteLn('[FARM] Setting up BASH farm runs');
+    BASHFarmRunner.BuildFromConfig(BASHFarmConfig);
+    BASHFarmRunner.Init();
+  end
+  else
+    WriteLn('[FARM] Farm runs disabled');
+
+  if BIRDHOUSEENABLED then
+  begin
+    WriteLn('[BIRDHOUSE] Setting up BASH birdhouse runs');
+    BASHBirdHouseRunner.ApplyConfig(BASHBirdHouseConfig);
+    BASHBirdHouseRunner.IsDisabled := False;
+    BASHBirdHouseRunner.Init();
+  end
+  else
+  begin
+    BASHBirdHouseRunner.IsDisabled := True;
+    WriteLn('[BIRDHOUSE] Birdhouse runs disabled');
+  end;
+
+  Self.LoadTownMap();
+  Self.BindTownTargets();
+
+  if Self.LogName = '' then
+    ApplyChosenProduct('Oak logs');
+
+  WriteLn('[INIT] Converting ', Self.LogName, ' into ', Self.PlankName, ' (', Self.CoinFee, ' gp each)');
+  WriteLn('[INIT] Script mode: ', SCRIPTMODE);
+
+  if ENABLEFARMRUNS and BASHFarmRunner.CanDoFarmRun() then
+    Self.RunFarmCycle();
+  if BIRDHOUSEENABLED and BASHBirdHouseRunner.CanDoBirdHouseRun() then
+    Self.RunBirdhouseCycle();
+
+  BASHEnsureRunZoom(0, 20);
+  Self.EnsureCameraNorth();
+  Self.ForceRestock := not Self.HasLogsReady();
+end;
+
+procedure AuburnvalePlankMaker.Run(MaxActions: UInt32; MaxTime: UInt64);
+begin
+  Self.Init(MaxActions, MaxTime);
+
+  repeat
+    EnsurePlayerLoggedIn();
+    Self.WatchForServerReset();
+    Self.EnsureCameraNorth();
+
+    Self.CurrentState := Self.PickState();
+    case Self.CurrentState of
+      STATE_LOGIN: Login.LoginPlayer();
+      STATE_LEVEL_UP: Chat.HandleLevelUp();
+      STATE_SIDE_RUNS: Self.DoDueRuns();
+      STATE_OPEN_BOOTH: Self.OpenTownBank();
+      STATE_RESTOCK: Self.RestockFromBooth();
+      STATE_WALK_OPERATOR: Self.OpenMillMenu();
+      STATE_CONVERT_LOGS: Self.ConvertHeldLogs();
+    end;
+
+    Self.TotalActions := Self.PlanksMade;
+    if MillModeIsFast() then
+    begin
+      if (Self.CurrentState <> STATE_WALK_OPERATOR) and (Self.CurrentState <> STATE_CONVERT_LOGS) then
+        if not Bank.IsOpen() and not BankPin.IsOpen() then
+          Self.DoAntiban();
+    end
+    else if not Bank.IsOpen() and not BankPin.IsOpen() then
+      Self.DoAntiban();
+
+    Self.EnsureCameraNorth();
+  until Self.ShouldStop();
+end;
+
+begin
+  SettingsHandler.CheckBashProfileRequired();
+  Discord.Setup();
+  {$IFDEF SCRIPT_GUI}
+  Sync(@Config.Run);
+  {$ENDIF}
+  MillRun.Run(WLSettings.MaxActions, WLSettings.MaxTime);
+end.
