@@ -1,10 +1,13 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := '1218ea6e-f502-46db-9b91-feb89baecbdc'}
-{$DEFINE SCRIPT_REVISION := '7'} 
+{$DEFINE SCRIPT_REVISION := '8'} 
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
 {$I BashLib/optional/handlers/teleports/transport.simba}
 {$I BashLib/optional/handlers/birdhouserunner.simba}
+{$IFDEF SCRIPT_GUI}
+{$I BashLib/optional/handlers/bashgui.simba}
+{$ENDIF}
 
 
 {
@@ -47,17 +50,11 @@ transport: TUniversalTransport;
   SELLNOTEDITEMCHECK: Boolean                 = False; // If True the script will sell all finished items before any of the other shopping methods.
   QUANTITYINPUT: Integer                      = 10000;// When you run out of raw items this is how many the script should buy.
   BANKFILLERSCHECK: Boolean                   = False; // Enable this if you have setup bank fillers correctly. 
-  BIRDHOUSEENABLED: Boolean                   = False;
   SELECTEDBANKTOUSE: String                   = '';
   SELECTEDRETURNMETHOD: String                = ''; 
-  WEBHOOKURL: String                          = '';
   DiscordUID: String                          = '';
-  ENABLEWEBHOOKS: Boolean                     = True; 
   PINGONTERMINATED: Boolean                   = True; 
   BHOPENNESTS: Boolean                        = False;
-  OVERRIDEBREAKS: Boolean                     = False;
-  CUSTOMBREAKINTERVAL: Integer                = 60;
-  CUSTOMBREAKDURATION: Integer                = 5;
 //===========================================
 
 begin
@@ -355,7 +352,7 @@ end;
 
 procedure AIOLunarSpells.SendTerminationNotification();
 begin
-  Self.SendWebhook('BigAussie AIO Lunar has terminated or crashed.');
+  Self.SendWebhook('BASH Scripts AIO Lunar has terminated or crashed.');
 end;
 
 procedure AIOLunarSpells.Init(MaxActions: UInt32; MaxTime: UInt64); override;
@@ -2203,7 +2200,7 @@ begin
   RemainingFocusTime := FocusTimer - GetTimeRunning();
 
   WriteLn('========================================');
-  WriteLn('     BigAussies AIO Lunar Spells      ');
+  WriteLn('     BASH Scripts AIO Lunar Spells      ');
   WriteLn('========================================');
   WriteLn('   Runtime: ' + SRL.MsToTime(GetTimeRunning, Time_Short) + '   Script Speed: ' + ScriptSpeedToString(SCRIPTSPEED));
   if ChosenSpell = PLANK_MAKE then
@@ -2254,7 +2251,7 @@ begin
       WriteLn('   Sell Finished item is Enabled.');
   end;
   WriteLn('========================================');
-  WriteLn('     BigAussies AIO Lunar Spells      ');
+  WriteLn('     BASH Scripts AIO Lunar Spells      ');
   WriteLn('    ', Antiban.BreakScheduleText());
   WriteLn('    ', Antiban.SleepScheduleText());
   WriteLn('           Version: ' + {$MACRO SCRIPT_REVISION});
@@ -2270,39 +2267,8 @@ begin
 end;
 
 {$IFDEF SCRIPT_GUI}
-const
-  LS_GUI_NAV       = $F0EBE4;
-  LS_GUI_BG        = $FFFFFF;
-  LS_GUI_STATUS    = $F7F4F1;
-  LS_GUI_DIVIDER   = $D4C9BC;
-  LS_GUI_CARD      = $F7F4F1;
-  LS_GUI_ACCENT    = $E0C9AE;
-  LS_GUI_NAV_IDLE  = $E7DED4;
-  LS_GUI_START     = $C9B094;
-  LS_GUI_TEXT      = $1C1C1E;
-  LS_GUI_MUTED     = $6B6B70;
-  LS_GUI_LINK      = $C07020;
-  LS_GUI_W         = 1120;
-  LS_GUI_H         = 780;
-  LS_GUI_NAV_W     = 190;
-  LS_GUI_STATUS_H  = 56;
-  LS_GUI_BTN_H     = 42;
-  LS_GUI_EDIT_W    = 260;
-  LS_GUI_COMBO_W   = 260;
-  LS_GUI_COMBO_H   = 58;
-  LS_GUI_COMBO_FONT = 10;
-  LS_GUI_COL2      = 308;
-  LS_GUI_BOTTOM_INSET = 34;
-
 type
-  TConfig = record(TScriptForm)
-    NavPanel, ContentPanel, StatusPanel, DividerPanel, StatusDivider, StatusPad: TPanel;
-    BrandLabel: TLabel;
-    ScriptNav, AccountsNav, AntibanNav, BirdhouseNav: TImage;
-    StartChip: TImage;
-    ActiveNav: TImage;
-    ScriptSection, AccountsSection, AntibanSection, BirdhouseSection: TPanel;
-
+  TConfig = record(TBASHPremiumGUI)
     Message2, BirdhouseInfoLabel, BirdhouseIntervalLabel: TLabel;
     QuantityInputBox, StopAtLevelInputBox: TLabeledEdit;
     LunarSpellSelector, ItemSelector, ScriptSpeedSelector: TLabeledCombobox;
@@ -2312,18 +2278,11 @@ type
     SELLNOTEDITEMCHECKBox, BUYRUNESCHECKBox, BUYRAWMATERIALSCheckbox, BankFillersCheckBox: TLabeledCheckBox;
     BirdHouseSettingsCheckbox, UseBestLogCheckBox, CraftWhileNavCheckBox: TLabeledCheckBox;
     RunNowRadio, RunLaterRadio: TRadioButton;
-    PingOnTerminatedCheckBox, EnableWebhooksCheckBox: TLabeledCheckBox;
-    WebhookInfo, DiscordUIDInfo: TLabel;
-    WebHookInput, DiscordUIDInput: TLabeledEdit;
-    MaxActionsInput, MaxTimeInput: TLabeledEdit;
-    ShortBreaksCheckBox, SleepBreaksCheckBox: TLabeledCheckBox;
-    SleepHourInput, SleepLengthInput: TLabeledEdit;
-    TasksEnabledCheckBox: TLabeledCheckBox;
-    TaskCameraCheckBox, TaskMouseCheckBox, TaskChatCheckBox, TaskGameTabsCheckBox, TaskBankCheckBox: TLabeledCheckBox;
-    OverrideBreaksCheckBox: TLabeledCheckBox;
-    CustomBreakIntervalInput, CustomBreakDurationInput: TLabeledEdit;
-    Username: String;
+    DiscordUIDInfo: TLabel;
+    DiscordUIDInput: TLabeledEdit;
+    PingOnTerminatedCheckBox: TLabeledCheckBox;
   end;
+  TScriptGUI = TConfig;
 
 function StringToScriptSpeed(const S: String): ScriptSpeedTypes;
 begin
@@ -2347,318 +2306,66 @@ begin
   else Result := BAKE_PIE;
 end;
 
-function TConfig.MakePanel(
-  parent: TWinControl;
-  left, top, width, height, color: Int32
-): TPanel;
+procedure TConfig.InitGUI(); override;
 begin
-  Result.Create(parent);
-  Result.SetLeft(TControl.AdjustToDPI(left));
-  Result.SetTop(TControl.AdjustToDPI(top));
-  Result.SetWidth(TControl.AdjustToDPI(width));
-  Result.SetHeight(TControl.AdjustToDPI(height));
-  Result.SetColor(color);
-  Result.SetBevelOuter(bvNone);
+  Self.BrandTitle := 'AIO Lunar';
+  Self.WindowTitle := 'BASH Scripts AIO Lunar Spells';
+  Self.WebhookTestPrefix := 'Test message from BASH Scripts AIO Lunar Spells';
+  Self.HasFarm := False;
+  Self.HasAIChat := False;
+  Self.HasWorldHopping := False;
+  Self.HasMaxActions := True;
+  Self.HasStopAtLevel := False;
+  Self.LegacyAntibanSection := ' AIO Lunar Spells Antiban';
 end;
 
-procedure TConfig.PaintRoundChip(
-  img: TImage;
-  labelText: String;
-  fill, parentBg: Int32;
-  selected: Boolean = False;
-  centered: Boolean = False
-);
+procedure TConfig.MigrateLegacyWebhook();
 var
-  bmp: TBitmap;
-  c: TCanvas;
-  w, h, r, tw, th, tx: Int32;
+  url, en: String;
 begin
-  w := img.GetWidth();
-  h := img.GetHeight();
-  if (w <= 0) or (h <= 0) then
-    Exit;
-
-  r := TControl.AdjustToDPI(6);
-  if r * 2 > h then
-    r := h div 2;
-  if r * 2 > w then
-    r := w div 2;
-
-  bmp := img.GetPicture().GetBitmap();
-  bmp.SetWidth(w);
-  bmp.SetHeight(h);
-  c := bmp.GetCanvas();
-
-  c.GetBrush().SetColor(parentBg);
-  c.GetPen().SetColor(parentBg);
-  c.FillRect(0, 0, w, h);
-
-  c.GetBrush().SetColor(fill);
-  c.GetPen().SetColor(fill);
-  c.RoundRect(0, 0, w - 1, h - 1, r * 2, r * 2);
-
-  c.GetBrush().SetColor(fill);
-  c.GetFont().SetColor(LS_GUI_TEXT);
-  c.GetFont().SetSize(11);
-  if selected then
-    c.GetFont().SetStyle([fsBold])
-  else
-    c.GetFont().SetStyle([]);
-
-  tw := c.TextWidth(labelText);
-  th := c.TextHeight(labelText);
-  if centered then
-    tx := (w - tw) div 2
-  else
-    tx := TControl.AdjustToDPI(16);
-  c.TextOut(tx, (h - th) div 2, labelText);
-
-  img.SetHint(labelText);
-  img.SetShowHint(False);
-  img.Invalidate();
-end;
-
-function TConfig.MakeNavItem(
-  parent: TWinControl;
-  labelText: String;
-  left, top: Int32;
-  selected: Boolean = False
-): TImage;
-var
-  fill: Int32;
-begin
-  Result.Create(parent);
-  Result.SetLeft(TControl.AdjustToDPI(left));
-  Result.SetTop(TControl.AdjustToDPI(top));
-  Result.SetWidth(TControl.AdjustToDPI(LS_GUI_NAV_W - 28));
-  Result.SetHeight(TControl.AdjustToDPI(LS_GUI_BTN_H));
-  Result.SetCursor(crHandPoint);
-
-  if selected then
-    fill := LS_GUI_ACCENT
-  else
-    fill := LS_GUI_NAV_IDLE;
-
-  Self.PaintRoundChip(Result, labelText, fill, LS_GUI_NAV, selected);
-end;
-
-function TConfig.MakeLabel(
-  parent: TWinControl;
-  labelText: String;
-  left, top, fontSize, fontColor: Int32;
-  bold: Boolean = False
-): TLabel;
-begin
-  Result.Create(parent);
-  Result.SetLeft(TControl.AdjustToDPI(left));
-  Result.SetTop(TControl.AdjustToDPI(top));
-  Result.SetCaption(labelText);
-  Result.GetFont().SetSize(fontSize);
-  Result.GetFont().SetColor(fontColor);
-  if bold then
-    Result.GetFont().SetStyle([fsBold]);
-end;
-
-procedure TConfig.AddCheck(
-  parent: TWinControl;
-  var box: TLabeledCheckBox;
-  ctrlName, labelText: String;
-  left, top: Int32;
-  checked: Boolean
-);
-begin
-  box.Create(parent);
-  box.SetLeft(TControl.AdjustToDPI(left));
-  box.SetTop(TControl.AdjustToDPI(top));
-  box.SetName(ctrlName);
-  box.SetFontColor(LS_GUI_TEXT);
-  box.SetCaption(labelText);
-  if checked then
-    box.CheckBox.SetChecked(True);
-end;
-
-procedure TConfig.AddEdit(
-  parent: TWinControl;
-  var box: TLabeledEdit;
-  ctrlName, labelText, text: String;
-  left, top, width: Int32
-);
-begin
-  box.Create(parent);
-  box.SetLeft(TControl.AdjustToDPI(left));
-  box.SetTop(TControl.AdjustToDPI(top));
-  box.SetWidth(TControl.AdjustToDPI(width));
-  box.SetName(ctrlName);
-  box.SetCaption(labelText);
-  box.SetText(text);
-  box.SetFontColor(LS_GUI_TEXT);
-end;
-
-procedure TConfig.AddCombo(
-  parent: TWinControl;
-  var box: TLabeledComboBox;
-  ctrlName, labelText: String;
-  left, top: Int32;
-  items: TStringArray;
-  itemIndex: Int32
-);
-begin
-  box.Create(parent);
-  box.SetLeft(TControl.AdjustToDPI(left));
-  box.SetTop(TControl.AdjustToDPI(top));
-  box.SetWidth(TControl.AdjustToDPI(LS_GUI_COMBO_W));
-  box.SetHeight(TControl.AdjustToDPI(LS_GUI_COMBO_H));
-  box.SetName(ctrlName);
-  box.SetCaption(labelText);
-  box.AddItemArray(items);
-  if (itemIndex >= 0) and (itemIndex <= High(items)) then
-    box.SetItemIndex(itemIndex)
-  else
-    box.SetItemIndex(0);
-  box.SetFontColor(LS_GUI_TEXT);
-  box.SetStyle(csDropDownList);
-  box.SetFontSize(LS_GUI_COMBO_FONT);
-  box.ComboBox.SetFontColor(LS_GUI_TEXT);
-  box.ComboBox.GetFont().SetSize(LS_GUI_COMBO_FONT);
-end;
-
-procedure TConfig.AddHeader(parent: TPanel; titleText, subtitleText: String);
-var
-  header: TPanel;
-  headerW: Int32;
-begin
-  headerW := parent.GetWidth();
-  if headerW <= 0 then
-    headerW := TControl.AdjustToDPI(LS_GUI_W - LS_GUI_NAV_W - 2);
-
-  header := Self.MakePanel(parent, 0, 0, 1, 88, LS_GUI_CARD);
-  header.SetWidth(headerW);
-  header.SetHeight(TControl.AdjustToDPI(88));
-  Self.MakeLabel(header, titleText, 24, 18, 18, LS_GUI_TEXT, True);
-  Self.MakeLabel(header, subtitleText, 24, 52, 10, LS_GUI_MUTED, False);
-end;
-
-procedure TConfig.StyleNav(selected: TImage);
-begin
-  Self.ActiveNav := selected;
-  Self.PaintRoundChip(Self.ScriptNav, Self.ScriptNav.GetHint(), LS_GUI_NAV_IDLE, LS_GUI_NAV, False);
-  Self.PaintRoundChip(Self.AccountsNav, Self.AccountsNav.GetHint(), LS_GUI_NAV_IDLE, LS_GUI_NAV, False);
-  Self.PaintRoundChip(Self.AntibanNav, Self.AntibanNav.GetHint(), LS_GUI_NAV_IDLE, LS_GUI_NAV, False);
-  Self.PaintRoundChip(Self.BirdhouseNav, Self.BirdhouseNav.GetHint(), LS_GUI_NAV_IDLE, LS_GUI_NAV, False);
-  Self.PaintRoundChip(selected, selected.GetHint(), LS_GUI_ACCENT, LS_GUI_NAV, True);
-end;
-
-procedure TConfig.ShowSection(section: TPanel; selected: TImage);
-begin
-  Self.ScriptSection.SetVisible(False);
-  Self.AccountsSection.SetVisible(False);
-  Self.AntibanSection.SetVisible(False);
-  Self.BirdhouseSection.SetVisible(False);
-  section.SetVisible(True);
-  Self.StyleNav(selected);
-end;
-
-procedure TConfig.ShowScript({$H-}sender: TObject); {$H+}
-begin
-  Self.ShowSection(Self.ScriptSection, Self.ScriptNav);
-end;
-
-procedure TConfig.ShowAccounts({$H-}sender: TObject); {$H+}
-begin
-  Self.ShowSection(Self.AccountsSection, Self.AccountsNav);
-end;
-
-procedure TConfig.ShowAntiban({$H-}sender: TObject); {$H+}
-begin
-  Self.ShowSection(Self.AntibanSection, Self.AntibanNav);
-end;
-
-procedure TConfig.ShowBirdhouse({$H-}sender: TObject); {$H+}
-begin
-  Self.ShowSection(Self.BirdhouseSection, Self.BirdhouseNav);
-end;
-
-procedure TConfig.OpenURL(Sender: TObject);
-begin
-  if Sender = Self.WebhookInfo then
-    OpenWebPage('https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks')
-  else if Sender = Self.DiscordUIDInfo then
-    OpenWebPage('https://support.discord.com/hc/en-us/articles/206346498-Where-can-I-find-my-User-Server-Message-ID');
-end;
-
-procedure TConfig.WebhooksCheckboxChanged(Sender: TObject);
-begin
-  if Sender = nil then;
-  Self.WebhookInfo.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
-  Self.DiscordUIDInfo.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
-  Self.DiscordUIDInput.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
-  Self.WebHookInput.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
-  Self.PingOnTerminatedCheckBox.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
-end;
-
-procedure TConfig.OverrideBreaksCheckboxChanged(Sender: TObject);
-begin
-  if Sender = nil then;
-  Self.CustomBreakIntervalInput.SetVisible(Self.OverrideBreaksCheckBox.IsChecked());
-  Self.CustomBreakDurationInput.SetVisible(Self.OverrideBreaksCheckBox.IsChecked());
-  if Self.OverrideBreaksCheckBox.IsChecked() then
-    Self.ShortBreaksCheckBox.CheckBox.SetChecked(False);
-end;
-
-procedure TConfig.ShortBreaksCheckboxChanged(Sender: TObject);
-begin
-  if Sender = nil then;
-  if Self.ShortBreaksCheckBox.IsChecked() then
+  url := ReadINI(Self.Username + BASH_GUI_WEBHOOK_SECTION, 'WebhookURL', BASH_GUI_SETTINGS_FILE);
+  if url = '' then
   begin
-    Self.OverrideBreaksCheckBox.CheckBox.SetChecked(False);
-    Self.CustomBreakIntervalInput.SetVisible(False);
-    Self.CustomBreakDurationInput.SetVisible(False);
+    url := ReadINI(Self.Username + ' Webhook Settings', 'WebhookURL', BASH_GUI_SETTINGS_FILE);
+    if url <> '' then
+      WriteINI(Self.Username + BASH_GUI_WEBHOOK_SECTION, 'WebhookURL', url, BASH_GUI_SETTINGS_FILE);
+  end;
+
+  en := ReadINI(Self.Username + BASH_GUI_WEBHOOK_SECTION, 'EnableWebhooks', BASH_GUI_SETTINGS_FILE);
+  if en = '' then
+  begin
+    en := ReadINI(Self.Username + ' Webhook Settings', 'EnableWebhooks', BASH_GUI_SETTINGS_FILE);
+    if en <> '' then
+      WriteINI(Self.Username + BASH_GUI_WEBHOOK_SECTION, 'EnableWebhooks', en, BASH_GUI_SETTINGS_FILE);
   end;
 end;
 
-procedure TConfig.SleepBreaksCheckboxChanged(Sender: TObject);
-var
-  enabled: Boolean;
+procedure TConfig.LoadActionSettings(); override;
 begin
-  if Sender = nil then;
-  enabled := Self.SleepBreaksCheckBox.IsChecked();
-  Self.SleepHourInput.SetEnabled(enabled);
-  Self.SleepLengthInput.SetEnabled(enabled);
-end;
+  Self.MigrateLegacyWebhook();
+  DiscordUID := ReadINI(Self.Username + BASH_GUI_WEBHOOK_SECTION, 'DiscordUID', BASH_GUI_SETTINGS_FILE);
+  if DiscordUID = '' then
+    DiscordUID := ReadINI(Self.Username + ' Webhook Settings', 'DiscordUID', BASH_GUI_SETTINGS_FILE);
+  PINGONTERMINATED := StrToBoolDef(ReadINI(Self.Username + BASH_GUI_WEBHOOK_SECTION, 'PingOnTerminated', BASH_GUI_SETTINGS_FILE), True);
+  if ReadINI(Self.Username + BASH_GUI_WEBHOOK_SECTION, 'PingOnTerminated', BASH_GUI_SETTINGS_FILE) = '' then
+    PINGONTERMINATED := StrToBoolDef(ReadINI(Self.Username + ' Webhook Settings', 'PingOnTerminated', BASH_GUI_SETTINGS_FILE), True);
 
-procedure TConfig.TasksEnabledCheckboxChanged(Sender: TObject);
-var
-  enabled: Boolean;
-begin
-  if Sender = nil then;
-  enabled := Self.TasksEnabledCheckBox.IsChecked();
-  Self.TaskCameraCheckBox.SetEnabled(enabled);
-  Self.TaskMouseCheckBox.SetEnabled(enabled);
-  Self.TaskChatCheckBox.SetEnabled(enabled);
-  Self.TaskGameTabsCheckBox.SetEnabled(enabled);
-  Self.TaskBankCheckBox.SetEnabled(enabled);
-end;
-
-procedure TConfig.ApplyAntibanFromGUI();
-begin
-  WLSettings.Put('max_actions', StrToIntDef(Self.MaxActionsInput.GetText(), 0));
-  WLSettings.Put('max_time', StrToIntDef(Self.MaxTimeInput.GetText(), 0));
-
-  WLSettings.GetObject('antiban').Put('breaks', Self.ShortBreaksCheckBox.IsChecked());
-
-  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('enabled', Self.SleepBreaksCheckBox.IsChecked());
-  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('biohash', False);
-  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('hour', Trim(Self.SleepHourInput.GetText()));
-  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('length', StrToFloatDef(Self.SleepLengthInput.GetText(), 8));
-
-  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('enabled', Self.TasksEnabledCheckBox.IsChecked());
-  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('camera', Self.TaskCameraCheckBox.IsChecked());
-  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('mouse', Self.TaskMouseCheckBox.IsChecked());
-  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('chat', Self.TaskChatCheckBox.IsChecked());
-  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('gametabs', Self.TaskGameTabsCheckBox.IsChecked());
-  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('bank', Self.TaskBankCheckBox.IsChecked());
-
-  WLSettings.SaveConfig();
+  CHOSENSPELL := StringToSpell(ReadINI(Self.Username + ' AIO Lunar Settings', 'CHOSENSPELL', BASH_GUI_SETTINGS_FILE));
+  SELECTEDITEM := ReadINI(Self.Username + ' AIO Lunar Settings', 'SELECTEDITEM', BASH_GUI_SETTINGS_FILE);
+  SCRIPTSPEED := StringToScriptSpeed(ReadINI(Self.Username + ' AIO Lunar Settings', 'SCRIPTSPEED', BASH_GUI_SETTINGS_FILE));
+  SELLNOTEDITEMCHECK := StrToBoolDef(ReadINI(Self.Username + ' AIO Lunar Settings', 'SELLNOTEDITEMCHECK', BASH_GUI_SETTINGS_FILE), False);
+  BUYRUNESCHECK := StrToBoolDef(ReadINI(Self.Username + ' AIO Lunar Settings', 'BUYRUNESCHECK', BASH_GUI_SETTINGS_FILE), False);
+  BUYRAWMATERIALS := StrToBoolDef(ReadINI(Self.Username + ' AIO Lunar Settings', 'BUYRAWMATERIALS', BASH_GUI_SETTINGS_FILE), False);
+  BANKFILLERSCHECK := StrToBoolDef(ReadINI(Self.Username + ' AIO Lunar Settings', 'BANKFILLERSCHECK', BASH_GUI_SETTINGS_FILE), False);
+  QUANTITYINPUT := StrToIntDef(ReadINI(Self.Username + ' AIO Lunar Settings', 'QUANTITYINPUT', BASH_GUI_SETTINGS_FILE), 0);
+  STOP_AT_LEVEL := StrToIntDef(ReadINI(Self.Username + ' AIO Lunar Settings', 'STOP_AT_LEVEL', BASH_GUI_SETTINGS_FILE), -1);
+  SELECTEDRETURNMETHOD := ReadINI(Self.Username + ' AIO Lunar Settings', 'SELECTEDRETURNMETHOD', BASH_GUI_SETTINGS_FILE);
+  BIRDHOUSEENABLED := StrToBoolDef(ReadINI(Self.Username + ' Birdhouse Settings', 'Enabled', BASH_GUI_SETTINGS_FILE), True);
+  BHIncludeGUILogType := ERSLogType(StrToIntDef(ReadINI(Self.Username + ' Birdhouse Settings', 'LogType', BASH_GUI_SETTINGS_FILE), 0));
+  BHIncludeGUISeed := ReadINI(Self.Username + ' Birdhouse Settings', 'Seed', BASH_GUI_SETTINGS_FILE);
+  BHIncludeGUIRunIntervalMinutes := StrToIntDef(ReadINI(Self.Username + ' Birdhouse Settings', 'RunIntervalMinutes', BASH_GUI_SETTINGS_FILE), 0) div 60000;
+  BHIncludeGUIUseBestLog := StrToBoolDef(ReadINI(Self.Username + ' Birdhouse Settings', 'UseBestLog', BASH_GUI_SETTINGS_FILE), False);
+  BHIncludeGUICraftWhileNav := StrToBoolDef(ReadINI(Self.Username + ' Birdhouse Settings', 'CraftWhileNav', BASH_GUI_SETTINGS_FILE), False);
 end;
 
 procedure TConfig.BUYRAWMATERIALSCheckboxChanged(Sender: TObject);
@@ -2813,309 +2520,88 @@ begin
     Self.ItemSelector.SetItemIndex(0);
 end;
 
-procedure TConfig.StartScript(Sender: TObject); override;
+procedure TConfig.RestoreItemAndReturn();
+var
+  i: Int32;
 begin
-  if Sender = nil then;
+  if SELECTEDITEM <> '' then
+    for i := 0 to Self.ItemSelector.ComboBox.getItems().getCount() - 1 do
+      if Self.ItemSelector.ComboBox.getItems().getStrings(i) = SELECTEDITEM then
+      begin
+        Self.ItemSelector.SetItemIndex(i);
+        Break;
+      end;
 
-  if Self.BirdHouseSettingsCheckbox.IsChecked() and (Self.returnMethodSelector.GetItemIndex() = -1) then
-  begin
-    ShowMessage('No return method is selected, You must select a return method.');
-    Exit;
-  end;
-
-  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
-    Self.Username := 'NoUserNameSelected'
-  else
-    Self.Username := Login.Players[Login.PlayerIndex].User;
-
-  SELECTEDITEM := Self.ItemSelector.GetText();
-  CHOSENSPELL := ELunarSpell(Self.LunarSpellSelector.GetItemIndex());
-  SCRIPTSPEED := ScriptSpeedTypes(Self.ScriptSpeedSelector.GetItemIndex());
-  SELLNOTEDITEMCHECK := Self.SELLNOTEDITEMCHECKBox.IsChecked();
-  BUYRUNESCHECK := Self.BUYRUNESCHECKBox.IsChecked();
-  BUYRAWMATERIALS := Self.BUYRAWMATERIALSCheckbox.IsChecked();
-  BANKFILLERSCHECK := Self.BankFillersCheckBox.IsChecked();
-  QUANTITYINPUT := StrToIntDef(Self.QuantityInputBox.GetText(), 0);
-  STOP_AT_LEVEL := StrToIntDef(Self.StopAtLevelInputBox.GetText(), -1);
-  DiscordUID := Self.DiscordUIDInput.GetText();
-  WEBHOOKURL := Self.WebHookInput.GetText();
-  ENABLEWEBHOOKS := Self.EnableWebhooksCheckBox.IsChecked();
-  PINGONTERMINATED := Self.PingOnTerminatedCheckBox.IsChecked();
-  BIRDHOUSEENABLED := Self.BirdHouseSettingsCheckbox.IsChecked();
-  SELECTEDBANKTOUSE := Self.BankSelector.GetText();
-  SELECTEDRETURNMETHOD := Self.returnMethodSelector.GetText();
-
-  if Assigned(Self.LogTypeCombo) then
-    BirdHouseRunner.LogType := ERSLogType(Self.LogTypeCombo.GetItemIndex());
-  if Assigned(Self.SeedInput) then
-    BirdHouseRunner.Seed := Self.SeedInput.GetText();
-  if Assigned(Self.UseBestLogCheckBox) then
-    BirdHouseRunner.AlwaysUseBestLog := Self.UseBestLogCheckBox.IsChecked();
-  if Assigned(Self.CraftWhileNavCheckBox) then
-    BirdHouseRunner.NeedClockworks := Self.CraftWhileNavCheckBox.IsChecked();
-
-  OVERRIDEBREAKS := Self.OverrideBreaksCheckBox.IsChecked();
-  CUSTOMBREAKINTERVAL := StrToIntDef(Self.CustomBreakIntervalInput.GetText(), 60);
-  CUSTOMBREAKDURATION := StrToIntDef(Self.CustomBreakDurationInput.GetText(), 5);
-
-  WLSettings.Put('bank_map', Self.BankSelector.GetItemIndex());
-
-  WriteINI(Self.Username + ' Webhook Settings', 'DiscordUID', DiscordUID, 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' Webhook Settings', 'WebhookURL', WEBHOOKURL, 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' Webhook Settings', 'PingOnTerminated', BoolToStr(PINGONTERMINATED, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' Webhook Settings', 'EnableWebhooks', BoolToStr(ENABLEWEBHOOKS, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' AIO Lunar Settings', 'CHOSENSPELL', SpellToString(CHOSENSPELL), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' AIO Lunar Settings', 'SELECTEDITEM', SELECTEDITEM, 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' AIO Lunar Settings', 'SCRIPTSPEED', ScriptSpeedToString(SCRIPTSPEED), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' AIO Lunar Settings', 'SELLNOTEDITEMCHECK', BoolToStr(SELLNOTEDITEMCHECK, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' AIO Lunar Settings', 'BUYRUNESCHECK', BoolToStr(BUYRUNESCHECK, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' AIO Lunar Settings', 'BUYRAWMATERIALS', BoolToStr(BUYRAWMATERIALS, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' AIO Lunar Settings', 'BANKFILLERSCHECK', BoolToStr(BANKFILLERSCHECK, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' AIO Lunar Settings', 'QUANTITYINPUT', IntToStr(QUANTITYINPUT), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' AIO Lunar Settings', 'STOP_AT_LEVEL', IntToStr(STOP_AT_LEVEL), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' AIO Lunar Settings', 'SELECTEDRETURNMETHOD', SELECTEDRETURNMETHOD, 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' Birdhouse Settings', 'Enabled', BoolToStr(BIRDHOUSEENABLED, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' Birdhouse Settings', 'LogType', IntToStr(Ord(BirdHouseRunner.LogType)), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' Birdhouse Settings', 'Seed', BirdHouseRunner.Seed, 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' Birdhouse Settings', 'RunIntervalMinutes', ToStr(BirdHouseRunner.TaskInterval), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' Birdhouse Settings', 'UseBestLog', BoolToStr(BirdHouseRunner.AlwaysUseBestLog, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' Birdhouse Settings', 'CraftWhileNav', BoolToStr(BirdHouseRunner.NeedClockworks, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' AIO Lunar Spells Antiban', 'OverrideBreaks', BoolToStr(OVERRIDEBREAKS, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' AIO Lunar Spells Antiban', 'CustomBreakInterval', IntToStr(CUSTOMBREAKINTERVAL), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' AIO Lunar Spells Antiban', 'CustomBreakDuration', IntToStr(CUSTOMBREAKDURATION), 'Configs/BASettings.ini');
-
-  Self.ApplyAntibanFromGUI();
-
-  WriteLn('Override Breaks: ', ToStr(OVERRIDEBREAKS));
-  WriteLn('Short Breaks: ', ToStr(WLSettings.GetObject('antiban').getBoolean('breaks')));
-  WriteLn('Sleep Breaks: ', ToStr(WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('enabled')));
-  WriteLn('Antiban Tasks: ', ToStr(WLSettings.GetObject('antiban').getJSONObject('tasks').getBoolean('enabled')));
-
-  try
-    Self._WarmBuildCache();
-  except
-  end;
-  Self.Form.SetOnClose(nil);
-  Self.Form.Close();
+  Self.UpdateReturnMethodOptions(nil);
+  if SELECTEDRETURNMETHOD <> '' then
+    for i := 0 to Self.returnMethodSelector.ComboBox.getItems().getCount() - 1 do
+      if Self.returnMethodSelector.ComboBox.getItems().getStrings(i) = SELECTEDRETURNMETHOD then
+      begin
+        Self.returnMethodSelector.SetItemIndex(i);
+        Break;
+      end;
 end;
 
-procedure TConfig.BuildScriptSection();
+procedure TConfig.BuildActionSection(); override;
 begin
-  Self.AddHeader(Self.ScriptSection, 'Action', 'Lunar spell casting, GE options, and bank return.');
+  Self.AddHeader(Self.ActionSection, 'Action', 'Lunar spell casting, GE options, and bank return.');
 
-  Self.AddCombo(Self.ScriptSection, Self.LunarSpellSelector, 'lcb_ls_spell', 'Lunar spell to cast', 24, 110,
+  Self.AddCombo(Self.ActionSection, Self.LunarSpellSelector, 'lcb_ls_spell', 'Lunar spell to cast', 24, 110,
     ['Bake Pie', 'Humidify', 'Spin Flax', 'Superglass Make', 'Tan Leather', 'String Jewellery', 'Plank Make', 'Recharge Dragonstone'],
     Ord(CHOSENSPELL));
   Self.LunarSpellSelector.SetHint('Select a Lunar Spell to cast.');
   Self.LunarSpellSelector.ComboBox.SetOnChange(@Self.LunarSpellSelectorOnChange);
 
-  Self.AddCombo(Self.ScriptSection, Self.ItemSelector, 'lcb_ls_item', 'Item to process', LS_GUI_COL2, 110, ['Berry Pie'], 0);
+  Self.AddCombo(Self.ActionSection, Self.ItemSelector, 'lcb_ls_item', 'Item to process', BASH_GUI_COL2, 110, ['Berry Pie'], 0);
   Self.ItemSelector.SetHint('Select what item to process.');
   Self.LunarSpellSelectorOnChange(nil);
 
-  Self.AddCombo(Self.ScriptSection, Self.ScriptSpeedSelector, 'lcb_ls_speed', 'Script speed', 24, 185,
+  Self.AddCombo(Self.ActionSection, Self.ScriptSpeedSelector, 'lcb_ls_speed', 'Script speed', 24, 185,
     ['Slow', 'Normal', 'Fast', 'Turbo'], Ord(SCRIPTSPEED));
   Self.ScriptSpeedSelector.SetHint('This affects wait times and mouse speed.');
 
-  Self.AddEdit(Self.ScriptSection, Self.StopAtLevelInputBox, 'le_ls_stop_level', 'Stop at Magic Level', IntToStr(STOP_AT_LEVEL), LS_GUI_COL2, 185, 120);
+  Self.AddEdit(Self.ActionSection, Self.StopAtLevelInputBox, 'le_ls_stop_level', 'Stop at Magic Level', IntToStr(STOP_AT_LEVEL), BASH_GUI_COL2, 185, 120);
   Self.StopAtLevelInputBox.SetHint('Enter 100+ to never stop.');
   Self.StopAtLevelInputBox.Edit.SetOnKeyPress(@Self.StopAtLevelInputBox.Edit.NumberField);
 
-  Self.AddCheck(Self.ScriptSection, Self.BUYRAWMATERIALSCheckbox, 'cb_ls_buy_raw', 'Buy Raw Materials', 24, 260, BUYRAWMATERIALS);
+  Self.AddCheck(Self.ActionSection, Self.BUYRAWMATERIALSCheckbox, 'cb_ls_buy_raw', 'Buy Raw Materials', 24, 260, BUYRAWMATERIALS);
   Self.BUYRAWMATERIALSCheckbox.SetHint('Buy raw materials when we run out?');
   Self.BUYRAWMATERIALSCheckbox.CheckBox.SetOnChange(@Self.BUYRAWMATERIALSCheckboxChanged);
 
-  Self.AddEdit(Self.ScriptSection, Self.QuantityInputBox, 'le_ls_quantity', 'Buy quantity', IntToStr(QUANTITYINPUT), LS_GUI_COL2, 260, LS_GUI_EDIT_W);
+  Self.AddEdit(Self.ActionSection, Self.QuantityInputBox, 'le_ls_quantity', 'Buy quantity', IntToStr(QUANTITYINPUT), BASH_GUI_COL2, 260, BASH_GUI_EDIT_W);
   Self.QuantityInputBox.Edit.SetOnKeyPress(@Self.QuantityInputBox.Edit.NumberField);
 
-  Self.AddCheck(Self.ScriptSection, Self.SELLNOTEDITEMCHECKBox, 'cb_ls_sell_finished', 'Sell Finished Item', 24, 300, SELLNOTEDITEMCHECK);
+  Self.AddCheck(Self.ActionSection, Self.SELLNOTEDITEMCHECKBox, 'cb_ls_sell_finished', 'Sell Finished Item', 24, 300, SELLNOTEDITEMCHECK);
   Self.SELLNOTEDITEMCHECKBox.SetHint('Will sell all processed items.');
 
-  Self.AddCheck(Self.ScriptSection, Self.BUYRUNESCHECKBox, 'cb_ls_buy_runes', 'Buy Runes', LS_GUI_COL2, 300, BUYRUNESCHECK);
+  Self.AddCheck(Self.ActionSection, Self.BUYRUNESCHECKBox, 'cb_ls_buy_runes', 'Buy Runes', BASH_GUI_COL2, 300, BUYRUNESCHECK);
   Self.BUYRUNESCHECKBox.SetHint('Will buy required runes for each spell. Does not work with Rune Pouch.');
 
-  Self.AddCheck(Self.ScriptSection, Self.BankFillersCheckBox, 'cb_ls_bank_fillers', 'Use Bank Fillers', 24, 340, BANKFILLERSCHECK);
+  Self.AddCheck(Self.ActionSection, Self.BankFillersCheckBox, 'cb_ls_bank_fillers', 'Use Bank Fillers', 24, 340, BANKFILLERSCHECK);
   Self.BankFillersCheckBox.SetHint('Enable this if you have bank fillers setup correctly.');
   Self.BankFillersCheckBox.CheckBox.SetOnChange(@Self.BankFillersCheckBoxChanged);
 
-  Self.Message2 := Self.MakeLabel(Self.ScriptSection, 'You MUST have bank fillers setup correctly.', LS_GUI_COL2, 344, 10, clRed, False);
+  Self.Message2 := Self.MakeLabel(Self.ActionSection, 'You MUST have bank fillers setup correctly.', BASH_GUI_COL2, 344, 10, clRed, False);
   Self.Message2.SetVisible(BANKFILLERSCHECK);
 
-  Self.AddCombo(Self.ScriptSection, Self.BankSelector, 'lcb_ls_bank', 'Bank', 24, 390, RSBankRegions.GetStrings(), 0);
+  Self.AddCombo(Self.ActionSection, Self.BankSelector, 'lcb_ls_bank', 'Bank', 24, 390, RSBankRegions.GetStrings(), 0);
   Self.BankSelector.SetHint('Bank used for casting and birdhouse return.');
   if WLSettings.Has('bank_map') then
     Self.BankSelector.SetItemIndex(WLSettings.GetInt('bank_map'));
   Self.BankSelector.ComboBox.SetOnChange(@Self.BankSelectorOnChange);
 
-  Self.AddCombo(Self.ScriptSection, Self.returnMethodSelector, 'lcb_ls_return', 'Return method (birdhouse)', LS_GUI_COL2, 390, ['Home Teleport'], 0);
+  Self.AddCombo(Self.ActionSection, Self.returnMethodSelector, 'lcb_ls_return', 'Return method (birdhouse)', BASH_GUI_COL2, 390, ['Home Teleport'], 0);
   Self.returnMethodSelector.SetHint('Select the return method based on the selected bank.');
-  Self.UpdateReturnMethodOptions(nil);
+
+  Self.RestoreItemAndReturn();
+  Self.BUYRAWMATERIALSCheckboxChanged(nil);
+  Self.BankFillersCheckBoxChanged(nil);
 end;
 
-procedure TConfig.BuildAccountsSection();
-var
-  am: TPanel;
-  selectorPanel, userPanel, passPanel, pinPanel, worldsPanel: TPanel;
-  addBtn, deleteBtn, generateBtn: TButton;
-  leftColW, passW, pinW, worldsLeft, btnW, btnGap: Int32;
+procedure TConfig.BuildExtraSections(); override;
 begin
-  Self.AddHeader(Self.AccountsSection, 'Accounts', 'Login account and optional Discord webhook notifications.');
-
-  am := Self.CreateAccountManager(Self.AccountsSection);
-  am.SetLeft(TControl.AdjustToDPI(16));
-  am.SetTop(TControl.AdjustToDPI(100));
-  am.SetColor(LS_GUI_BG);
-
-  leftColW := TControl.AdjustToDPI(280);
-  passW := Floor(leftColW * 0.6);
-  pinW := Floor(leftColW * 0.3);
-
-  selectorPanel := Self.Form.GetChild('am_selector_panel');
-  userPanel := Self.Form.GetChild('am_user_panel');
-  passPanel := Self.Form.GetChild('am_pass_panel');
-  pinPanel := Self.Form.GetChild('am_pin_panel');
-  worldsPanel := Self.Form.GetChild('am_worlds_panel');
-
-  if selectorPanel <> nil then
-    selectorPanel.SetWidth(leftColW);
-  if userPanel <> nil then
-    userPanel.SetWidth(leftColW);
-  if passPanel <> nil then
-    passPanel.SetWidth(passW);
-  if (pinPanel <> nil) and (selectorPanel <> nil) then
-  begin
-    pinPanel.SetWidth(pinW);
-    pinPanel.SetLeft(selectorPanel.GetLeft() + leftColW - pinW);
-  end;
-
-  if (worldsPanel <> nil) and (selectorPanel <> nil) then
-  begin
-    worldsLeft := selectorPanel.GetLeft() + leftColW + TControl.AdjustToDPI(48);
-    worldsPanel.SetLeft(worldsLeft);
-
-    addBtn := Self.Form.GetChild('am_add_button');
-    deleteBtn := Self.Form.GetChild('am_delete_button');
-    generateBtn := Self.Form.GetChild('am_generate_worlds_button');
-    btnGap := TControl.AdjustToDPI(8);
-    btnW := Floor((worldsPanel.GetWidth() - btnGap) / 2);
-
-    if generateBtn <> nil then
-    begin
-      generateBtn.SetLeft(worldsLeft);
-      generateBtn.SetWidth(worldsPanel.GetWidth());
-    end;
-    if addBtn <> nil then
-    begin
-      addBtn.SetLeft(worldsLeft);
-      addBtn.SetWidth(btnW);
-    end;
-    if deleteBtn <> nil then
-    begin
-      deleteBtn.SetLeft(worldsLeft + worldsPanel.GetWidth() - btnW - TControl.AdjustToDPI(1));
-      deleteBtn.SetWidth(btnW);
-    end;
-  end;
-
-  Self.MakeLabel(Self.AccountsSection, 'Discord', 24, 340, 11, LS_GUI_TEXT, True);
-
-  Self.AddCheck(Self.AccountsSection, Self.EnableWebhooksCheckBox, 'cb_ls_webhooks', 'Enable Discord Webhooks', 24, 370, ENABLEWEBHOOKS);
-  Self.EnableWebhooksCheckBox.SetHint('Enable or Disable Discord Webhooks notifications.');
-  Self.EnableWebhooksCheckBox.CheckBox.SetOnChange(@Self.WebhooksCheckboxChanged);
-
-  Self.WebhookInfo := Self.MakeLabel(Self.AccountsSection, 'Click here to learn how to generate your own Discord webhook URL', 24, 410, 10, LS_GUI_LINK, False);
-  Self.WebhookInfo.SetOnClick(@Self.OpenURL);
-  Self.WebhookInfo.SetCursor(crHandPoint);
-
-  Self.AddEdit(Self.AccountsSection, Self.DiscordUIDInput, 'le_ls_discord_uid', 'Discord UID (Optional)', DiscordUID, 24, 440, LS_GUI_EDIT_W);
-  Self.DiscordUIDInput.SetHint('This will mention you in the discord message.');
-
-  Self.DiscordUIDInfo := Self.MakeLabel(Self.AccountsSection, 'Click here to learn how to find your Discord User ID', LS_GUI_COL2, 458, 10, LS_GUI_LINK, False);
-  Self.DiscordUIDInfo.SetOnClick(@Self.OpenURL);
-  Self.DiscordUIDInfo.SetCursor(crHandPoint);
-
-  Self.AddEdit(Self.AccountsSection, Self.WebHookInput, 'le_ls_webhook', 'Discord Webhook URL', WEBHOOKURL, 24, 510, 520);
-  Self.WebHookInput.SetHint('Discord Webhook URL');
-
-  Self.AddCheck(Self.AccountsSection, Self.PingOnTerminatedCheckBox, 'cb_ls_ping_terminated', 'Ping on script termination', 24, 580, PINGONTERMINATED);
-  Self.PingOnTerminatedCheckBox.SetHint('Enable to ping when the script terminates cleanly');
-end;
-
-procedure TConfig.BuildAntibanSection(
-  SavedOverrideBreaks: Boolean;
-  SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime: Integer
-);
-var
-  tasks: TJSONObject;
-  sleepHour: String;
-  sleepLength: Single;
-  wasBio: Boolean;
-begin
-  Antiban.SetupBiometrics();
-  tasks := WLSettings.GetObject('antiban').getJSONObject('tasks');
-  wasBio := WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('biohash');
-  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('biohash', True);
-  sleepHour := Antiban.GetSleepHour();
-  sleepLength := Antiban.GetSleepLength();
-  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('biohash', wasBio);
-  if (not wasBio) and (WLSettings.GetObject('antiban').getJSONObject('sleep').getString('hour') <> '') then
-  begin
-    sleepHour := WLSettings.GetObject('antiban').getJSONObject('sleep').getString('hour');
-    sleepLength := WLSettings.GetObject('antiban').getJSONObject('sleep').getDouble('length');
-  end;
-  if sleepHour = '' then
-    sleepHour := '23:00:00';
-  if sleepLength <= 0 then
-    sleepLength := 8;
-
-  Self.AddHeader(Self.AntibanSection, 'Antiban', 'Breaks, sleeps, tasks, and session limits.');
-
-  Self.MakeLabel(Self.AntibanSection, 'Session', 24, 100, 11, LS_GUI_MUTED, True);
-  Self.AddEdit(Self.AntibanSection, Self.MaxActionsInput, 'le_ls_maxactions', 'Max actions (0 = unlimited)', IntToStr(SavedMaxActions), 24, 118, LS_GUI_EDIT_W);
-  Self.MaxActionsInput.Edit.SetOnKeyPress(@Self.MaxActionsInput.Edit.NumberField);
-  Self.AddEdit(Self.AntibanSection, Self.MaxTimeInput, 'le_ls_maxtime', 'Max time minutes (0 = unlimited)', IntToStr(SavedMaxTime), LS_GUI_COL2, 118, LS_GUI_EDIT_W);
-  Self.MaxTimeInput.Edit.SetOnKeyPress(@Self.MaxTimeInput.Edit.NumberField);
-
-  Self.MakeLabel(Self.AntibanSection, 'Breaks and sleeps', 24, 188, 11, LS_GUI_MUTED, True);
-  Self.AddCheck(Self.AntibanSection, Self.ShortBreaksCheckBox, 'cb_ls_short_breaks', 'Short breaks', 24, 210, WLSettings.GetObject('antiban').getBoolean('breaks'));
-  Self.ShortBreaksCheckBox.CheckBox.SetOnChange(@Self.ShortBreaksCheckboxChanged);
-  Self.ShortBreaksCheckBox.SetTooltip('Enables short randomized breaks during the session.');
-  Self.AddCheck(Self.AntibanSection, Self.SleepBreaksCheckBox, 'cb_ls_sleep_breaks', 'Sleep breaks', LS_GUI_COL2, 210, WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('enabled'));
-  Self.SleepBreaksCheckBox.CheckBox.SetOnChange(@Self.SleepBreaksCheckboxChanged);
-  Self.SleepBreaksCheckBox.SetTooltip('Enables longer sleep breaks based on local time.');
-
-  Self.AddEdit(Self.AntibanSection, Self.SleepHourInput, 'le_ls_sleep_hour', 'Sleep hour (HH:MM:SS)', sleepHour, 24, 238, LS_GUI_EDIT_W);
-  Self.SleepHourInput.Edit.SetOnKeyPress(@Self.SleepHourInput.Edit.TimeField);
-  Self.SleepHourInput.SetTooltip('Local PC time used as the base for sleep start.');
-  Self.AddEdit(Self.AntibanSection, Self.SleepLengthInput, 'le_ls_sleep_length', 'Sleep length (hours)', ToStr(sleepLength), LS_GUI_COL2, 238, LS_GUI_EDIT_W);
-  Self.SleepLengthInput.Edit.SetOnKeyPress(@Self.SleepLengthInput.Edit.FloatField);
-  Self.SleepLengthInput.SetTooltip('Approximate sleep length in hours.');
-
-  Self.AddCheck(Self.AntibanSection, Self.OverrideBreaksCheckBox, 'cb_ls_override_breaks', 'Override default breaks', 24, 300, SavedOverrideBreaks);
-  Self.OverrideBreaksCheckBox.CheckBox.SetOnChange(@Self.OverrideBreaksCheckboxChanged);
-  Self.OverrideBreaksCheckBox.SetTooltip('Replace WaspLib break intervals with your own schedule.');
-
-  Self.AddEdit(Self.AntibanSection, Self.CustomBreakIntervalInput, 'le_ls_break_interval', 'Break interval (minutes)', IntToStr(SavedCustomBreakInterval), 24, 328, LS_GUI_EDIT_W);
-  Self.CustomBreakIntervalInput.Edit.SetOnKeyPress(@Self.CustomBreakIntervalInput.Edit.NumberField);
-  Self.CustomBreakIntervalInput.SetTooltip('How often to take breaks. Includes randomness.');
-  Self.AddEdit(Self.AntibanSection, Self.CustomBreakDurationInput, 'le_ls_break_duration', 'Break duration (minutes)', IntToStr(SavedCustomBreakDuration), LS_GUI_COL2, 328, LS_GUI_EDIT_W);
-  Self.CustomBreakDurationInput.Edit.SetOnKeyPress(@Self.CustomBreakDurationInput.Edit.NumberField);
-  Self.CustomBreakDurationInput.SetTooltip('How long breaks should last. Includes randomness.');
-
-  Self.MakeLabel(Self.AntibanSection, 'Tasks', 24, 380, 11, LS_GUI_MUTED, True);
-  Self.AddCheck(Self.AntibanSection, Self.TasksEnabledCheckBox, 'cb_ls_tasks', 'Enable antiban tasks', 24, 398, tasks.getBoolean('enabled'));
-  Self.TasksEnabledCheckBox.CheckBox.SetOnChange(@Self.TasksEnabledCheckboxChanged);
-  Self.TasksEnabledCheckBox.SetTooltip('Enables camera, mouse, chat, gametab, and bank antiban tasks.');
-
-  Self.AddCheck(Self.AntibanSection, Self.TaskCameraCheckBox, 'cb_ls_task_camera', 'Camera', 24, 422, tasks.getBoolean('camera'));
-  Self.AddCheck(Self.AntibanSection, Self.TaskMouseCheckBox, 'cb_ls_task_mouse', 'Mouse', LS_GUI_COL2, 422, tasks.getBoolean('mouse'));
-  Self.AddCheck(Self.AntibanSection, Self.TaskChatCheckBox, 'cb_ls_task_chat', 'Chat', 24, 441, tasks.getBoolean('chat'));
-  Self.AddCheck(Self.AntibanSection, Self.TaskGameTabsCheckBox, 'cb_ls_task_gametabs', 'GameTabs', LS_GUI_COL2, 441, tasks.getBoolean('gametabs'));
-  Self.AddCheck(Self.AntibanSection, Self.TaskBankCheckBox, 'cb_ls_task_bank', 'Bank', 24, 460, tasks.getBoolean('bank'));
-
-  Self.SleepBreaksCheckboxChanged(nil);
-  Self.TasksEnabledCheckboxChanged(nil);
-  Self.OverrideBreaksCheckboxChanged(nil);
-  Self.ShortBreaksCheckboxChanged(nil);
+  Self.BirdhouseSection := Self.AddExtraTab('Birdhouse');
+  Self.BuildBirdhouseSection();
 end;
 
 procedure TConfig.BuildBirdhouseSection();
@@ -3132,8 +2618,8 @@ begin
     SetCaption('Log type to use');
     SetLeft(TControl.AdjustToDPI(24));
     SetTop(TControl.AdjustToDPI(160));
-    SetWidth(TControl.AdjustToDPI(LS_GUI_EDIT_W));
-    SetHeight(TControl.AdjustToDPI(LS_GUI_COMBO_H));
+    SetWidth(TControl.AdjustToDPI(BASH_GUI_EDIT_W));
+    SetHeight(TControl.AdjustToDPI(BASH_GUI_COMBO_H));
     SetStyle(csDropDownList);
     AddItemArray(['Regular', 'Oak', 'Willow', 'Teak', 'Maple', 'Mahogany', 'Yew', 'Magic tree', 'Redwood']);
     SetItemIndex(Ord(BHIncludeGUILogType));
@@ -3142,7 +2628,7 @@ begin
   end;
   BirdHouseRunner.LogType := BHIncludeGUILogType;
 
-  Self.AddEdit(Self.BirdhouseSection, Self.SeedInput, 'le_ls_bh_seed', 'Seed name (e.g. potato)', ToStr(BHIncludeGUISeed).Replace('Barely', 'Barley', [rfIgnoreCase]).Before(' '), LS_GUI_COL2, 160, LS_GUI_EDIT_W);
+  Self.AddEdit(Self.BirdhouseSection, Self.SeedInput, 'le_ls_bh_seed', 'Seed name (e.g. potato)', ToStr(BHIncludeGUISeed).Replace('Barely', 'Barley', [rfIgnoreCase]).Before(' '), BASH_GUI_COL2, 160, BASH_GUI_EDIT_W);
   Self.SeedInput.SetHint('Just the seed name without the word "seed".');
   Self.SeedInput.Edit.SetOnKeyPress(@Self.SeedInput.Edit.CJTextField);
   Self.SeedInput.Edit.SetOnChange(@Self.BirdhouseSeedChanged);
@@ -3153,14 +2639,14 @@ begin
   Self.UseBestLogCheckBox.CheckBox.SetOnChange(@Self.BirdhouseBestLogChanged);
   BirdHouseRunner.AlwaysUseBestLog := BHIncludeGUIUseBestLog;
 
-  Self.AddCheck(Self.BirdhouseSection, Self.CraftWhileNavCheckBox, 'cb_ls_bh_craftnav', 'Craft while navigating', LS_GUI_COL2, 235, BHIncludeGUICraftWhileNav);
+  Self.AddCheck(Self.BirdhouseSection, Self.CraftWhileNavCheckBox, 'cb_ls_bh_craftnav', 'Craft while navigating', BASH_GUI_COL2, 235, BHIncludeGUICraftWhileNav);
   Self.CraftWhileNavCheckBox.SetHint('Craft clockworks while travelling when needed.');
   Self.CraftWhileNavCheckBox.CheckBox.SetOnChange(@Self.BirdhouseCraftWhileNavChanged);
   BirdHouseRunner.NeedClockworks := BHIncludeGUICraftWhileNav;
 
   Self.BirdhouseIntervalLabel := Self.MakeLabel(Self.BirdhouseSection,
     'When should the next run start? Runs continue every ~50-60 minutes automatically.',
-    24, 320, 10, LS_GUI_MUTED, False);
+    24, 320, 10, BASH_GUI_MUTED, False);
   Self.BirdhouseIntervalLabel.SetWidth(TControl.AdjustToDPI(820));
 
   Self.RunNowRadio.Create(Self.BirdhouseSection);
@@ -3194,196 +2680,119 @@ begin
 
   Self.BirdhouseInfoLabel := Self.MakeLabel(Self.BirdhouseSection,
     'Enable birdhouse runs above to configure options.',
-    24, 415, 10, LS_GUI_MUTED, False);
+    24, 415, 10, BASH_GUI_MUTED, False);
   Self.BirdhouseInfoLabel.SetWidth(TControl.AdjustToDPI(820));
-end;
 
-procedure TConfig.BuildShell(
-  SavedOverrideBreaks: Boolean;
-  SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime: Integer
-);
-var
-  contentH, startW, startH, shellW, shellH, statusTop, statusH, mainLeft, mainW, navW, bottomInset: Int32;
-begin
-  Self.Start.SetAlign(alNone);
-  Self.Start.SetVisible(False);
-  Self.Start.SetHeight(0);
-  Self.Start.SetWidth(0);
-
-  Self.PageControl.SetVisible(False);
-  Self.PageControl.SetAlign(alNone);
-  Self.PageControl.SetBounds(0, 0, 0, 0);
-
-  bottomInset := TControl.AdjustToDPI(LS_GUI_BOTTOM_INSET);
-  navW := TControl.AdjustToDPI(LS_GUI_NAV_W);
-  statusH := TControl.AdjustToDPI(LS_GUI_STATUS_H);
-  shellW := Self.Size.X;
-  shellH := Self.Size.Y;
-  mainLeft := navW + TControl.AdjustToDPI(2);
-  mainW := shellW - mainLeft;
-  statusTop := shellH - statusH - bottomInset;
-  contentH := statusTop;
-  startW := TControl.AdjustToDPI(132);
-  startH := TControl.AdjustToDPI(LS_GUI_BTN_H);
-
-  Self.NavPanel.Create(Self.Form);
-  Self.NavPanel.SetLeft(0);
-  Self.NavPanel.SetTop(0);
-  Self.NavPanel.SetWidth(navW);
-  Self.NavPanel.SetHeight(shellH);
-  Self.NavPanel.SetColor(LS_GUI_NAV);
-  Self.NavPanel.SetBevelOuter(bvNone);
-
-  Self.DividerPanel.Create(Self.Form);
-  Self.DividerPanel.SetLeft(navW);
-  Self.DividerPanel.SetTop(0);
-  Self.DividerPanel.SetWidth(TControl.AdjustToDPI(2));
-  Self.DividerPanel.SetHeight(shellH);
-  Self.DividerPanel.SetColor(LS_GUI_DIVIDER);
-  Self.DividerPanel.SetBevelOuter(bvNone);
-
-  Self.ContentPanel.Create(Self.Form);
-  Self.ContentPanel.SetLeft(mainLeft);
-  Self.ContentPanel.SetTop(0);
-  Self.ContentPanel.SetWidth(mainW);
-  Self.ContentPanel.SetHeight(contentH);
-  Self.ContentPanel.SetColor(LS_GUI_BG);
-  Self.ContentPanel.SetBevelOuter(bvNone);
-
-  Self.StatusDivider.Create(Self.Form);
-  Self.StatusDivider.SetLeft(mainLeft);
-  Self.StatusDivider.SetTop(statusTop);
-  Self.StatusDivider.SetWidth(mainW);
-  Self.StatusDivider.SetHeight(TControl.AdjustToDPI(2));
-  Self.StatusDivider.SetColor(LS_GUI_DIVIDER);
-  Self.StatusDivider.SetBevelOuter(bvNone);
-
-  Self.StatusPanel.Create(Self.Form);
-  Self.StatusPanel.SetLeft(mainLeft);
-  Self.StatusPanel.SetTop(statusTop + Self.StatusDivider.GetHeight());
-  Self.StatusPanel.SetWidth(mainW);
-  Self.StatusPanel.SetHeight(statusH - Self.StatusDivider.GetHeight());
-  Self.StatusPanel.SetColor(LS_GUI_STATUS);
-  Self.StatusPanel.SetBevelOuter(bvNone);
-
-  Self.StatusPad.Create(Self.Form);
-  Self.StatusPad.SetLeft(mainLeft);
-  Self.StatusPad.SetTop(Self.StatusPanel.GetTop() + Self.StatusPanel.GetHeight());
-  Self.StatusPad.SetWidth(mainW);
-  Self.StatusPad.SetHeight(shellH - Self.StatusPad.GetTop());
-  Self.StatusPad.SetColor(LS_GUI_STATUS);
-  Self.StatusPad.SetBevelOuter(bvNone);
-
-  Self.BrandLabel := Self.MakeLabel(Self.NavPanel, 'AIO Lunar Spells', 16, 28, 14, LS_GUI_TEXT, True);
-  Self.MakeLabel(Self.NavPanel, 'BigAussie', 16, 54, 9, LS_GUI_MUTED, False);
-
-  Self.ScriptNav := Self.MakeNavItem(Self.NavPanel, 'Action', 12, 100, True);
-  Self.AccountsNav := Self.MakeNavItem(Self.NavPanel, 'Accounts', 12, 152);
-  Self.AntibanNav := Self.MakeNavItem(Self.NavPanel, 'Antiban', 12, 204);
-  Self.BirdhouseNav := Self.MakeNavItem(Self.NavPanel, 'Birdhouse', 12, 256);
-
-  Self.ScriptSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, LS_GUI_BG);
-  Self.AccountsSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, LS_GUI_BG);
-  Self.AntibanSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, LS_GUI_BG);
-  Self.BirdhouseSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, LS_GUI_BG);
-
-  Self.ScriptSection.SetWidth(mainW);
-  Self.ScriptSection.SetHeight(contentH);
-  Self.AccountsSection.SetWidth(mainW);
-  Self.AccountsSection.SetHeight(contentH);
-  Self.AntibanSection.SetWidth(mainW);
-  Self.AntibanSection.SetHeight(contentH);
-  Self.BirdhouseSection.SetWidth(mainW);
-  Self.BirdhouseSection.SetHeight(contentH);
-
-  Self.BuildScriptSection();
-  Self.BuildAccountsSection();
-  Self.BuildAntibanSection(SavedOverrideBreaks, SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime);
-  Self.BuildBirdhouseSection();
-
-  Self.ScriptNav.SetOnClick(@Self.ShowScript);
-  Self.AccountsNav.SetOnClick(@Self.ShowAccounts);
-  Self.AntibanNav.SetOnClick(@Self.ShowAntiban);
-  Self.BirdhouseNav.SetOnClick(@Self.ShowBirdhouse);
-
-  Self.StartChip.Create(Self.StatusPanel);
-  Self.StartChip.SetLeft(mainW - startW - TControl.AdjustToDPI(24));
-  Self.StartChip.SetTop((Self.StatusPanel.GetHeight() - startH) div 2 + 2);
-  Self.StartChip.SetWidth(startW);
-  Self.StartChip.SetHeight(startH);
-  Self.StartChip.SetCursor(crHandPoint);
-  Self.PaintRoundChip(Self.StartChip, 'Start', LS_GUI_START, LS_GUI_STATUS, True, True);
-  Self.StartChip.SetOnClick(@Self.StartScript);
-
-  if SELECTEDITEM <> '' then
-    Self.ItemSelector.SetText(SELECTEDITEM);
-  if SELECTEDRETURNMETHOD <> '' then
-    Self.returnMethodSelector.SetText(SELECTEDRETURNMETHOD);
-
-  Self.BUYRAWMATERIALSCheckboxChanged(nil);
-  Self.BankFillersCheckBoxChanged(nil);
-  Self.WebhooksCheckboxChanged(nil);
   Self.BirdhouseEnabledChanged(nil);
-  Self.ShowScript(Self.ScriptNav);
 end;
 
-procedure TConfig.Run(); override;
-var
-  SavedMaxActions, SavedMaxTime: Integer;
-  SavedOverrideBreaks: Boolean;
-  SavedCustomBreakInterval, SavedCustomBreakDuration: Integer;
+procedure TConfig.OpenDiscordUIDHelp(Sender: TObject);
 begin
-  BashPromptIfUpdateAvailable();
+  if Sender = nil then;
+  OpenWebPage('https://support.discord.com/hc/en-us/articles/206346498-Where-can-I-find-my-User-Server-Message-ID');
+end;
 
-  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
-    Self.Username := 'NoUserNameSelected'
-  else
-    Self.Username := Login.Players[Login.PlayerIndex].User;
+procedure TConfig.WebhooksCheckboxChanged({$H-}sender: TObject); {$H+} override;
+var
+  shown: Boolean;
+begin
+  inherited;
+  shown := Self.EnableWebhooksCheckBox.IsChecked();
+  if Assigned(Self.DiscordUIDInput) then
+    Self.DiscordUIDInput.SetVisible(shown);
+  if Assigned(Self.DiscordUIDInfo) then
+    Self.DiscordUIDInfo.SetVisible(shown);
+  if Assigned(Self.PingOnTerminatedCheckBox) then
+    Self.PingOnTerminatedCheckBox.SetVisible(shown);
+end;
 
-  writeln('Reading previous settings.');
-  DiscordUID := ReadINI(Self.Username + ' Webhook Settings', 'DiscordUID', 'Configs/BASettings.ini');
-  WEBHOOKURL := ReadINI(Self.Username + ' Webhook Settings', 'WebhookURL', 'Configs/BASettings.ini');
-  ENABLEWEBHOOKS := StrToBoolDef(ReadINI(Self.Username + ' Webhook Settings', 'EnableWebhooks', 'Configs/BASettings.ini'), False);
-  PINGONTERMINATED := StrToBoolDef(ReadINI(Self.Username + ' Webhook Settings', 'PingOnTerminated', 'Configs/BASettings.ini'), True);
-  CHOSENSPELL := StringToSpell(ReadINI(Self.Username + ' AIO Lunar Settings', 'CHOSENSPELL', 'Configs/BASettings.ini'));
-  SELECTEDITEM := ReadINI(Self.Username + ' AIO Lunar Settings', 'SELECTEDITEM', 'Configs/BASettings.ini');
-  SCRIPTSPEED := StringToScriptSpeed(ReadINI(Self.Username + ' AIO Lunar Settings', 'SCRIPTSPEED', 'Configs/BASettings.ini'));
-  SELLNOTEDITEMCHECK := StrToBoolDef(ReadINI(Self.Username + ' AIO Lunar Settings', 'SELLNOTEDITEMCHECK', 'Configs/BASettings.ini'), False);
-  BUYRUNESCHECK := StrToBoolDef(ReadINI(Self.Username + ' AIO Lunar Settings', 'BUYRUNESCHECK', 'Configs/BASettings.ini'), False);
-  BUYRAWMATERIALS := StrToBoolDef(ReadINI(Self.Username + ' AIO Lunar Settings', 'BUYRAWMATERIALS', 'Configs/BASettings.ini'), False);
-  BANKFILLERSCHECK := StrToBoolDef(ReadINI(Self.Username + ' AIO Lunar Settings', 'BANKFILLERSCHECK', 'Configs/BASettings.ini'), False);
-  QUANTITYINPUT := StrToIntDef(ReadINI(Self.Username + ' AIO Lunar Settings', 'QUANTITYINPUT', 'Configs/BASettings.ini'), 0);
-  STOP_AT_LEVEL := StrToIntDef(ReadINI(Self.Username + ' AIO Lunar Settings', 'STOP_AT_LEVEL', 'Configs/BASettings.ini'), -1);
-  SELECTEDRETURNMETHOD := ReadINI(Self.Username + ' AIO Lunar Settings', 'SELECTEDRETURNMETHOD', 'Configs/BASettings.ini');
-  BIRDHOUSEENABLED := StrToBoolDef(ReadINI(Self.Username + ' Birdhouse Settings', 'Enabled', 'Configs/BASettings.ini'), True);
-  BHIncludeGUILogType := ERSLogType(StrToIntDef(ReadINI(Self.Username + ' Birdhouse Settings', 'LogType', 'Configs/BASettings.ini'), 0));
-  BHIncludeGUISeed := ReadINI(Self.Username + ' Birdhouse Settings', 'Seed', 'Configs/BASettings.ini');
-  BHIncludeGUIRunIntervalMinutes := StrToIntDef(ReadINI(Self.Username + ' Birdhouse Settings', 'RunIntervalMinutes', 'Configs/BASettings.ini'), 0) div 60000;
-  BHIncludeGUIUseBestLog := StrToBoolDef(ReadINI(Self.Username + ' Birdhouse Settings', 'UseBestLog', 'Configs/BASettings.ini'), False);
-  BHIncludeGUICraftWhileNav := StrToBoolDef(ReadINI(Self.Username + ' Birdhouse Settings', 'CraftWhileNav', 'Configs/BASettings.ini'), False);
+procedure TConfig.BuildAccountsExtras(); override;
+begin
+  Self.AddCheck(Self.AccountsSection, Self.PingOnTerminatedCheckBox, 'cb_ls_ping_term',
+    'Ping on script termination', BASH_GUI_COL2, 350, PINGONTERMINATED);
+  Self.AddEdit(Self.AccountsSection, Self.DiscordUIDInput, 'le_ls_discord_uid',
+    'Discord UID (optional)', DiscordUID, 24, 490, 260);
+  Self.DiscordUIDInfo := Self.MakeLabel(Self.AccountsSection, 'How to find your Discord User ID',
+    BASH_GUI_COL2, 508, 10, BASH_GUI_LINK, False);
+  Self.DiscordUIDInfo.SetOnClick(@Self.OpenDiscordUIDHelp);
+  Self.DiscordUIDInfo.SetCursor(crHandPoint);
+  Self.EnableWebhooksCheckBox.CheckBox.SetOnChange(@Self.WebhooksCheckboxChanged);
+  Self.WebhooksCheckboxChanged(nil);
+end;
 
-  SavedOverrideBreaks := StrToBoolDef(ReadINI(Self.Username + ' AIO Lunar Spells Antiban', 'OverrideBreaks', 'Configs/BASettings.ini'), False);
-  SavedCustomBreakInterval := StrToIntDef(ReadINI(Self.Username + ' AIO Lunar Spells Antiban', 'CustomBreakInterval', 'Configs/BASettings.ini'), 60);
-  SavedCustomBreakDuration := StrToIntDef(ReadINI(Self.Username + ' AIO Lunar Spells Antiban', 'CustomBreakDuration', 'Configs/BASettings.ini'), 5);
+procedure TConfig.ApplyActionSettings(); override;
+begin
+  SELECTEDITEM := Self.ItemSelector.GetText();
+  CHOSENSPELL := ELunarSpell(Self.LunarSpellSelector.GetItemIndex());
+  SCRIPTSPEED := ScriptSpeedTypes(Self.ScriptSpeedSelector.GetItemIndex());
+  SELLNOTEDITEMCHECK := Self.SELLNOTEDITEMCHECKBox.IsChecked();
+  BUYRUNESCHECK := Self.BUYRUNESCHECKBox.IsChecked();
+  BUYRAWMATERIALS := Self.BUYRAWMATERIALSCheckbox.IsChecked();
+  BANKFILLERSCHECK := Self.BankFillersCheckBox.IsChecked();
+  QUANTITYINPUT := StrToIntDef(Self.QuantityInputBox.GetText(), 0);
+  STOP_AT_LEVEL := StrToIntDef(Self.StopAtLevelInputBox.GetText(), -1);
+  if Assigned(Self.DiscordUIDInput) then
+    DiscordUID := Self.DiscordUIDInput.GetText();
+  if Assigned(Self.PingOnTerminatedCheckBox) then
+    PINGONTERMINATED := Self.PingOnTerminatedCheckBox.IsChecked();
+  BIRDHOUSEENABLED := Self.BirdHouseSettingsCheckbox.IsChecked();
+  SELECTEDBANKTOUSE := Self.BankSelector.GetText();
+  SELECTEDRETURNMETHOD := Self.returnMethodSelector.GetText();
 
-  if WLSettings.Has('max_actions') then
-    SavedMaxActions := WLSettings.GetInt('max_actions')
-  else
-    SavedMaxActions := 0;
-  if WLSettings.Has('max_time') then
-    SavedMaxTime := WLSettings.GetInt('max_time')
-  else
-    SavedMaxTime := 0;
+  if Assigned(Self.LogTypeCombo) then
+    BirdHouseRunner.LogType := ERSLogType(Self.LogTypeCombo.GetItemIndex());
+  if Assigned(Self.SeedInput) then
+    BirdHouseRunner.Seed := Self.SeedInput.GetText();
+  if Assigned(Self.UseBestLogCheckBox) then
+    BirdHouseRunner.AlwaysUseBestLog := Self.UseBestLogCheckBox.IsChecked();
+  if Assigned(Self.CraftWhileNavCheckBox) then
+    BirdHouseRunner.NeedClockworks := Self.CraftWhileNavCheckBox.IsChecked();
 
-  Self.Setup('BigAussies AIO Lunar Spells', [LS_GUI_W, LS_GUI_H], False);
-  Self.BuildShell(SavedOverrideBreaks, SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime);
+  WLSettings.Put('bank_map', Self.BankSelector.GetItemIndex());
 
+  WriteINI(Self.Username + BASH_GUI_WEBHOOK_SECTION, 'DiscordUID', DiscordUID, BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + BASH_GUI_WEBHOOK_SECTION, 'PingOnTerminated', BoolToStr(PINGONTERMINATED, 'true', 'false'), BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + ' AIO Lunar Settings', 'CHOSENSPELL', SpellToString(CHOSENSPELL), BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + ' AIO Lunar Settings', 'SELECTEDITEM', SELECTEDITEM, BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + ' AIO Lunar Settings', 'SCRIPTSPEED', ScriptSpeedToString(SCRIPTSPEED), BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + ' AIO Lunar Settings', 'SELLNOTEDITEMCHECK', BoolToStr(SELLNOTEDITEMCHECK, 'true', 'false'), BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + ' AIO Lunar Settings', 'BUYRUNESCHECK', BoolToStr(BUYRUNESCHECK, 'true', 'false'), BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + ' AIO Lunar Settings', 'BUYRAWMATERIALS', BoolToStr(BUYRAWMATERIALS, 'true', 'false'), BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + ' AIO Lunar Settings', 'BANKFILLERSCHECK', BoolToStr(BANKFILLERSCHECK, 'true', 'false'), BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + ' AIO Lunar Settings', 'QUANTITYINPUT', IntToStr(QUANTITYINPUT), BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + ' AIO Lunar Settings', 'STOP_AT_LEVEL', IntToStr(STOP_AT_LEVEL), BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + ' AIO Lunar Settings', 'SELECTEDRETURNMETHOD', SELECTEDRETURNMETHOD, BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + ' Birdhouse Settings', 'Enabled', BoolToStr(BIRDHOUSEENABLED, 'true', 'false'), BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + ' Birdhouse Settings', 'LogType', IntToStr(Ord(BirdHouseRunner.LogType)), BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + ' Birdhouse Settings', 'Seed', BirdHouseRunner.Seed, BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + ' Birdhouse Settings', 'RunIntervalMinutes', ToStr(BirdHouseRunner.TaskInterval), BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + ' Birdhouse Settings', 'UseBestLog', BoolToStr(BirdHouseRunner.AlwaysUseBestLog, 'true', 'false'), BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + ' Birdhouse Settings', 'CraftWhileNav', BoolToStr(BirdHouseRunner.NeedClockworks, 'true', 'false'), BASH_GUI_SETTINGS_FILE);
+end;
+
+procedure TConfig.StartScript(Sender: TObject); override;
+begin
+  if Sender = nil then;
+  if Assigned(Self.BirdHouseSettingsCheckbox) and Self.BirdHouseSettingsCheckbox.IsChecked() and (Self.returnMethodSelector.GetItemIndex() = -1) then
+  begin
+    ShowMessage('No return method is selected, You must select a return method.');
+    Exit;
+  end;
+  try
+    Self._WarmBuildCache();
+  except
+  end;
   inherited;
 end;
+
+{$IFDEF SCRIPT_GUI}
+{$I BashLib/optional/handlers/bashgui_host_scriptgui.simba}
+{$ENDIF}
 
 var
   Config: TConfig;
 {$ENDIF}
+
 
 begin
   {$IFDEF SCRIPT_GUI}

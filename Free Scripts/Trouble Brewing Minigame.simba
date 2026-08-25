@@ -1,9 +1,12 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := '89354d20-c87d-4706-98d6-6b4f0a65f5f5'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '9'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '10'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
 {$I BashLib/optional/handlers/teleports/transport.simba}
+{$IFDEF SCRIPT_GUI}
+{$I BashLib/optional/handlers/bashgui.simba}
+{$ENDIF}
 
 {
 ----------------------------------------------------------------------------------
@@ -22,15 +25,10 @@ var
   NPCSELECTION: String                  = '';
   POWERFLETCHING: Boolean                = False;
   STOPATPOINTSLIMIT: Boolean             = False;
-  WEBHOOKURL: String                     = '';
   DiscordUID: String                     = '';
-  ENABLEWEBHOOKS: Boolean                = False;
   PINGONTERMINATED: Boolean              = False;
   //BIRDHOUSEENABLED: Boolean            = False; // One day maybe
   BHOPENNESTS: Boolean                   = False;
-  OVERRIDEBREAKS: Boolean        = False;
-  CUSTOMBREAKINTERVAL: Integer   = 60;
-  CUSTOMBREAKDURATION: Integer   = 5;
 
 begin
   Login.PlayerIndex := 0;
@@ -1662,9 +1660,9 @@ begin
   CookingXP := TotalScrapeyLogs * 100;
 
   WriteLn('========================================');
-  WriteLn('       BigAussies Troublebrewing        ');
+  WriteLn('       BASH Scripts Troublebrewing        ');
   If SRL.dice(1) then
-    WriteLn('   BigAussies & Rubix Troublebrewing   ');
+    WriteLn('   BASH Scripts & Rubix Troublebrewing   ');
 
   WriteLn('========================================');
   WriteLn('   Runtime: ' + SRL.MsToTime(GetTimeRunning, Time_Short));
@@ -1691,7 +1689,7 @@ begin
   WriteLn('   Current State: ', Self.GetState());
   WriteLn('   Current Location: ', Self.GetLocation());
   WriteLn('========================================');
-  WriteLn('     BigAussies Troublebrewing      ');
+  WriteLn('     BASH Scripts Troublebrewing      ');
   WriteLn('    ', Antiban.BreakScheduleText());
   WriteLn('    ', Antiban.SleepScheduleText());
   WriteLn('           Version: ' + {$MACRO SCRIPT_REVISION});
@@ -1761,298 +1759,80 @@ end;
 
 {$IFDEF SCRIPT_GUI}
 const
-  TB_GUI_NAV       = $F0EBE4;
-  TB_GUI_BG        = $FFFFFF;
-  TB_GUI_STATUS    = $F7F4F1;
-  TB_GUI_DIVIDER   = $D4C9BC;
-  TB_GUI_CARD      = $F7F4F1;
-  TB_GUI_ACCENT    = $E0C9AE;
-  TB_GUI_NAV_IDLE  = $E7DED4;
-  TB_GUI_START     = $C9B094;
-  TB_GUI_TEXT      = $1C1C1E;
-  TB_GUI_MUTED     = $6B6B70;
-  TB_GUI_W         = 1120;
-  TB_GUI_H         = 700;
-  TB_GUI_NAV_W     = 190;
-  TB_GUI_STATUS_H  = 56;
-  TB_GUI_BTN_H     = 42;
-  TB_GUI_COMBO_W   = 260;
-  TB_GUI_COMBO_H   = 58;
-  TB_GUI_COMBO_FONT = 10;
-  TB_GUI_EDIT_W    = 260;
-  TB_GUI_COL2      = 308;
-  TB_GUI_BOTTOM_INSET = 34;
-
   TB_TEAM_ITEMS: TStringArray = ['Red', 'Blue', 'Random'];
   TB_METHOD_ITEMS: TStringArray = ['Scrapy Bark', 'Buckets'];
 
 type
-  TConfig = record(TScriptForm)
-    NavPanel, ContentPanel, StatusPanel, DividerPanel, StatusDivider, StatusPad: TPanel;
-    BrandLabel: TLabel;
-    ScriptNav, AccountsNav, AntibanNav: TImage;
-    StartChip: TImage;
-    ActiveNav: TImage;
-    ScriptSection, AccountsSection, AntibanSection: TPanel;
-
+  TConfig = record(TBASHPremiumGUI)
     MethodDropBox, TeamDropBox: TLabeledComboBox;
     PowerFletchCheckBox, StopAtPointsLimitCheckBox: TLabeledCheckBox;
     DisplayNameLabel: TLabel;
     TeamSelection: String;
+    DiscordUIDInfo: TLabel;
+    DiscordUIDInput: TLabeledEdit;
+    PingOnTerminatedCheckBox: TLabeledCheckBox;
+  end;
+  TScriptGUI = TConfig;
 
-    WebhookInfo, DiscordUIDInfo: TLabel;
-    WebHookInput, DiscordUIDInput: TLabeledEdit;
-    PingOnTerminatedCheckBox, EnableWebhooksCheckBox: TLabeledCheckBox;
-    MaxActionsInput, MaxTimeInput: TLabeledEdit;
-    ShortBreaksCheckBox, SleepBreaksCheckBox: TLabeledCheckBox;
-    SleepHourInput, SleepLengthInput: TLabeledEdit;
-    TasksEnabledCheckBox: TLabeledCheckBox;
-    TaskCameraCheckBox, TaskMouseCheckBox, TaskChatCheckBox, TaskGameTabsCheckBox, TaskBankCheckBox: TLabeledCheckBox;
-    OverrideBreaksCheckBox: TLabeledCheckBox;
-    CustomBreakIntervalInput, CustomBreakDurationInput: TLabeledEdit;
-    Username: String;
+procedure TConfig.InitGUI(); override;
+begin
+  Self.BrandTitle := 'Trouble Brewing';
+  Self.WindowTitle := 'BASH Scripts Trouble Brewing';
+  Self.WebhookTestPrefix := 'Test message from BASH Scripts Trouble Brewing';
+  Self.HasFarm := False;
+  Self.HasAIChat := False;
+  Self.HasWorldHopping := False;
+  Self.HasMaxActions := True;
+  Self.HasStopAtLevel := False;
+  Self.LegacyAntibanSection := ' Trouble Brewing Antiban';
+end;
+
+procedure TConfig.MigrateLegacyWebhook();
+var
+  url, en: String;
+begin
+  url := ReadINI(Self.Username + BASH_GUI_WEBHOOK_SECTION, 'WebhookURL', BASH_GUI_SETTINGS_FILE);
+  if url = '' then
+  begin
+    url := ReadINI(Self.Username + ' Webhook Settings', 'WebhookURL', BASH_GUI_SETTINGS_FILE);
+    if url <> '' then
+      WriteINI(Self.Username + BASH_GUI_WEBHOOK_SECTION, 'WebhookURL', url, BASH_GUI_SETTINGS_FILE);
   end;
 
-function TConfig.MakePanel(
-  parent: TWinControl;
-  left, top, width, height, color: Int32
-): TPanel;
-begin
-  Result.Create(parent);
-  Result.SetLeft(TControl.AdjustToDPI(left));
-  Result.SetTop(TControl.AdjustToDPI(top));
-  Result.SetWidth(TControl.AdjustToDPI(width));
-  Result.SetHeight(TControl.AdjustToDPI(height));
-  Result.SetColor(color);
-  Result.SetBevelOuter(bvNone);
+  en := ReadINI(Self.Username + BASH_GUI_WEBHOOK_SECTION, 'EnableWebhooks', BASH_GUI_SETTINGS_FILE);
+  if en = '' then
+  begin
+    en := ReadINI(Self.Username + ' Webhook Settings', 'EnableWebhooks', BASH_GUI_SETTINGS_FILE);
+    if en <> '' then
+      WriteINI(Self.Username + BASH_GUI_WEBHOOK_SECTION, 'EnableWebhooks', en, BASH_GUI_SETTINGS_FILE);
+  end;
 end;
 
-procedure TConfig.PaintRoundChip(
-  img: TImage;
-  labelText: String;
-  fill, parentBg: Int32;
-  selected: Boolean = False;
-  centered: Boolean = False
-);
-var
-  bmp: TBitmap;
-  c: TCanvas;
-  w, h, r, tw, th, tx: Int32;
+function TConfig.TeamIndexFromSelection(selection: String): Int32;
 begin
-  w := img.GetWidth();
-  h := img.GetHeight();
-  if (w <= 0) or (h <= 0) then
-    Exit;
-
-  r := TControl.AdjustToDPI(6);
-  if r * 2 > h then
-    r := h div 2;
-  if r * 2 > w then
-    r := w div 2;
-
-  bmp := img.GetPicture().GetBitmap();
-  bmp.SetWidth(w);
-  bmp.SetHeight(h);
-  c := bmp.GetCanvas();
-
-  c.GetBrush().SetColor(parentBg);
-  c.GetPen().SetColor(parentBg);
-  c.FillRect(0, 0, w, h);
-
-  c.GetBrush().SetColor(fill);
-  c.GetPen().SetColor(fill);
-  c.RoundRect(0, 0, w - 1, h - 1, r * 2, r * 2);
-
-  c.GetBrush().SetColor(fill);
-  c.GetFont().SetColor(TB_GUI_TEXT);
-  c.GetFont().SetSize(11);
-  if selected then
-    c.GetFont().SetStyle([fsBold])
+  if selection = 'Blue' then
+    Result := 1
+  else if selection = 'Random' then
+    Result := 2
   else
-    c.GetFont().SetStyle([]);
+    Result := 0;
+end;
 
-  tw := c.TextWidth(labelText);
-  th := c.TextHeight(labelText);
-  if centered then
-    tx := (w - tw) div 2
+function TConfig.MethodIndexFromSelection(selection: String): Int32;
+begin
+  if selection = 'Buckets' then
+    Result := 1
   else
-    tx := TControl.AdjustToDPI(16);
-  c.TextOut(tx, (h - th) div 2, labelText);
-
-  img.SetHint(labelText);
-  img.SetShowHint(False);
-  img.Invalidate();
+    Result := 0;
 end;
 
-function TConfig.MakeNavItem(
-  parent: TWinControl;
-  labelText: String;
-  left, top: Int32;
-  selected: Boolean = False
-): TImage;
-var
-  fill: Int32;
+procedure TConfig.LoadActionSettings(); override;
 begin
-  Result.Create(parent);
-  Result.SetLeft(TControl.AdjustToDPI(left));
-  Result.SetTop(TControl.AdjustToDPI(top));
-  Result.SetWidth(TControl.AdjustToDPI(TB_GUI_NAV_W - 28));
-  Result.SetHeight(TControl.AdjustToDPI(TB_GUI_BTN_H));
-  Result.SetCursor(crHandPoint);
-
-  if selected then
-    fill := TB_GUI_ACCENT
-  else
-    fill := TB_GUI_NAV_IDLE;
-
-  Self.PaintRoundChip(Result, labelText, fill, TB_GUI_NAV, selected);
-end;
-
-function TConfig.MakeLabel(
-  parent: TWinControl;
-  labelText: String;
-  left, top, fontSize, fontColor: Int32;
-  bold: Boolean = False
-): TLabel;
-begin
-  Result.Create(parent);
-  Result.SetLeft(TControl.AdjustToDPI(left));
-  Result.SetTop(TControl.AdjustToDPI(top));
-  Result.SetCaption(labelText);
-  Result.GetFont().SetSize(fontSize);
-  Result.GetFont().SetColor(fontColor);
-  if bold then
-    Result.GetFont().SetStyle([fsBold]);
-end;
-
-procedure TConfig.AddCheck(
-  parent: TWinControl;
-  var box: TLabeledCheckBox;
-  ctrlName, labelText: String;
-  left, top: Int32;
-  checked: Boolean
-);
-begin
-  box.Create(parent);
-  box.SetLeft(TControl.AdjustToDPI(left));
-  box.SetTop(TControl.AdjustToDPI(top));
-  box.SetName(ctrlName);
-  box.SetFontColor(TB_GUI_TEXT);
-  box.SetCaption(labelText);
-  if checked then
-    box.CheckBox.SetChecked(True);
-end;
-
-procedure TConfig.AddCombo(
-  parent: TWinControl;
-  var box: TLabeledComboBox;
-  ctrlName, labelText: String;
-  left, top: Int32;
-  items: TStringArray;
-  itemIndex: Int32
-);
-begin
-  box.Create(parent);
-  box.SetLeft(TControl.AdjustToDPI(left));
-  box.SetTop(TControl.AdjustToDPI(top));
-  box.SetWidth(TControl.AdjustToDPI(TB_GUI_COMBO_W));
-  box.SetHeight(TControl.AdjustToDPI(TB_GUI_COMBO_H));
-  box.SetName(ctrlName);
-  box.SetCaption(labelText);
-  box.AddItemArray(items);
-  if (itemIndex >= 0) and (itemIndex <= High(items)) then
-    box.SetItemIndex(itemIndex)
-  else
-    box.SetItemIndex(0);
-  box.SetFontColor(TB_GUI_TEXT);
-  box.SetStyle(csDropDownList);
-  box.SetFontSize(TB_GUI_COMBO_FONT);
-  box.ComboBox.SetFontColor(TB_GUI_TEXT);
-  box.ComboBox.GetFont().SetSize(TB_GUI_COMBO_FONT);
-end;
-
-procedure TConfig.AddEdit(
-  parent: TWinControl;
-  var box: TLabeledEdit;
-  ctrlName, labelText, text: String;
-  left, top, width: Int32
-);
-begin
-  box.Create(parent);
-  box.SetLeft(TControl.AdjustToDPI(left));
-  box.SetTop(TControl.AdjustToDPI(top));
-  box.SetWidth(TControl.AdjustToDPI(width));
-  box.SetName(ctrlName);
-  box.SetCaption(labelText);
-  box.SetText(text);
-  box.SetFontColor(TB_GUI_TEXT);
-end;
-
-procedure TConfig.AddHeader(parent: TPanel; titleText, subtitleText: String);
-var
-  header: TPanel;
-  headerW: Int32;
-begin
-  headerW := parent.GetWidth();
-  if headerW <= 0 then
-    headerW := TControl.AdjustToDPI(TB_GUI_W - TB_GUI_NAV_W - 2);
-
-  header := Self.MakePanel(parent, 0, 0, 1, 88, TB_GUI_CARD);
-  header.SetWidth(headerW);
-  header.SetHeight(TControl.AdjustToDPI(88));
-  Self.MakeLabel(header, titleText, 24, 18, 18, TB_GUI_TEXT, True);
-  Self.MakeLabel(header, subtitleText, 24, 52, 10, TB_GUI_MUTED, False);
-end;
-
-procedure TConfig.StyleNav(selected: TImage);
-begin
-  Self.ActiveNav := selected;
-  Self.PaintRoundChip(Self.ScriptNav, Self.ScriptNav.GetHint(), TB_GUI_NAV_IDLE, TB_GUI_NAV, False);
-  Self.PaintRoundChip(Self.AccountsNav, Self.AccountsNav.GetHint(), TB_GUI_NAV_IDLE, TB_GUI_NAV, False);
-  Self.PaintRoundChip(Self.AntibanNav, Self.AntibanNav.GetHint(), TB_GUI_NAV_IDLE, TB_GUI_NAV, False);
-  Self.PaintRoundChip(selected, selected.GetHint(), TB_GUI_ACCENT, TB_GUI_NAV, True);
-end;
-
-procedure TConfig.ShowSection(section: TPanel; selected: TImage);
-begin
-  Self.ScriptSection.SetVisible(False);
-  Self.AccountsSection.SetVisible(False);
-  Self.AntibanSection.SetVisible(False);
-  section.SetVisible(True);
-  Self.StyleNav(selected);
-end;
-
-procedure TConfig.ShowScript({$H-}sender: TObject); {$H+}
-begin
-  Self.ShowSection(Self.ScriptSection, Self.ScriptNav);
-end;
-
-procedure TConfig.ShowAccounts({$H-}sender: TObject); {$H+}
-begin
-  Self.ShowSection(Self.AccountsSection, Self.AccountsNav);
-end;
-
-procedure TConfig.ShowAntiban({$H-}sender: TObject); {$H+}
-begin
-  Self.ShowSection(Self.AntibanSection, Self.AntibanNav);
-end;
-
-procedure TConfig.OpenURL(Sender: TObject);
-begin
-  if Sender = Self.WebhookInfo then
-    OpenWebPage('https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks')
-  else if Sender = Self.DiscordUIDInfo then
-    OpenWebPage('https://support.discord.com/hc/en-us/articles/206346498-Where-can-I-find-my-User-Server-Message-ID');
-end;
-
-procedure TConfig.WebhooksCheckboxChanged(Sender: TObject);
-begin
-  if Sender = nil then;
-  Self.WebhookInfo.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
-  Self.DiscordUIDInfo.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
-  Self.DiscordUIDInput.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
-  Self.WebHookInput.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
-  Self.PingOnTerminatedCheckBox.SetVisible(Self.EnableWebhooksCheckBox.IsChecked());
+  Self.MigrateLegacyWebhook();
+  Self.TeamSelection := ReadINI(Self.Username + ' BATrouble Brewing', 'TeamSelection', BASH_GUI_SETTINGS_FILE);
+  METHODTOUSE := ReadINI(Self.Username + ' BATrouble Brewing', 'Method', BASH_GUI_SETTINGS_FILE);
+  POWERFLETCHING := StrToBoolDef(ReadINI(Self.Username + ' BATrouble Brewing', 'PowerFletch', BASH_GUI_SETTINGS_FILE), False);
+  STOPATPOINTSLIMIT := StrToBoolDef(ReadINI(Self.Username + ' BATrouble Brewing', 'StopAtPointsLimit', BASH_GUI_SETTINGS_FILE), False);
 end;
 
 procedure TConfig.PowerFletchCheckboxChanged(Sender: TObject);
@@ -2078,637 +1858,120 @@ end;
 procedure TConfig.TeamDropBoxChanged(Sender: TObject);
 begin
   if Sender = nil then;
-  TeamSelection := Self.TeamDropBox.GetText();
+  Self.TeamSelection := Self.TeamDropBox.GetText();
 end;
 
-function TConfig.TeamIndexFromSelection(selection: String): Int32;
+procedure TConfig.BuildActionSection(); override;
 begin
-  if selection = 'Blue' then
-    Result := 1
-  else if selection = 'Random' then
-    Result := 2
-  else
-    Result := 0;
+  Self.AddHeader(Self.ActionSection, 'Action', 'Play Trouble Brewing with your chosen team and method.');
+
+  Self.AddCombo(Self.ActionSection, Self.TeamDropBox, 'lcb_tb_team', 'Select your team', 24, 110, TB_TEAM_ITEMS, Self.TeamIndexFromSelection(Self.TeamSelection));
+  Self.TeamDropBox.SetTooltip('Red Team can join a game in progress, Blue Team cannot.');
+  Self.TeamDropBox.ComboBox.SetOnChange(@Self.TeamDropBoxChanged);
+
+  Self.DisplayNameLabel := Self.MakeLabel(Self.ActionSection, 'Display Name: ' + Chat.GetDisplayName(), BASH_GUI_COL2, 128, 10, BASH_GUI_MUTED, False);
+
+  Self.AddCombo(Self.ActionSection, Self.MethodDropBox, 'lcb_tb_method', 'Choose method', 24, 190, TB_METHOD_ITEMS, Self.MethodIndexFromSelection(METHODTOUSE));
+  Self.MethodDropBox.SetTooltip('Choose the method you want to use.');
+  Self.MethodDropBox.ComboBox.SetOnChange(@Self.MethodDropBoxChanged);
+
+  Self.AddCheck(Self.ActionSection, Self.PowerFletchCheckBox, 'cb_tb_powerfletch', 'Power Fletch', BASH_GUI_COL2, 208, POWERFLETCHING);
+  Self.PowerFletchCheckBox.SetTooltip('Power fletching awards no pieces of eight or cooking XP, but more fletching XP');
+  Self.PowerFletchCheckBox.CheckBox.SetOnChange(@Self.PowerFletchCheckboxChanged);
+  Self.PowerFletchCheckBox.SetVisible(False);
+
+  Self.AddCheck(Self.ActionSection, Self.StopAtPointsLimitCheckBox, 'cb_tb_stop_points', 'Stop at points limit', BASH_GUI_COL2, 208, STOPATPOINTSLIMIT);
+  Self.StopAtPointsLimitCheckBox.SetTooltip('After 100-120 buckets, AFK for the rest of the game instead of running more.');
+  Self.StopAtPointsLimitCheckBox.CheckBox.SetOnChange(@Self.StopAtPointsLimitCheckboxChanged);
+  Self.StopAtPointsLimitCheckBox.SetVisible(False);
+
+  Self.MethodDropBoxChanged(nil);
 end;
 
-function TConfig.MethodIndexFromSelection(selection: String): Int32;
+procedure TConfig.OpenDiscordUIDHelp(Sender: TObject);
 begin
-  if selection = 'Buckets' then
-    Result := 1
-  else
-    Result := 0;
+  if Sender = nil then;
+  OpenWebPage('https://support.discord.com/hc/en-us/articles/206346498-Where-can-I-find-my-User-Server-Message-ID');
 end;
 
-procedure TConfig.LoadUserSettings();
+procedure TConfig.WebhooksCheckboxChanged({$H-}sender: TObject); {$H+} override;
 var
-  SavedDiscordUID, SavedWebhookURL: String;
-  SavedPingOnTerminated, SavedEnableWebhooks: Boolean;
-  Username: String;
+  shown: Boolean;
 begin
-  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
-    Username := 'NoUserNameSelected'
-  else
-    Username := Login.Players[Login.PlayerIndex].User;
-
-  if Username = '' then Exit;
-
-  TeamSelection := ReadINI(Username + ' BATrouble Brewing', 'TeamSelection', 'Configs/BASettings.ini');
-  METHODTOUSE := ReadINI(Username + ' BATrouble Brewing', 'Method', 'Configs/BASettings.ini');
-  POWERFLETCHING := StrToBoolDef(ReadINI(Username + ' BATrouble Brewing', 'PowerFletch', 'Configs/BASettings.ini'), False);
-  STOPATPOINTSLIMIT := StrToBoolDef(ReadINI(Username + ' BATrouble Brewing', 'StopAtPointsLimit', 'Configs/BASettings.ini'), False);
-  SavedDiscordUID := ReadINI(Username + ' Webhook Settings', 'DiscordUID', 'Configs/BASettings.ini');
-  SavedWebhookURL := ReadINI(Username + ' Webhook Settings', 'WebhookURL', 'Configs/BASettings.ini');
-  SavedEnableWebhooks := StrToBoolDef(ReadINI(Username + ' Webhook Settings', 'EnableWebhooks', 'Configs/BASettings.ini'), False);
-  SavedPingOnTerminated := StrToBoolDef(ReadINI(Username + ' Webhook Settings', 'PingOnTerminated', 'Configs/BASettings.ini'), True);
-
-  if Assigned(Self.TeamDropBox) then
-    Self.TeamDropBox.SetItemIndex(Self.TeamIndexFromSelection(TeamSelection));
-
-  if Assigned(Self.MethodDropBox) then
-  begin
-    Self.MethodDropBox.SetItemIndex(Self.MethodIndexFromSelection(METHODTOUSE));
-    Self.MethodDropBoxChanged(Self.MethodDropBox.ComboBox);
-  end;
-
-  if Assigned(Self.PowerFletchCheckBox) then
-    Self.PowerFletchCheckBox.SetChecked(POWERFLETCHING);
-
-  if Assigned(Self.StopAtPointsLimitCheckBox) then
-    Self.StopAtPointsLimitCheckBox.SetChecked(STOPATPOINTSLIMIT);
-
-  if Assigned(Self.EnableWebhooksCheckBox) then
-  begin
-    Self.EnableWebhooksCheckBox.SetChecked(SavedEnableWebhooks);
-    Self.WebhooksCheckboxChanged(Self.EnableWebhooksCheckBox.CheckBox);
-  end;
-
-  if Assigned(Self.PingOnTerminatedCheckBox) then
-    Self.PingOnTerminatedCheckBox.SetChecked(SavedPingOnTerminated);
-
+  inherited;
+  shown := Self.EnableWebhooksCheckBox.IsChecked();
   if Assigned(Self.DiscordUIDInput) then
-    Self.DiscordUIDInput.SetText(SavedDiscordUID);
-
-  if Assigned(Self.WebHookInput) then
-    Self.WebHookInput.SetText(SavedWebhookURL);
+    Self.DiscordUIDInput.SetVisible(shown);
+  if Assigned(Self.DiscordUIDInfo) then
+    Self.DiscordUIDInfo.SetVisible(shown);
+  if Assigned(Self.PingOnTerminatedCheckBox) then
+    Self.PingOnTerminatedCheckBox.SetVisible(shown);
 end;
 
-procedure TConfig.SaveUserSettings();
+procedure TConfig.BuildAccountsExtras(); override;
 var
-  Username: String;
+  savedUID: String;
+  savedPing: Boolean;
 begin
-  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
-    Username := 'NoUserNameSelected'
-  else
-    Username := Login.Players[Login.PlayerIndex].User;
-  if Username = '' then Exit;
+  savedUID := ReadINI(Self.Username + BASH_GUI_WEBHOOK_SECTION, 'DiscordUID', BASH_GUI_SETTINGS_FILE);
+  if savedUID = '' then
+    savedUID := ReadINI(Self.Username + ' Webhook Settings', 'DiscordUID', BASH_GUI_SETTINGS_FILE);
+  savedPing := StrToBoolDef(ReadINI(Self.Username + BASH_GUI_WEBHOOK_SECTION, 'PingOnTerminated', BASH_GUI_SETTINGS_FILE), True);
+  if ReadINI(Self.Username + BASH_GUI_WEBHOOK_SECTION, 'PingOnTerminated', BASH_GUI_SETTINGS_FILE) = '' then
+    savedPing := StrToBoolDef(ReadINI(Self.Username + ' Webhook Settings', 'PingOnTerminated', BASH_GUI_SETTINGS_FILE), True);
 
-  if Assigned(Self.TeamDropBox) then
-    TeamSelection := Self.TeamDropBox.GetText();
+  Self.AddCheck(Self.AccountsSection, Self.PingOnTerminatedCheckBox, 'cb_tb_ping_term',
+    'Ping on script termination', BASH_GUI_COL2, 350, savedPing);
+  Self.AddEdit(Self.AccountsSection, Self.DiscordUIDInput, 'le_tb_discord_uid',
+    'Discord UID (optional)', savedUID, 24, 490, 260);
+  Self.DiscordUIDInfo := Self.MakeLabel(Self.AccountsSection, 'How to find your Discord User ID',
+    BASH_GUI_COL2, 508, 10, BASH_GUI_LINK, False);
+  Self.DiscordUIDInfo.SetOnClick(@Self.OpenDiscordUIDHelp);
+  Self.DiscordUIDInfo.SetCursor(crHandPoint);
+  Self.EnableWebhooksCheckBox.CheckBox.SetOnChange(@Self.WebhooksCheckboxChanged);
+  Self.WebhooksCheckboxChanged(nil);
+end;
 
-  if Assigned(Self.MethodDropBox) then
-    METHODTOUSE := Self.MethodDropBox.GetText();
-
-  if Assigned(Self.PowerFletchCheckBox) then
-    POWERFLETCHING := Self.PowerFletchCheckBox.IsChecked();
-
-  if Assigned(Self.StopAtPointsLimitCheckBox) then
-    STOPATPOINTSLIMIT := Self.StopAtPointsLimitCheckBox.IsChecked();
-
-  if Assigned(Self.EnableWebhooksCheckBox) then
-    ENABLEWEBHOOKS := Self.EnableWebhooksCheckBox.IsChecked();
+procedure TConfig.ApplyActionSettings(); override;
+begin
+  METHODTOUSE := Self.MethodDropBox.GetText();
+  POWERFLETCHING := Self.PowerFletchCheckBox.IsChecked();
+  STOPATPOINTSLIMIT := Self.StopAtPointsLimitCheckBox.IsChecked();
+  NPCSELECTION := Self.TeamDropBox.GetText();
+  Self.TeamSelection := NPCSELECTION;
 
   if Assigned(Self.PingOnTerminatedCheckBox) then
     PINGONTERMINATED := Self.PingOnTerminatedCheckBox.IsChecked();
-
   if Assigned(Self.DiscordUIDInput) then
     DiscordUID := Self.DiscordUIDInput.GetText();
 
-  if Assigned(Self.WebHookInput) then
-    WEBHOOKURL := Self.WebHookInput.GetText();
-
-  WriteINI(Username + ' BATrouble Brewing', 'TeamSelection', TeamSelection, 'Configs/BASettings.ini');
-  WriteINI(Username + ' BATrouble Brewing', 'Method', METHODTOUSE, 'Configs/BASettings.ini');
-  WriteINI(Username + ' BATrouble Brewing', 'PowerFletch', BoolToStr(POWERFLETCHING, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI(Username + ' BATrouble Brewing', 'StopAtPointsLimit', BoolToStr(STOPATPOINTSLIMIT, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI(Username + ' Webhook Settings', 'DiscordUID', DiscordUID, 'Configs/BASettings.ini');
-  WriteINI(Username + ' Webhook Settings', 'WebhookURL', WEBHOOKURL, 'Configs/BASettings.ini');
-  WriteINI(Username + ' Webhook Settings', 'PingOnTerminated', BoolToStr(PINGONTERMINATED, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI(Username + ' Webhook Settings', 'EnableWebhooks', BoolToStr(ENABLEWEBHOOKS, 'true', 'false'), 'Configs/BASettings.ini');
-end;
-
-procedure TConfig.UpdateAccountValues(sender: TObject);
-var
-  selector: TComboBox;
-  user, pass, pin: TEdit;
-  worlds: TMemo;
-  idx: Int32;
-  worldsStr: String;
-  i: Int32;
-begin
-  if sender = nil then;
-
-  selector := TComboBox(Self.Form.GetChild('am_selector_combobox'));
-  idx := selector.GetItemIndex();
-
-  if (idx < 0) or (idx > High(Login.Players)) then Exit;
-
-  Self.SaveUserSettings();
-
-  Login.PlayerIndex := idx;
-
-  user := TEdit(Self.Form.GetChild('am_user_edit'));
-  pass := TEdit(Self.Form.GetChild('am_pass_edit'));
-  pin := TEdit(Self.Form.GetChild('am_pin_edit'));
-  worlds := TMemo(Self.Form.GetChild('am_worlds_memo'));
-
-  user.SetText(Login.Players[idx].User);
-  pass.SetText(Login.Players[idx].Password);
-  pin.SetText(Login.Players[idx].Pin);
-
-  worldsStr := '';
-  for i := 0 to High(Login.Players[idx].Worlds) do
-  begin
-    worldsStr += ToStr(Login.Players[idx].Worlds[i]);
-    if i < High(Login.Players[idx].Worlds) then
-      worldsStr += ', ';
-  end;
-  worlds.SetText(worldsStr);
-
-  Self.LoadUserSettings();
-end;
-
-procedure TConfig.InitializeAccountManager;
-var
-  selector: TComboBox;
-begin
-  selector := TComboBox(Self.Form.GetChild('am_selector_combobox'));
-  selector.SetOnChange(@UpdateAccountValues);
-end;
-
-procedure TConfig.OverrideBreaksCheckboxChanged(Sender: TObject);
-begin
-  if Sender = nil then;
-  Self.CustomBreakIntervalInput.SetVisible(Self.OverrideBreaksCheckBox.IsChecked());
-  Self.CustomBreakDurationInput.SetVisible(Self.OverrideBreaksCheckBox.IsChecked());
-  if Self.OverrideBreaksCheckBox.IsChecked() then
-    Self.ShortBreaksCheckBox.CheckBox.SetChecked(False);
-end;
-
-procedure TConfig.ShortBreaksCheckboxChanged(Sender: TObject);
-begin
-  if Sender = nil then;
-  if Self.ShortBreaksCheckBox.IsChecked() then
-  begin
-    Self.OverrideBreaksCheckBox.CheckBox.SetChecked(False);
-    Self.CustomBreakIntervalInput.SetVisible(False);
-    Self.CustomBreakDurationInput.SetVisible(False);
-  end;
-end;
-
-procedure TConfig.SleepBreaksCheckboxChanged(Sender: TObject);
-var
-  enabled: Boolean;
-begin
-  if Sender = nil then;
-  enabled := Self.SleepBreaksCheckBox.IsChecked();
-  Self.SleepHourInput.SetEnabled(enabled);
-  Self.SleepLengthInput.SetEnabled(enabled);
-end;
-
-procedure TConfig.TasksEnabledCheckboxChanged(Sender: TObject);
-var
-  enabled: Boolean;
-begin
-  if Sender = nil then;
-  enabled := Self.TasksEnabledCheckBox.IsChecked();
-  Self.TaskCameraCheckBox.SetEnabled(enabled);
-  Self.TaskMouseCheckBox.SetEnabled(enabled);
-  Self.TaskChatCheckBox.SetEnabled(enabled);
-  Self.TaskGameTabsCheckBox.SetEnabled(enabled);
-  Self.TaskBankCheckBox.SetEnabled(enabled);
-end;
-
-procedure TConfig.ApplyAntibanFromGUI();
-begin
-  WLSettings.Put('max_actions', StrToIntDef(Self.MaxActionsInput.GetText(), 0));
-  WLSettings.Put('max_time', StrToIntDef(Self.MaxTimeInput.GetText(), 0));
-
-  WLSettings.GetObject('antiban').Put('breaks', Self.ShortBreaksCheckBox.IsChecked());
-
-  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('enabled', Self.SleepBreaksCheckBox.IsChecked());
-  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('biohash', False);
-  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('hour', Trim(Self.SleepHourInput.GetText()));
-  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('length', StrToFloatDef(Self.SleepLengthInput.GetText(), 8));
-
-  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('enabled', Self.TasksEnabledCheckBox.IsChecked());
-  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('camera', Self.TaskCameraCheckBox.IsChecked());
-  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('mouse', Self.TaskMouseCheckBox.IsChecked());
-  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('chat', Self.TaskChatCheckBox.IsChecked());
-  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('gametabs', Self.TaskGameTabsCheckBox.IsChecked());
-  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('bank', Self.TaskBankCheckBox.IsChecked());
-
-  WLSettings.SaveConfig();
+  WriteINI(Self.Username + ' BATrouble Brewing', 'TeamSelection', Self.TeamSelection, BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + ' BATrouble Brewing', 'Method', METHODTOUSE, BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + ' BATrouble Brewing', 'PowerFletch', BoolToStr(POWERFLETCHING, 'true', 'false'), BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + ' BATrouble Brewing', 'StopAtPointsLimit', BoolToStr(STOPATPOINTSLIMIT, 'true', 'false'), BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + BASH_GUI_WEBHOOK_SECTION, 'DiscordUID', DiscordUID, BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + BASH_GUI_WEBHOOK_SECTION, 'PingOnTerminated', BoolToStr(PINGONTERMINATED, 'true', 'false'), BASH_GUI_SETTINGS_FILE);
 end;
 
 procedure TConfig.StartScript(Sender: TObject); override;
 begin
   if Sender = nil then;
-
-  METHODTOUSE := Self.MethodDropBox.GetText();
-  POWERFLETCHING := Self.PowerFletchCheckBox.IsChecked();
-  STOPATPOINTSLIMIT := Self.StopAtPointsLimitCheckBox.IsChecked();
-  NPCSELECTION := Self.TeamDropBox.GetText();
-  TeamSelection := NPCSELECTION;
-  Self.SaveUserSettings();
-
-  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
-    Self.Username := 'NoUserNameSelected'
-  else
-    Self.Username := Login.Players[Login.PlayerIndex].User;
-
-  OVERRIDEBREAKS := Self.OverrideBreaksCheckBox.IsChecked();
-  CUSTOMBREAKINTERVAL := StrToIntDef(Self.CustomBreakIntervalInput.GetText(), 60);
-  CUSTOMBREAKDURATION := StrToIntDef(Self.CustomBreakDurationInput.GetText(), 5);
-
-  WriteINI(Self.Username + ' Trouble Brewing Antiban', 'OverrideBreaks', BoolToStr(OVERRIDEBREAKS, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' Trouble Brewing Antiban', 'CustomBreakInterval', IntToStr(CUSTOMBREAKINTERVAL), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' Trouble Brewing Antiban', 'CustomBreakDuration', IntToStr(CUSTOMBREAKDURATION), 'Configs/BASettings.ini');
-
-  Self.ApplyAntibanFromGUI();
-
-  WriteLn('Override Breaks: ', ToStr(OVERRIDEBREAKS));
-  WriteLn('Short Breaks: ', ToStr(WLSettings.GetObject('antiban').getBoolean('breaks')));
-  WriteLn('Sleep Breaks: ', ToStr(WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('enabled')));
-  WriteLn('Antiban Tasks: ', ToStr(WLSettings.GetObject('antiban').getJSONObject('tasks').getBoolean('enabled')));
-
   try
     Self._WarmBuildCache();
   except
   end;
-  Self.Form.SetOnClose(nil);
-  Self.Form.Close();
-end;
-
-procedure TConfig.BuildScriptSection();
-begin
-  Self.AddHeader(Self.ScriptSection, 'Action', 'Play Trouble Brewing with your chosen team and method.');
-
-  Self.AddCombo(Self.ScriptSection, Self.TeamDropBox, 'lcb_tb_team', 'Select your team', 24, 110, TB_TEAM_ITEMS, Self.TeamIndexFromSelection(TeamSelection));
-  Self.TeamDropBox.SetTooltip('Red Team can join a game in progress, Blue Team cannot.');
-  Self.TeamDropBox.ComboBox.SetOnChange(@Self.TeamDropBoxChanged);
-
-  Self.DisplayNameLabel := Self.MakeLabel(Self.ScriptSection, 'Display Name: ' + Chat.GetDisplayName(), TB_GUI_COL2, 128, 10, TB_GUI_MUTED, False);
-
-  Self.AddCombo(Self.ScriptSection, Self.MethodDropBox, 'lcb_tb_method', 'Choose method', 24, 190, TB_METHOD_ITEMS, Self.MethodIndexFromSelection(METHODTOUSE));
-  Self.MethodDropBox.SetTooltip('Choose the method you want to use.');
-  Self.MethodDropBox.ComboBox.SetOnChange(@Self.MethodDropBoxChanged);
-
-  Self.AddCheck(Self.ScriptSection, Self.PowerFletchCheckBox, 'cb_tb_powerfletch', 'Power Fletch', TB_GUI_COL2, 208, POWERFLETCHING);
-  Self.PowerFletchCheckBox.SetTooltip('Power fletching awards no pieces of eight or cooking XP, but more fletching XP');
-  Self.PowerFletchCheckBox.CheckBox.SetOnChange(@Self.PowerFletchCheckboxChanged);
-  Self.PowerFletchCheckBox.SetVisible(False);
-
-  Self.AddCheck(Self.ScriptSection, Self.StopAtPointsLimitCheckBox, 'cb_tb_stop_points', 'Stop at points limit', TB_GUI_COL2, 208, STOPATPOINTSLIMIT);
-  Self.StopAtPointsLimitCheckBox.SetTooltip('After 100-120 buckets, AFK for the rest of the game instead of running more.');
-  Self.StopAtPointsLimitCheckBox.CheckBox.SetOnChange(@Self.StopAtPointsLimitCheckboxChanged);
-  Self.StopAtPointsLimitCheckBox.SetVisible(False);
-end;
-
-procedure TConfig.BuildAccountsSection();
-var
-  am: TPanel;
-  selectorPanel, userPanel, passPanel, pinPanel, worldsPanel: TPanel;
-  addBtn, deleteBtn, generateBtn: TButton;
-  leftColW, passW, pinW, worldsLeft, btnW, btnGap: Int32;
-begin
-  Self.AddHeader(Self.AccountsSection, 'Accounts', 'Login account and optional Discord webhook notifications.');
-
-  am := Self.CreateAccountManager(Self.AccountsSection);
-  am.SetLeft(TControl.AdjustToDPI(16));
-  am.SetTop(TControl.AdjustToDPI(100));
-  am.SetColor(TB_GUI_BG);
-
-  leftColW := TControl.AdjustToDPI(280);
-  passW := Floor(leftColW * 0.6);
-  pinW := Floor(leftColW * 0.3);
-
-  selectorPanel := Self.Form.GetChild('am_selector_panel');
-  userPanel := Self.Form.GetChild('am_user_panel');
-  passPanel := Self.Form.GetChild('am_pass_panel');
-  pinPanel := Self.Form.GetChild('am_pin_panel');
-  worldsPanel := Self.Form.GetChild('am_worlds_panel');
-
-  if selectorPanel <> nil then
-    selectorPanel.SetWidth(leftColW);
-  if userPanel <> nil then
-    userPanel.SetWidth(leftColW);
-  if passPanel <> nil then
-    passPanel.SetWidth(passW);
-  if (pinPanel <> nil) and (selectorPanel <> nil) then
-  begin
-    pinPanel.SetWidth(pinW);
-    pinPanel.SetLeft(selectorPanel.GetLeft() + leftColW - pinW);
-  end;
-
-  if (worldsPanel <> nil) and (selectorPanel <> nil) then
-  begin
-    worldsLeft := selectorPanel.GetLeft() + leftColW + TControl.AdjustToDPI(48);
-    worldsPanel.SetLeft(worldsLeft);
-
-    addBtn := Self.Form.GetChild('am_add_button');
-    deleteBtn := Self.Form.GetChild('am_delete_button');
-    generateBtn := Self.Form.GetChild('am_generate_worlds_button');
-    btnGap := TControl.AdjustToDPI(8);
-    btnW := Floor((worldsPanel.GetWidth() - btnGap) / 2);
-
-    if generateBtn <> nil then
-    begin
-      generateBtn.SetLeft(worldsLeft);
-      generateBtn.SetWidth(worldsPanel.GetWidth());
-    end;
-    if addBtn <> nil then
-    begin
-      addBtn.SetLeft(worldsLeft);
-      addBtn.SetWidth(btnW);
-    end;
-    if deleteBtn <> nil then
-    begin
-      deleteBtn.SetLeft(worldsLeft + worldsPanel.GetWidth() - btnW - TControl.AdjustToDPI(1));
-      deleteBtn.SetWidth(btnW);
-    end;
-  end;
-
-  Self.InitializeAccountManager();
-
-  Self.MakeLabel(Self.AccountsSection, 'Discord', 24, 340, 11, TB_GUI_TEXT, True);
-
-  Self.AddCheck(Self.AccountsSection, Self.EnableWebhooksCheckBox, 'cb_tb_webhooks', 'Discord Notifications', 24, 370, False);
-  Self.EnableWebhooksCheckBox.SetTooltip('Script will ping you on your own discord server when it stops.');
-  Self.EnableWebhooksCheckBox.CheckBox.SetOnChange(@Self.WebhooksCheckboxChanged);
-
-  Self.WebhookInfo := Self.MakeLabel(Self.AccountsSection, 'Click here to learn how to generate your own Discord webhook URL', 24, 410, 10, $C07020, False);
-  Self.WebhookInfo.SetOnClick(@Self.OpenURL);
-  Self.WebhookInfo.SetCursor(crHandPoint);
-  Self.WebhookInfo.SetTooltip('Click here to learn how to generate your own Discord webhook URL');
-
-  Self.AddEdit(Self.AccountsSection, Self.DiscordUIDInput, 'le_tb_discord_uid', 'Discord UID (Optional)', '', 24, 440, TB_GUI_EDIT_W);
-  Self.DiscordUIDInput.SetTooltip('What name to @ in discord when script terminates');
-
-  Self.DiscordUIDInfo := Self.MakeLabel(Self.AccountsSection, 'Click here to learn how to find your Discord User ID', TB_GUI_COL2, 458, 10, $C07020, False);
-  Self.DiscordUIDInfo.SetOnClick(@Self.OpenURL);
-  Self.DiscordUIDInfo.SetCursor(crHandPoint);
-  Self.DiscordUIDInfo.SetTooltip('Click here to learn how to find your Discord User ID');
-
-  Self.AddEdit(Self.AccountsSection, Self.WebHookInput, 'le_tb_webhook', 'Discord Webhook URL', '', 24, 510, 520);
-  Self.WebHookInput.SetTooltip('Discord Webhook URL');
-
-  Self.AddCheck(Self.AccountsSection, Self.PingOnTerminatedCheckBox, 'cb_tb_ping_terminated', 'Ping on script termination', 24, 580, True);
-  Self.PingOnTerminatedCheckBox.SetTooltip('Enable to ping when the script terminates cleanly');
-end;
-
-procedure TConfig.BuildAntibanSection(
-  SavedOverrideBreaks: Boolean;
-  SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime: Integer
-);
-var
-  tasks: TJSONObject;
-  sleepHour: String;
-  sleepLength: Single;
-  wasBio: Boolean;
-begin
-  Antiban.SetupBiometrics();
-  tasks := WLSettings.GetObject('antiban').getJSONObject('tasks');
-  wasBio := WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('biohash');
-  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('biohash', True);
-  sleepHour := Antiban.GetSleepHour();
-  sleepLength := Antiban.GetSleepLength();
-  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('biohash', wasBio);
-  if (not wasBio) and (WLSettings.GetObject('antiban').getJSONObject('sleep').getString('hour') <> '') then
-  begin
-    sleepHour := WLSettings.GetObject('antiban').getJSONObject('sleep').getString('hour');
-    sleepLength := WLSettings.GetObject('antiban').getJSONObject('sleep').getDouble('length');
-  end;
-  if sleepHour = '' then
-    sleepHour := '23:00:00';
-  if sleepLength <= 0 then
-    sleepLength := 8;
-
-  Self.AddHeader(Self.AntibanSection, 'Antiban', 'Breaks, sleeps, tasks, and session limits.');
-
-  Self.MakeLabel(Self.AntibanSection, 'Session', 24, 100, 11, TB_GUI_MUTED, True);
-  Self.AddEdit(Self.AntibanSection, Self.MaxActionsInput, 'le_tb_maxactions', 'Max actions (0 = unlimited)', IntToStr(SavedMaxActions), 24, 118, TB_GUI_EDIT_W);
-  Self.MaxActionsInput.Edit.SetOnKeyPress(@Self.MaxActionsInput.Edit.NumberField);
-  Self.AddEdit(Self.AntibanSection, Self.MaxTimeInput, 'le_tb_maxtime', 'Max time minutes (0 = unlimited)', IntToStr(SavedMaxTime), TB_GUI_COL2, 118, TB_GUI_EDIT_W);
-  Self.MaxTimeInput.Edit.SetOnKeyPress(@Self.MaxTimeInput.Edit.NumberField);
-
-  Self.MakeLabel(Self.AntibanSection, 'Breaks and sleeps', 24, 188, 11, TB_GUI_MUTED, True);
-  Self.AddCheck(Self.AntibanSection, Self.ShortBreaksCheckBox, 'cb_tb_short_breaks', 'Short breaks', 24, 210, WLSettings.GetObject('antiban').getBoolean('breaks'));
-  Self.ShortBreaksCheckBox.CheckBox.SetOnChange(@Self.ShortBreaksCheckboxChanged);
-  Self.ShortBreaksCheckBox.SetTooltip('Enables short randomized breaks during the session.');
-  Self.AddCheck(Self.AntibanSection, Self.SleepBreaksCheckBox, 'cb_tb_sleep_breaks', 'Sleep breaks', TB_GUI_COL2, 210, WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('enabled'));
-  Self.SleepBreaksCheckBox.CheckBox.SetOnChange(@Self.SleepBreaksCheckboxChanged);
-  Self.SleepBreaksCheckBox.SetTooltip('Enables longer sleep breaks based on local time.');
-
-  Self.AddEdit(Self.AntibanSection, Self.SleepHourInput, 'le_tb_sleep_hour', 'Sleep hour (HH:MM:SS)', sleepHour, 24, 238, TB_GUI_EDIT_W);
-  Self.SleepHourInput.Edit.SetOnKeyPress(@Self.SleepHourInput.Edit.TimeField);
-  Self.SleepHourInput.SetTooltip('Local PC time used as the base for sleep start.');
-  Self.AddEdit(Self.AntibanSection, Self.SleepLengthInput, 'le_tb_sleep_length', 'Sleep length (hours)', ToStr(sleepLength), TB_GUI_COL2, 238, TB_GUI_EDIT_W);
-  Self.SleepLengthInput.Edit.SetOnKeyPress(@Self.SleepLengthInput.Edit.FloatField);
-  Self.SleepLengthInput.SetTooltip('Approximate sleep length in hours.');
-
-  Self.AddCheck(Self.AntibanSection, Self.OverrideBreaksCheckBox, 'cb_tb_override_breaks', 'Override default breaks', 24, 300, SavedOverrideBreaks);
-  Self.OverrideBreaksCheckBox.CheckBox.SetOnChange(@Self.OverrideBreaksCheckboxChanged);
-  Self.OverrideBreaksCheckBox.SetTooltip('Replace WaspLib break intervals with your own schedule.');
-
-  Self.AddEdit(Self.AntibanSection, Self.CustomBreakIntervalInput, 'le_tb_break_interval', 'Break interval (minutes)', IntToStr(SavedCustomBreakInterval), 24, 328, TB_GUI_EDIT_W);
-  Self.CustomBreakIntervalInput.Edit.SetOnKeyPress(@Self.CustomBreakIntervalInput.Edit.NumberField);
-  Self.CustomBreakIntervalInput.SetTooltip('How often to take breaks. Includes randomness.');
-  Self.AddEdit(Self.AntibanSection, Self.CustomBreakDurationInput, 'le_tb_break_duration', 'Break duration (minutes)', IntToStr(SavedCustomBreakDuration), TB_GUI_COL2, 328, TB_GUI_EDIT_W);
-  Self.CustomBreakDurationInput.Edit.SetOnKeyPress(@Self.CustomBreakDurationInput.Edit.NumberField);
-  Self.CustomBreakDurationInput.SetTooltip('How long breaks should last. Includes randomness.');
-
-  Self.MakeLabel(Self.AntibanSection, 'Tasks', 24, 380, 11, TB_GUI_MUTED, True);
-  Self.AddCheck(Self.AntibanSection, Self.TasksEnabledCheckBox, 'cb_tb_tasks', 'Enable antiban tasks', 24, 398, tasks.getBoolean('enabled'));
-  Self.TasksEnabledCheckBox.CheckBox.SetOnChange(@Self.TasksEnabledCheckboxChanged);
-  Self.TasksEnabledCheckBox.SetTooltip('Enables camera, mouse, chat, gametab, and bank antiban tasks.');
-
-  Self.AddCheck(Self.AntibanSection, Self.TaskCameraCheckBox, 'cb_tb_task_camera', 'Camera', 24, 422, tasks.getBoolean('camera'));
-  Self.AddCheck(Self.AntibanSection, Self.TaskMouseCheckBox, 'cb_tb_task_mouse', 'Mouse', TB_GUI_COL2, 422, tasks.getBoolean('mouse'));
-  Self.AddCheck(Self.AntibanSection, Self.TaskChatCheckBox, 'cb_tb_task_chat', 'Chat', 24, 441, tasks.getBoolean('chat'));
-  Self.AddCheck(Self.AntibanSection, Self.TaskGameTabsCheckBox, 'cb_tb_task_gametabs', 'GameTabs', TB_GUI_COL2, 441, tasks.getBoolean('gametabs'));
-  Self.AddCheck(Self.AntibanSection, Self.TaskBankCheckBox, 'cb_tb_task_bank', 'Bank', 24, 460, tasks.getBoolean('bank'));
-
-  Self.SleepBreaksCheckboxChanged(nil);
-  Self.TasksEnabledCheckboxChanged(nil);
-  Self.OverrideBreaksCheckboxChanged(nil);
-  Self.ShortBreaksCheckboxChanged(nil);
-end;
-
-procedure TConfig.BuildShell(
-  SavedOverrideBreaks: Boolean;
-  SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime: Integer
-);
-var
-  contentH, startW, startH, shellW, shellH, statusTop, statusH, mainLeft, mainW, navW, bottomInset: Int32;
-begin
-  Self.Start.SetAlign(alNone);
-  Self.Start.SetVisible(False);
-  Self.Start.SetHeight(0);
-  Self.Start.SetWidth(0);
-
-  Self.PageControl.SetVisible(False);
-  Self.PageControl.SetAlign(alNone);
-  Self.PageControl.SetBounds(0, 0, 0, 0);
-
-  bottomInset := TControl.AdjustToDPI(TB_GUI_BOTTOM_INSET);
-  navW := TControl.AdjustToDPI(TB_GUI_NAV_W);
-  statusH := TControl.AdjustToDPI(TB_GUI_STATUS_H);
-  shellW := Self.Size.X;
-  shellH := Self.Size.Y;
-  mainLeft := navW + TControl.AdjustToDPI(2);
-  mainW := shellW - mainLeft;
-  statusTop := shellH - statusH - bottomInset;
-  contentH := statusTop;
-  startW := TControl.AdjustToDPI(132);
-  startH := TControl.AdjustToDPI(TB_GUI_BTN_H);
-
-  Self.NavPanel.Create(Self.Form);
-  Self.NavPanel.SetLeft(0);
-  Self.NavPanel.SetTop(0);
-  Self.NavPanel.SetWidth(navW);
-  Self.NavPanel.SetHeight(shellH);
-  Self.NavPanel.SetColor(TB_GUI_NAV);
-  Self.NavPanel.SetBevelOuter(bvNone);
-
-  Self.DividerPanel.Create(Self.Form);
-  Self.DividerPanel.SetLeft(navW);
-  Self.DividerPanel.SetTop(0);
-  Self.DividerPanel.SetWidth(TControl.AdjustToDPI(2));
-  Self.DividerPanel.SetHeight(shellH);
-  Self.DividerPanel.SetColor(TB_GUI_DIVIDER);
-  Self.DividerPanel.SetBevelOuter(bvNone);
-
-  Self.ContentPanel.Create(Self.Form);
-  Self.ContentPanel.SetLeft(mainLeft);
-  Self.ContentPanel.SetTop(0);
-  Self.ContentPanel.SetWidth(mainW);
-  Self.ContentPanel.SetHeight(contentH);
-  Self.ContentPanel.SetColor(TB_GUI_BG);
-  Self.ContentPanel.SetBevelOuter(bvNone);
-
-  Self.StatusDivider.Create(Self.Form);
-  Self.StatusDivider.SetLeft(mainLeft);
-  Self.StatusDivider.SetTop(statusTop);
-  Self.StatusDivider.SetWidth(mainW);
-  Self.StatusDivider.SetHeight(TControl.AdjustToDPI(2));
-  Self.StatusDivider.SetColor(TB_GUI_DIVIDER);
-  Self.StatusDivider.SetBevelOuter(bvNone);
-
-  Self.StatusPanel.Create(Self.Form);
-  Self.StatusPanel.SetLeft(mainLeft);
-  Self.StatusPanel.SetTop(statusTop + Self.StatusDivider.GetHeight());
-  Self.StatusPanel.SetWidth(mainW);
-  Self.StatusPanel.SetHeight(statusH - Self.StatusDivider.GetHeight());
-  Self.StatusPanel.SetColor(TB_GUI_STATUS);
-  Self.StatusPanel.SetBevelOuter(bvNone);
-
-  Self.StatusPad.Create(Self.Form);
-  Self.StatusPad.SetLeft(mainLeft);
-  Self.StatusPad.SetTop(Self.StatusPanel.GetTop() + Self.StatusPanel.GetHeight());
-  Self.StatusPad.SetWidth(mainW);
-  Self.StatusPad.SetHeight(shellH - Self.StatusPad.GetTop());
-  Self.StatusPad.SetColor(TB_GUI_STATUS);
-  Self.StatusPad.SetBevelOuter(bvNone);
-
-  Self.BrandLabel := Self.MakeLabel(Self.NavPanel, 'Trouble Brewing', 16, 28, 14, TB_GUI_TEXT, True);
-  Self.MakeLabel(Self.NavPanel, 'BigAussie', 16, 54, 9, TB_GUI_MUTED, False);
-
-  Self.ScriptNav := Self.MakeNavItem(Self.NavPanel, 'Action', 12, 100, True);
-  Self.AccountsNav := Self.MakeNavItem(Self.NavPanel, 'Accounts', 12, 152);
-  Self.AntibanNav := Self.MakeNavItem(Self.NavPanel, 'Antiban', 12, 204);
-
-  Self.ScriptSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, TB_GUI_BG);
-  Self.AccountsSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, TB_GUI_BG);
-  Self.AntibanSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, TB_GUI_BG);
-
-  Self.ScriptSection.SetWidth(mainW);
-  Self.ScriptSection.SetHeight(contentH);
-  Self.AccountsSection.SetWidth(mainW);
-  Self.AccountsSection.SetHeight(contentH);
-  Self.AntibanSection.SetWidth(mainW);
-  Self.AntibanSection.SetHeight(contentH);
-
-  Self.BuildScriptSection();
-  Self.BuildAccountsSection();
-  Self.BuildAntibanSection(SavedOverrideBreaks, SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime);
-
-  Self.ScriptNav.SetOnClick(@Self.ShowScript);
-  Self.AccountsNav.SetOnClick(@Self.ShowAccounts);
-  Self.AntibanNav.SetOnClick(@Self.ShowAntiban);
-
-  Self.StartChip.Create(Self.StatusPanel);
-  Self.StartChip.SetLeft(mainW - startW - TControl.AdjustToDPI(24));
-  Self.StartChip.SetTop((Self.StatusPanel.GetHeight() - startH) div 2 + 2);
-  Self.StartChip.SetWidth(startW);
-  Self.StartChip.SetHeight(startH);
-  Self.StartChip.SetCursor(crHandPoint);
-  Self.PaintRoundChip(Self.StartChip, 'Start', TB_GUI_START, TB_GUI_STATUS, True, True);
-  Self.StartChip.SetOnClick(@Self.StartScript);
-
-  Self.LoadUserSettings();
-  Self.MethodDropBoxChanged(Self.MethodDropBox.ComboBox);
-  Self.TeamDropBoxChanged(Self.TeamDropBox.ComboBox);
-  Self.PowerFletchCheckboxChanged(Self.PowerFletchCheckBox.CheckBox);
-  Self.StopAtPointsLimitCheckboxChanged(Self.StopAtPointsLimitCheckBox.CheckBox);
-  Self.WebhooksCheckboxChanged(Self.EnableWebhooksCheckBox.CheckBox);
-  Self.OverrideBreaksCheckboxChanged(nil);
-
-  Self.ShowScript(Self.ScriptNav);
-end;
-
-procedure TConfig.Run(); override;
-var
-  SavedOverrideBreaks: Boolean;
-  SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime: Integer;
-begin
-  BashPromptIfUpdateAvailable();
-
-  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
-    Self.Username := 'NoUserNameSelected'
-  else
-    Self.Username := Login.Players[Login.PlayerIndex].User;
-
-  SavedOverrideBreaks := StrToBoolDef(ReadINI(Self.Username + ' Trouble Brewing Antiban', 'OverrideBreaks', 'Configs/BASettings.ini'), False);
-  SavedCustomBreakInterval := StrToIntDef(ReadINI(Self.Username + ' Trouble Brewing Antiban', 'CustomBreakInterval', 'Configs/BASettings.ini'), 60);
-  SavedCustomBreakDuration := StrToIntDef(ReadINI(Self.Username + ' Trouble Brewing Antiban', 'CustomBreakDuration', 'Configs/BASettings.ini'), 5);
-
-  if WLSettings.Has('max_actions') then
-    SavedMaxActions := WLSettings.GetInt('max_actions')
-  else
-    SavedMaxActions := 0;
-  if WLSettings.Has('max_time') then
-    SavedMaxTime := WLSettings.GetInt('max_time')
-  else
-    SavedMaxTime := 0;
-
-  Self.Setup('BigAussies Trouble Brewing', [TB_GUI_W, TB_GUI_H], False);
-  Self.BuildShell(SavedOverrideBreaks, SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime);
-
   inherited;
 end;
+
+{$IFDEF SCRIPT_GUI}
+{$I BashLib/optional/handlers/bashgui_host_scriptgui.simba}
+{$ENDIF}
 
 var
   Config: TConfig;
 {$ENDIF}
 
-
 begin
-  {if FileExists(AppPath+'\Includes\Farm\BirdHouseInclude.simba') then
-  begin
-    DeleteFile(AppPath+'\Includes\Farm\BirdHouseInclude.simba');
-    DownloadToFile('https://raw.githubusercontent.com/GBScripts/SimbaScripts/main/BirdhouseInclude/BirdhouseInclude.simba', AppPath+'\Includes\Farm\BirdHouseInclude.simba');
-  end;}
-
   begin
     {$IFDEF SCRIPT_GUI}
     Sync(@Config.Run);

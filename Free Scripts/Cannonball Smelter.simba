@@ -1,9 +1,13 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'c4e8b2a1-9f3d-4c7e-a6b5-1d2e3f4a5b6c'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '43'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '44'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
+{$I BashLib/optional/handlers/discord.simba}
 {$I BashLib/optional/handlers/aichat.simba}
+{$IFDEF SCRIPT_GUI}
+{$I BashLib/optional/handlers/bashgui.simba}
+{$ENDIF}
 
 {
 ----------------------------------------------------------------------------------
@@ -31,9 +35,6 @@ type
 
 var
   ChosenCannonBallType: CannonBallTypes = STEEL_CANNONBALL;
-  OVERRIDEBREAKS: Boolean        = False;
-  CUSTOMBREAKINTERVAL: Integer   = 60;
-  CUSTOMBREAKDURATION: Integer   = 5;
 
 type
   EState = (
@@ -974,28 +975,6 @@ var
 
 {$IFDEF SCRIPT_GUI}
 const
-  CB_GUI_NAV       = $F0EBE4;
-  CB_GUI_BG        = $FFFFFF;
-  CB_GUI_STATUS    = $F7F4F1;
-  CB_GUI_DIVIDER   = $D4C9BC;
-  CB_GUI_CARD      = $F7F4F1;
-  CB_GUI_ACCENT    = $E0C9AE;
-  CB_GUI_NAV_IDLE  = $E7DED4;
-  CB_GUI_START     = $C9B094;
-  CB_GUI_TEXT      = $1C1C1E;
-  CB_GUI_MUTED     = $6B6B70;
-  CB_GUI_W         = 1120;
-  CB_GUI_H         = 700;
-  CB_GUI_NAV_W     = 190;
-  CB_GUI_STATUS_H  = 56;
-  CB_GUI_BTN_H     = 42;
-  CB_GUI_COMBO_W   = 260;
-  CB_GUI_COMBO_H   = 58;
-  CB_GUI_COMBO_FONT = 10;
-  CB_GUI_EDIT_W    = 260;
-  CB_GUI_COL2      = 308;
-  CB_GUI_BOTTOM_INSET = 34;
-
   CB_TYPE_ITEMS: TStringArray = [
     'Bronze Cannonballs',
     'Iron Cannonballs',
@@ -1006,684 +985,83 @@ const
   ];
 
 type
-  TConfig = record(TScriptForm)
-    NavPanel, ContentPanel, StatusPanel, DividerPanel, StatusDivider, StatusPad: TPanel;
-    BrandLabel: TLabel;
-    ScriptNav, AccountsNav, AntibanNav, AIChatNav: TImage;
-    StartChip: TImage;
-    ActiveNav: TImage;
-    ScriptSection, AccountsSection, AntibanSection, AIChatSection: TPanel;
-
+  TConfig = record(TBASHPremiumGUI)
     CannonBallTypeSelector: TLabeledCombobox;
-    MaxActionsInput, MaxTimeInput: TLabeledEdit;
-    ShortBreaksCheckBox, SleepBreaksCheckBox: TLabeledCheckBox;
-    SleepHourInput, SleepLengthInput: TLabeledEdit;
-    TasksEnabledCheckBox: TLabeledCheckBox;
-    TaskCameraCheckBox, TaskMouseCheckBox, TaskChatCheckBox, TaskGameTabsCheckBox, TaskBankCheckBox: TLabeledCheckBox;
-    OverrideBreaksCheckBox: TLabeledCheckBox;
-    CustomBreakIntervalInput, CustomBreakDurationInput: TLabeledEdit;
-    Username: String;
+    SavedType: Int32;
   end;
+  TScriptGUI = TConfig;
 
-function TConfig.MakePanel(
-  parent: TWinControl;
-  left, top, width, height, color: Int32
-): TPanel;
+procedure TConfig.InitGUI(); override;
 begin
-  Result.Create(parent);
-  Result.SetLeft(TControl.AdjustToDPI(left));
-  Result.SetTop(TControl.AdjustToDPI(top));
-  Result.SetWidth(TControl.AdjustToDPI(width));
-  Result.SetHeight(TControl.AdjustToDPI(height));
-  Result.SetColor(color);
-  Result.SetBevelOuter(bvNone);
+  Self.BrandTitle := 'Cannonball Smelter';
+  Self.WindowTitle := 'BASH Scripts Cannonball Smelter';
+  Self.WebhookTestPrefix := 'Test message from BASH Scripts Cannonball Smelter';
+  Self.HasFarm := False;
+  Self.HasAIChat := True;
+  Self.HasWorldHopping := False;
+  Self.HasMaxActions := True;
+  Self.HasStopAtLevel := False;
+  Self.LegacyAntibanSection := ' Cannonball Smelter Antiban';
 end;
 
-procedure TConfig.PaintRoundChip(
-  img: TImage;
-  labelText: String;
-  fill, parentBg: Int32;
-  selected: Boolean = False;
-  centered: Boolean = False
-);
+procedure TConfig.SetupAIChat(); override;
+begin
+  inherited;
+  AIChatbot.SetScriptDefaults('smelting cannonballs');
+end;
+
+procedure TConfig.LoadActionSettings(); override;
 var
-  bmp: TBitmap;
-  c: TCanvas;
-  w, h, r, tw, th, tx: Int32;
+  SavedTypeStr: String;
 begin
-  w := img.GetWidth();
-  h := img.GetHeight();
-  if (w <= 0) or (h <= 0) then
-    Exit;
-
-  r := TControl.AdjustToDPI(6);
-  if r * 2 > h then
-    r := h div 2;
-  if r * 2 > w then
-    r := w div 2;
-
-  bmp := img.GetPicture().GetBitmap();
-  bmp.SetWidth(w);
-  bmp.SetHeight(h);
-  c := bmp.GetCanvas();
-
-  c.GetBrush().SetColor(parentBg);
-  c.GetPen().SetColor(parentBg);
-  c.FillRect(0, 0, w, h);
-
-  c.GetBrush().SetColor(fill);
-  c.GetPen().SetColor(fill);
-  c.RoundRect(0, 0, w - 1, h - 1, r * 2, r * 2);
-
-  c.GetBrush().SetColor(fill);
-  c.GetFont().SetColor(CB_GUI_TEXT);
-  c.GetFont().SetSize(11);
-  if selected then
-    c.GetFont().SetStyle([fsBold])
-  else
-    c.GetFont().SetStyle([]);
-
-  tw := c.TextWidth(labelText);
-  th := c.TextHeight(labelText);
-  if centered then
-    tx := (w - tw) div 2
-  else
-    tx := TControl.AdjustToDPI(16);
-  c.TextOut(tx, (h - th) div 2, labelText);
-
-  img.SetHint(labelText);
-  img.SetShowHint(False);
-  img.Invalidate();
+  SavedTypeStr := ReadINI(Self.Username + ' Cannonball Smelter Settings', 'CannonBallType', BASH_GUI_SETTINGS_FILE);
+  if SavedTypeStr = '' then
+    SavedTypeStr := ReadINI(Self.Username + ' [Free] Cannonball Smelter Settings', 'CannonBallType', BASH_GUI_SETTINGS_FILE);
+  Self.SavedType := StrToIntDef(SavedTypeStr, Ord(STEEL_CANNONBALL));
+  if (Self.SavedType < Ord(Low(CannonBallTypes))) or (Self.SavedType > Ord(High(CannonBallTypes))) then
+    Self.SavedType := Ord(STEEL_CANNONBALL);
 end;
 
-function TConfig.MakeNavItem(
-  parent: TWinControl;
-  labelText: String;
-  left, top: Int32;
-  selected: Boolean = False
-): TImage;
+procedure TConfig.BuildActionSection(); override;
 var
-  fill: Int32;
+  hint: TLabel;
 begin
-  Result.Create(parent);
-  Result.SetLeft(TControl.AdjustToDPI(left));
-  Result.SetTop(TControl.AdjustToDPI(top));
-  Result.SetWidth(TControl.AdjustToDPI(CB_GUI_NAV_W - 28));
-  Result.SetHeight(TControl.AdjustToDPI(CB_GUI_BTN_H));
-  Result.SetCursor(crHandPoint);
+  Self.AddHeader(Self.ActionSection, 'Action', 'Smelt cannonballs at the Edgeville furnace.');
 
-  if selected then
-    fill := CB_GUI_ACCENT
-  else
-    fill := CB_GUI_NAV_IDLE;
+  hint := Self.MakeLabel(Self.ActionSection, 'Bars MUST be on the TOP row of your ALL tab in the bank. Edgeville furnace only.', 24, 110, 10, BASH_GUI_MUTED, False);
+  hint.SetWidth(TControl.AdjustToDPI(820));
 
-  Self.PaintRoundChip(Result, labelText, fill, CB_GUI_NAV, selected);
+  Self.AddCombo(Self.ActionSection, Self.CannonBallTypeSelector, 'lcb_cb_type', 'Cannonball type', 24, 150, CB_TYPE_ITEMS, Self.SavedType);
+  Self.CannonBallTypeSelector.SetTooltip('Select the type of cannonballs you wish to make.');
 end;
 
-function TConfig.MakeLabel(
-  parent: TWinControl;
-  labelText: String;
-  left, top, fontSize, fontColor: Int32;
-  bold: Boolean = False
-): TLabel;
+procedure TConfig.ApplyActionSettings(); override;
 begin
-  Result.Create(parent);
-  Result.SetLeft(TControl.AdjustToDPI(left));
-  Result.SetTop(TControl.AdjustToDPI(top));
-  Result.SetCaption(labelText);
-  Result.GetFont().SetSize(fontSize);
-  Result.GetFont().SetColor(fontColor);
-  if bold then
-    Result.GetFont().SetStyle([fsBold]);
+  ChosenCannonBallType := CannonBallTypes(Self.CannonBallTypeSelector.GetItemIndex());
+  Script.ChosenLocation := 'Edgeville';
+  WriteINI(Self.Username + ' Cannonball Smelter Settings', 'CannonBallType', IntToStr(Ord(ChosenCannonBallType)), BASH_GUI_SETTINGS_FILE);
 end;
 
-procedure TConfig.AddCombo(
-  parent: TWinControl;
-  var box: TLabeledComboBox;
-  ctrlName, labelText: String;
-  left, top: Int32;
-  items: TStringArray;
-  itemIndex: Int32
-);
-begin
-  box.Create(parent);
-  box.SetLeft(TControl.AdjustToDPI(left));
-  box.SetTop(TControl.AdjustToDPI(top));
-  box.SetWidth(TControl.AdjustToDPI(CB_GUI_COMBO_W));
-  box.SetHeight(TControl.AdjustToDPI(CB_GUI_COMBO_H));
-  box.SetName(ctrlName);
-  box.SetCaption(labelText);
-  box.AddItemArray(items);
-  if (itemIndex >= 0) and (itemIndex <= High(items)) then
-    box.SetItemIndex(itemIndex)
-  else
-    box.SetItemIndex(0);
-  box.SetFontColor(CB_GUI_TEXT);
-  box.SetStyle(csDropDownList);
-  box.SetFontSize(CB_GUI_COMBO_FONT);
-  box.ComboBox.SetFontColor(CB_GUI_TEXT);
-  box.ComboBox.GetFont().SetSize(CB_GUI_COMBO_FONT);
-end;
-
-procedure TConfig.AddCheck(
-  parent: TWinControl;
-  var box: TLabeledCheckBox;
-  ctrlName, labelText: String;
-  left, top: Int32;
-  checked: Boolean
-);
-begin
-  box.Create(parent);
-  box.SetLeft(TControl.AdjustToDPI(left));
-  box.SetTop(TControl.AdjustToDPI(top));
-  box.SetName(ctrlName);
-  box.SetFontColor(CB_GUI_TEXT);
-  box.SetCaption(labelText);
-  if checked then
-    box.CheckBox.SetChecked(True);
-end;
-
-procedure TConfig.AddEdit(
-  parent: TWinControl;
-  var box: TLabeledEdit;
-  ctrlName, labelText, text: String;
-  left, top, width: Int32
-);
-begin
-  box.Create(parent);
-  box.SetLeft(TControl.AdjustToDPI(left));
-  box.SetTop(TControl.AdjustToDPI(top));
-  box.SetWidth(TControl.AdjustToDPI(width));
-  box.SetName(ctrlName);
-  box.SetCaption(labelText);
-  box.SetText(text);
-  box.SetFontColor(CB_GUI_TEXT);
-end;
-
-procedure TConfig.AddHeader(parent: TPanel; titleText, subtitleText: String);
-var
-  header: TPanel;
-  headerW: Int32;
-begin
-  headerW := parent.GetWidth();
-  if headerW <= 0 then
-    headerW := TControl.AdjustToDPI(CB_GUI_W - CB_GUI_NAV_W - 2);
-
-  header := Self.MakePanel(parent, 0, 0, 1, 88, CB_GUI_CARD);
-  header.SetWidth(headerW);
-  header.SetHeight(TControl.AdjustToDPI(88));
-  Self.MakeLabel(header, titleText, 24, 18, 18, CB_GUI_TEXT, True);
-  Self.MakeLabel(header, subtitleText, 24, 52, 10, CB_GUI_MUTED, False);
-end;
-
-procedure TConfig.StyleNav(selected: TImage);
-begin
-  Self.ActiveNav := selected;
-  Self.PaintRoundChip(Self.ScriptNav, Self.ScriptNav.GetHint(), CB_GUI_NAV_IDLE, CB_GUI_NAV, False);
-  Self.PaintRoundChip(Self.AccountsNav, Self.AccountsNav.GetHint(), CB_GUI_NAV_IDLE, CB_GUI_NAV, False);
-  Self.PaintRoundChip(Self.AntibanNav, Self.AntibanNav.GetHint(), CB_GUI_NAV_IDLE, CB_GUI_NAV, False);
-  Self.PaintRoundChip(Self.AIChatNav, Self.AIChatNav.GetHint(), CB_GUI_NAV_IDLE, CB_GUI_NAV, False);
-  Self.PaintRoundChip(selected, selected.GetHint(), CB_GUI_ACCENT, CB_GUI_NAV, True);
-end;
-
-procedure TConfig.ShowSection(section: TPanel; selected: TImage);
-begin
-  Self.ScriptSection.SetVisible(False);
-  Self.AccountsSection.SetVisible(False);
-  Self.AntibanSection.SetVisible(False);
-  Self.AIChatSection.SetVisible(False);
-  section.SetVisible(True);
-  Self.StyleNav(selected);
-end;
-
-procedure TConfig.ShowScript({$H-}sender: TObject); {$H+}
-begin
-  Self.ShowSection(Self.ScriptSection, Self.ScriptNav);
-end;
-
-procedure TConfig.ShowAccounts({$H-}sender: TObject); {$H+}
-begin
-  Self.ShowSection(Self.AccountsSection, Self.AccountsNav);
-end;
-
-procedure TConfig.ShowAntiban({$H-}sender: TObject); {$H+}
-begin
-  Self.ShowSection(Self.AntibanSection, Self.AntibanNav);
-end;
-
-procedure TConfig.ShowAIChat({$H-}sender: TObject); {$H+}
-begin
-  Self.ShowSection(Self.AIChatSection, Self.AIChatNav);
-end;
-
-procedure TConfig.OverrideBreaksCheckboxChanged(Sender: TObject);
-begin
-  if Sender = nil then;
-  Self.CustomBreakIntervalInput.SetVisible(Self.OverrideBreaksCheckBox.IsChecked());
-  Self.CustomBreakDurationInput.SetVisible(Self.OverrideBreaksCheckBox.IsChecked());
-  if Self.OverrideBreaksCheckBox.IsChecked() then
-    Self.ShortBreaksCheckBox.CheckBox.SetChecked(False);
-end;
-
-procedure TConfig.ShortBreaksCheckboxChanged(Sender: TObject);
-begin
-  if Sender = nil then;
-  if Self.ShortBreaksCheckBox.IsChecked() then
-  begin
-    Self.OverrideBreaksCheckBox.CheckBox.SetChecked(False);
-    Self.CustomBreakIntervalInput.SetVisible(False);
-    Self.CustomBreakDurationInput.SetVisible(False);
-  end;
-end;
-
-procedure TConfig.SleepBreaksCheckboxChanged(Sender: TObject);
-var
-  enabled: Boolean;
-begin
-  if Sender = nil then;
-  enabled := Self.SleepBreaksCheckBox.IsChecked();
-  Self.SleepHourInput.SetEnabled(enabled);
-  Self.SleepLengthInput.SetEnabled(enabled);
-end;
-
-procedure TConfig.TasksEnabledCheckboxChanged(Sender: TObject);
-var
-  enabled: Boolean;
-begin
-  if Sender = nil then;
-  enabled := Self.TasksEnabledCheckBox.IsChecked();
-  Self.TaskCameraCheckBox.SetEnabled(enabled);
-  Self.TaskMouseCheckBox.SetEnabled(enabled);
-  Self.TaskChatCheckBox.SetEnabled(enabled);
-  Self.TaskGameTabsCheckBox.SetEnabled(enabled);
-  Self.TaskBankCheckBox.SetEnabled(enabled);
-end;
-
-procedure TConfig.ApplyAntibanFromGUI();
-begin
-  WLSettings.Put('max_actions', StrToIntDef(Self.MaxActionsInput.GetText(), 0));
-  WLSettings.Put('max_time', StrToIntDef(Self.MaxTimeInput.GetText(), 0));
-
-  WLSettings.GetObject('antiban').Put('breaks', Self.ShortBreaksCheckBox.IsChecked());
-
-  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('enabled', Self.SleepBreaksCheckBox.IsChecked());
-  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('biohash', False);
-  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('hour', Trim(Self.SleepHourInput.GetText()));
-  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('length', StrToFloatDef(Self.SleepLengthInput.GetText(), 8));
-
-  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('enabled', Self.TasksEnabledCheckBox.IsChecked());
-  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('camera', Self.TaskCameraCheckBox.IsChecked());
-  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('mouse', Self.TaskMouseCheckBox.IsChecked());
-  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('chat', Self.TaskChatCheckBox.IsChecked());
-  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('gametabs', Self.TaskGameTabsCheckBox.IsChecked());
-  WLSettings.GetObject('antiban').getJSONObject('tasks').Put('bank', Self.TaskBankCheckBox.IsChecked());
-
-  WLSettings.SaveConfig();
-end;
 
 procedure TConfig.StartScript(Sender: TObject); override;
 begin
   if Sender = nil then;
-
-  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
-    Self.Username := 'NoUserNameSelected'
-  else
-    Self.Username := Login.Players[Login.PlayerIndex].User;
-
-  ChosenCannonBallType := CannonBallTypes(Self.CannonBallTypeSelector.GetItemIndex());
-  Script.ChosenLocation := 'Edgeville';
-
-  OVERRIDEBREAKS := Self.OverrideBreaksCheckBox.IsChecked();
-  CUSTOMBREAKINTERVAL := StrToIntDef(Self.CustomBreakIntervalInput.GetText(), 60);
-  CUSTOMBREAKDURATION := StrToIntDef(Self.CustomBreakDurationInput.GetText(), 5);
-
-  WriteINI(Self.Username + ' Cannonball Smelter Settings', 'CannonBallType', IntToStr(Ord(ChosenCannonBallType)), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' Cannonball Smelter Antiban', 'OverrideBreaks', BoolToStr(OVERRIDEBREAKS, 'true', 'false'), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' Cannonball Smelter Antiban', 'CustomBreakInterval', IntToStr(CUSTOMBREAKINTERVAL), 'Configs/BASettings.ini');
-  WriteINI(Self.Username + ' Cannonball Smelter Antiban', 'CustomBreakDuration', IntToStr(CUSTOMBREAKDURATION), 'Configs/BASettings.ini');
-
-  Self.ApplyAntibanFromGUI();
-
-  WriteLn('Override Breaks: ', ToStr(OVERRIDEBREAKS));
-  WriteLn('Short Breaks: ', ToStr(WLSettings.GetObject('antiban').getBoolean('breaks')));
-  WriteLn('Sleep Breaks: ', ToStr(WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('enabled')));
-  WriteLn('Antiban Tasks: ', ToStr(WLSettings.GetObject('antiban').getJSONObject('tasks').getBoolean('enabled')));
-
   try
     Self._WarmBuildCache();
   except
   end;
-  AIChatbot.ApplyFromGUI();
-
-  Self.Form.SetOnClose(nil);
-  Self.Form.Close();
-end;
-
-procedure TConfig.BuildScriptSection(SavedType: Int32);
-var
-  hint: TLabel;
-begin
-  Self.AddHeader(Self.ScriptSection, 'Action', 'Smelt cannonballs at the Edgeville furnace.');
-
-  hint := Self.MakeLabel(Self.ScriptSection, 'Bars MUST be on the TOP row of your ALL tab in the bank. Edgeville furnace only.', 24, 110, 10, CB_GUI_MUTED, False);
-  hint.SetWidth(TControl.AdjustToDPI(820));
-
-  Self.AddCombo(Self.ScriptSection, Self.CannonBallTypeSelector, 'lcb_cb_type', 'Cannonball type', 24, 150, CB_TYPE_ITEMS, SavedType);
-  Self.CannonBallTypeSelector.SetTooltip('Select the type of cannonballs you wish to make.');
-end;
-
-procedure TConfig.BuildAccountsSection();
-var
-  am: TPanel;
-  selectorPanel, userPanel, passPanel, pinPanel, worldsPanel: TPanel;
-  addBtn, deleteBtn, generateBtn: TButton;
-  leftColW, passW, pinW, worldsLeft, btnW, btnGap: Int32;
-begin
-  Self.AddHeader(Self.AccountsSection, 'Accounts', 'Login account and hop worlds list.');
-
-  am := Self.CreateAccountManager(Self.AccountsSection);
-  am.SetLeft(TControl.AdjustToDPI(16));
-  am.SetTop(TControl.AdjustToDPI(100));
-  am.SetColor(CB_GUI_BG);
-
-  leftColW := TControl.AdjustToDPI(280);
-  passW := Floor(leftColW * 0.6);
-  pinW := Floor(leftColW * 0.3);
-
-  selectorPanel := Self.Form.GetChild('am_selector_panel');
-  userPanel := Self.Form.GetChild('am_user_panel');
-  passPanel := Self.Form.GetChild('am_pass_panel');
-  pinPanel := Self.Form.GetChild('am_pin_panel');
-  worldsPanel := Self.Form.GetChild('am_worlds_panel');
-
-  if selectorPanel <> nil then
-    selectorPanel.SetWidth(leftColW);
-  if userPanel <> nil then
-    userPanel.SetWidth(leftColW);
-  if passPanel <> nil then
-    passPanel.SetWidth(passW);
-  if (pinPanel <> nil) and (selectorPanel <> nil) then
-  begin
-    pinPanel.SetWidth(pinW);
-    pinPanel.SetLeft(selectorPanel.GetLeft() + leftColW - pinW);
-  end;
-
-  if (worldsPanel <> nil) and (selectorPanel <> nil) then
-  begin
-    worldsLeft := selectorPanel.GetLeft() + leftColW + TControl.AdjustToDPI(48);
-    worldsPanel.SetLeft(worldsLeft);
-
-    addBtn := Self.Form.GetChild('am_add_button');
-    deleteBtn := Self.Form.GetChild('am_delete_button');
-    generateBtn := Self.Form.GetChild('am_generate_worlds_button');
-    btnGap := TControl.AdjustToDPI(8);
-    btnW := Floor((worldsPanel.GetWidth() - btnGap) / 2);
-
-    if generateBtn <> nil then
-    begin
-      generateBtn.SetLeft(worldsLeft);
-      generateBtn.SetWidth(worldsPanel.GetWidth());
-    end;
-    if addBtn <> nil then
-    begin
-      addBtn.SetLeft(worldsLeft);
-      addBtn.SetWidth(btnW);
-    end;
-    if deleteBtn <> nil then
-    begin
-      deleteBtn.SetLeft(worldsLeft + worldsPanel.GetWidth() - btnW - TControl.AdjustToDPI(1));
-      deleteBtn.SetWidth(btnW);
-    end;
-  end;
-end;
-
-procedure TConfig.BuildAntibanSection(
-  SavedOverrideBreaks: Boolean;
-  SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime: Integer
-);
-var
-  tasks: TJSONObject;
-  sleepHour: String;
-  sleepLength: Single;
-  wasBio: Boolean;
-begin
-  Antiban.SetupBiometrics();
-  tasks := WLSettings.GetObject('antiban').getJSONObject('tasks');
-  wasBio := WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('biohash');
-  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('biohash', True);
-  sleepHour := Antiban.GetSleepHour();
-  sleepLength := Antiban.GetSleepLength();
-  WLSettings.GetObject('antiban').getJSONObject('sleep').Put('biohash', wasBio);
-  if (not wasBio) and (WLSettings.GetObject('antiban').getJSONObject('sleep').getString('hour') <> '') then
-  begin
-    sleepHour := WLSettings.GetObject('antiban').getJSONObject('sleep').getString('hour');
-    sleepLength := WLSettings.GetObject('antiban').getJSONObject('sleep').getDouble('length');
-  end;
-  if sleepHour = '' then
-    sleepHour := '23:00:00';
-  if sleepLength <= 0 then
-    sleepLength := 8;
-
-  Self.AddHeader(Self.AntibanSection, 'Antiban', 'Breaks, sleeps, tasks, and session limits.');
-
-  Self.MakeLabel(Self.AntibanSection, 'Session', 24, 100, 11, CB_GUI_MUTED, True);
-  Self.AddEdit(Self.AntibanSection, Self.MaxActionsInput, 'le_cb_maxactions', 'Max actions (0 = unlimited)', IntToStr(SavedMaxActions), 24, 118, CB_GUI_EDIT_W);
-  Self.MaxActionsInput.Edit.SetOnKeyPress(@Self.MaxActionsInput.Edit.NumberField);
-  Self.AddEdit(Self.AntibanSection, Self.MaxTimeInput, 'le_cb_maxtime', 'Max time minutes (0 = unlimited)', IntToStr(SavedMaxTime), CB_GUI_COL2, 118, CB_GUI_EDIT_W);
-  Self.MaxTimeInput.Edit.SetOnKeyPress(@Self.MaxTimeInput.Edit.NumberField);
-
-  Self.MakeLabel(Self.AntibanSection, 'Breaks and sleeps', 24, 188, 11, CB_GUI_MUTED, True);
-  Self.AddCheck(Self.AntibanSection, Self.ShortBreaksCheckBox, 'cb_cb_short_breaks', 'Short breaks', 24, 210, WLSettings.GetObject('antiban').getBoolean('breaks'));
-  Self.ShortBreaksCheckBox.CheckBox.SetOnChange(@Self.ShortBreaksCheckboxChanged);
-  Self.ShortBreaksCheckBox.SetTooltip('Enables short randomized breaks during the session.');
-  Self.AddCheck(Self.AntibanSection, Self.SleepBreaksCheckBox, 'cb_cb_sleep_breaks', 'Sleep breaks', CB_GUI_COL2, 210, WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('enabled'));
-  Self.SleepBreaksCheckBox.CheckBox.SetOnChange(@Self.SleepBreaksCheckboxChanged);
-  Self.SleepBreaksCheckBox.SetTooltip('Enables longer sleep breaks based on local time.');
-
-  Self.AddEdit(Self.AntibanSection, Self.SleepHourInput, 'le_cb_sleep_hour', 'Sleep hour (HH:MM:SS)', sleepHour, 24, 238, CB_GUI_EDIT_W);
-  Self.SleepHourInput.Edit.SetOnKeyPress(@Self.SleepHourInput.Edit.TimeField);
-  Self.SleepHourInput.SetTooltip('Local PC time used as the base for sleep start.');
-  Self.AddEdit(Self.AntibanSection, Self.SleepLengthInput, 'le_cb_sleep_length', 'Sleep length (hours)', ToStr(sleepLength), CB_GUI_COL2, 238, CB_GUI_EDIT_W);
-  Self.SleepLengthInput.Edit.SetOnKeyPress(@Self.SleepLengthInput.Edit.FloatField);
-  Self.SleepLengthInput.SetTooltip('Approximate sleep length in hours.');
-
-  Self.AddCheck(Self.AntibanSection, Self.OverrideBreaksCheckBox, 'cb_cb_override_breaks', 'Override default breaks', 24, 300, SavedOverrideBreaks);
-  Self.OverrideBreaksCheckBox.CheckBox.SetOnChange(@Self.OverrideBreaksCheckboxChanged);
-  Self.OverrideBreaksCheckBox.SetTooltip('Replace WaspLib break intervals with your own schedule.');
-
-  Self.AddEdit(Self.AntibanSection, Self.CustomBreakIntervalInput, 'le_cb_break_interval', 'Break interval (minutes)', IntToStr(SavedCustomBreakInterval), 24, 328, CB_GUI_EDIT_W);
-  Self.CustomBreakIntervalInput.Edit.SetOnKeyPress(@Self.CustomBreakIntervalInput.Edit.NumberField);
-  Self.CustomBreakIntervalInput.SetTooltip('How often to take breaks. Includes randomness.');
-  Self.AddEdit(Self.AntibanSection, Self.CustomBreakDurationInput, 'le_cb_break_duration', 'Break duration (minutes)', IntToStr(SavedCustomBreakDuration), CB_GUI_COL2, 328, CB_GUI_EDIT_W);
-  Self.CustomBreakDurationInput.Edit.SetOnKeyPress(@Self.CustomBreakDurationInput.Edit.NumberField);
-  Self.CustomBreakDurationInput.SetTooltip('How long breaks should last. Includes randomness.');
-
-  Self.MakeLabel(Self.AntibanSection, 'Tasks', 24, 380, 11, CB_GUI_MUTED, True);
-  Self.AddCheck(Self.AntibanSection, Self.TasksEnabledCheckBox, 'cb_cb_tasks', 'Enable antiban tasks', 24, 398, tasks.getBoolean('enabled'));
-  Self.TasksEnabledCheckBox.CheckBox.SetOnChange(@Self.TasksEnabledCheckboxChanged);
-  Self.TasksEnabledCheckBox.SetTooltip('Enables camera, mouse, chat, gametab, and bank antiban tasks.');
-
-  Self.AddCheck(Self.AntibanSection, Self.TaskCameraCheckBox, 'cb_cb_task_camera', 'Camera', 24, 422, tasks.getBoolean('camera'));
-  Self.AddCheck(Self.AntibanSection, Self.TaskMouseCheckBox, 'cb_cb_task_mouse', 'Mouse', CB_GUI_COL2, 422, tasks.getBoolean('mouse'));
-  Self.AddCheck(Self.AntibanSection, Self.TaskChatCheckBox, 'cb_cb_task_chat', 'Chat', 24, 441, tasks.getBoolean('chat'));
-  Self.AddCheck(Self.AntibanSection, Self.TaskGameTabsCheckBox, 'cb_cb_task_gametabs', 'GameTabs', CB_GUI_COL2, 441, tasks.getBoolean('gametabs'));
-  Self.AddCheck(Self.AntibanSection, Self.TaskBankCheckBox, 'cb_cb_task_bank', 'Bank', 24, 460, tasks.getBoolean('bank'));
-
-  Self.SleepBreaksCheckboxChanged(nil);
-  Self.TasksEnabledCheckboxChanged(nil);
-  Self.OverrideBreaksCheckboxChanged(nil);
-  Self.ShortBreaksCheckboxChanged(nil);
-end;
-
-procedure TConfig.BuildShell(
-  SavedType: Integer;
-  SavedOverrideBreaks: Boolean;
-  SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime: Integer
-);
-var
-  contentH, startW, startH, shellW, shellH, statusTop, statusH, mainLeft, mainW, navW, bottomInset: Int32;
-begin
-  Self.Start.SetAlign(alNone);
-  Self.Start.SetVisible(False);
-  Self.Start.SetHeight(0);
-  Self.Start.SetWidth(0);
-
-  Self.PageControl.SetVisible(False);
-  Self.PageControl.SetAlign(alNone);
-  Self.PageControl.SetBounds(0, 0, 0, 0);
-
-  bottomInset := TControl.AdjustToDPI(CB_GUI_BOTTOM_INSET);
-  navW := TControl.AdjustToDPI(CB_GUI_NAV_W);
-  statusH := TControl.AdjustToDPI(CB_GUI_STATUS_H);
-  shellW := Self.Size.X;
-  shellH := Self.Size.Y;
-  mainLeft := navW + TControl.AdjustToDPI(2);
-  mainW := shellW - mainLeft;
-  statusTop := shellH - statusH - bottomInset;
-  contentH := statusTop;
-  startW := TControl.AdjustToDPI(132);
-  startH := TControl.AdjustToDPI(CB_GUI_BTN_H);
-
-  Self.NavPanel.Create(Self.Form);
-  Self.NavPanel.SetLeft(0);
-  Self.NavPanel.SetTop(0);
-  Self.NavPanel.SetWidth(navW);
-  Self.NavPanel.SetHeight(shellH);
-  Self.NavPanel.SetColor(CB_GUI_NAV);
-  Self.NavPanel.SetBevelOuter(bvNone);
-
-  Self.DividerPanel.Create(Self.Form);
-  Self.DividerPanel.SetLeft(navW);
-  Self.DividerPanel.SetTop(0);
-  Self.DividerPanel.SetWidth(TControl.AdjustToDPI(2));
-  Self.DividerPanel.SetHeight(shellH);
-  Self.DividerPanel.SetColor(CB_GUI_DIVIDER);
-  Self.DividerPanel.SetBevelOuter(bvNone);
-
-  Self.ContentPanel.Create(Self.Form);
-  Self.ContentPanel.SetLeft(mainLeft);
-  Self.ContentPanel.SetTop(0);
-  Self.ContentPanel.SetWidth(mainW);
-  Self.ContentPanel.SetHeight(contentH);
-  Self.ContentPanel.SetColor(CB_GUI_BG);
-  Self.ContentPanel.SetBevelOuter(bvNone);
-
-  Self.StatusDivider.Create(Self.Form);
-  Self.StatusDivider.SetLeft(mainLeft);
-  Self.StatusDivider.SetTop(statusTop);
-  Self.StatusDivider.SetWidth(mainW);
-  Self.StatusDivider.SetHeight(TControl.AdjustToDPI(2));
-  Self.StatusDivider.SetColor(CB_GUI_DIVIDER);
-  Self.StatusDivider.SetBevelOuter(bvNone);
-
-  Self.StatusPanel.Create(Self.Form);
-  Self.StatusPanel.SetLeft(mainLeft);
-  Self.StatusPanel.SetTop(statusTop + Self.StatusDivider.GetHeight());
-  Self.StatusPanel.SetWidth(mainW);
-  Self.StatusPanel.SetHeight(statusH - Self.StatusDivider.GetHeight());
-  Self.StatusPanel.SetColor(CB_GUI_STATUS);
-  Self.StatusPanel.SetBevelOuter(bvNone);
-
-  Self.StatusPad.Create(Self.Form);
-  Self.StatusPad.SetLeft(mainLeft);
-  Self.StatusPad.SetTop(Self.StatusPanel.GetTop() + Self.StatusPanel.GetHeight());
-  Self.StatusPad.SetWidth(mainW);
-  Self.StatusPad.SetHeight(shellH - Self.StatusPad.GetTop());
-  Self.StatusPad.SetColor(CB_GUI_STATUS);
-  Self.StatusPad.SetBevelOuter(bvNone);
-
-  Self.BrandLabel := Self.MakeLabel(Self.NavPanel, 'Cannonball Smelter', 16, 28, 14, CB_GUI_TEXT, True);
-  Self.MakeLabel(Self.NavPanel, 'BigAussie', 16, 54, 9, CB_GUI_MUTED, False);
-
-  Self.ScriptNav := Self.MakeNavItem(Self.NavPanel, 'Action', 12, 100, True);
-  Self.AccountsNav := Self.MakeNavItem(Self.NavPanel, 'Accounts', 12, 152);
-  Self.AntibanNav := Self.MakeNavItem(Self.NavPanel, 'Antiban', 12, 204);
-  Self.AIChatNav := Self.MakeNavItem(Self.NavPanel, 'AI Chat', 12, 256);
-
-  Self.ScriptSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, CB_GUI_BG);
-  Self.AccountsSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, CB_GUI_BG);
-  Self.AntibanSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, CB_GUI_BG);
-  Self.AIChatSection := Self.MakePanel(Self.ContentPanel, 0, 0, 100, 100, CB_GUI_BG);
-
-  Self.ScriptSection.SetWidth(mainW);
-  Self.ScriptSection.SetHeight(contentH);
-  Self.AccountsSection.SetWidth(mainW);
-  Self.AccountsSection.SetHeight(contentH);
-  Self.AntibanSection.SetWidth(mainW);
-  Self.AntibanSection.SetHeight(contentH);
-  Self.AIChatSection.SetWidth(mainW);
-  Self.AIChatSection.SetHeight(contentH);
-
-  Self.BuildScriptSection(SavedType);
-  Self.BuildAccountsSection();
-  Self.BuildAntibanSection(SavedOverrideBreaks, SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime);
-  AIChatbot.BuildSettings(Self.AIChatSection, mainW);
-
-  Self.ScriptNav.SetOnClick(@Self.ShowScript);
-  Self.AccountsNav.SetOnClick(@Self.ShowAccounts);
-  Self.AntibanNav.SetOnClick(@Self.ShowAntiban);
-  Self.AIChatNav.SetOnClick(@Self.ShowAIChat);
-
-  Self.StartChip.Create(Self.StatusPanel);
-  Self.StartChip.SetLeft(mainW - startW - TControl.AdjustToDPI(24));
-  Self.StartChip.SetTop((Self.StatusPanel.GetHeight() - startH) div 2 + 2);
-  Self.StartChip.SetWidth(startW);
-  Self.StartChip.SetHeight(startH);
-  Self.StartChip.SetCursor(crHandPoint);
-  Self.PaintRoundChip(Self.StartChip, 'Start', CB_GUI_START, CB_GUI_STATUS, True, True);
-  Self.StartChip.SetOnClick(@Self.StartScript);
-
-  Self.OverrideBreaksCheckboxChanged(nil);
-  Self.ShowScript(Self.ScriptNav);
-end;
-
-procedure TConfig.Run(); override;
-var
-  SavedTypeStr: String;
-  SavedOverrideBreaks: Boolean;
-  SavedType, SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime: Integer;
-begin
-  BashPromptIfUpdateAvailable();
-
-  if (Login.PlayerIndex < 0) or (Login.PlayerIndex > High(Login.Players)) then
-    Self.Username := 'NoUserNameSelected'
-  else
-    Self.Username := Login.Players[Login.PlayerIndex].User;
-
-  SavedTypeStr := ReadINI(Self.Username + ' Cannonball Smelter Settings', 'CannonBallType', 'Configs/BASettings.ini');
-  if SavedTypeStr = '' then
-    SavedTypeStr := ReadINI(Self.Username + ' [Free] Cannonball Smelter Settings', 'CannonBallType', 'Configs/BASettings.ini');
-  SavedType := StrToIntDef(SavedTypeStr, Ord(STEEL_CANNONBALL));
-  if (SavedType < Ord(Low(CannonBallTypes))) or (SavedType > Ord(High(CannonBallTypes))) then
-    SavedType := Ord(STEEL_CANNONBALL);
-
-  SavedOverrideBreaks := StrToBoolDef(ReadINI(Self.Username + ' Cannonball Smelter Antiban', 'OverrideBreaks', 'Configs/BASettings.ini'), False);
-  SavedCustomBreakInterval := StrToIntDef(ReadINI(Self.Username + ' Cannonball Smelter Antiban', 'CustomBreakInterval', 'Configs/BASettings.ini'), 60);
-  SavedCustomBreakDuration := StrToIntDef(ReadINI(Self.Username + ' Cannonball Smelter Antiban', 'CustomBreakDuration', 'Configs/BASettings.ini'), 5);
-
-  if WLSettings.Has('max_actions') then
-    SavedMaxActions := WLSettings.GetInt('max_actions')
-  else
-    SavedMaxActions := 0;
-  if WLSettings.Has('max_time') then
-    SavedMaxTime := WLSettings.GetInt('max_time')
-  else
-    SavedMaxTime := 0;
-
-  AIChatbot.Setup('Gemini', '');
-  AIChatbot.Enabled := False;
-  AIChatbot.LoadSettings();
-  AIChatbot.SetScriptDefaults('smelting cannonballs');
-
-  Self.Setup('Free Cannonball Smelter', [CB_GUI_W, CB_GUI_H], False);
-  Self.BuildShell(SavedType, SavedOverrideBreaks, SavedCustomBreakInterval, SavedCustomBreakDuration, SavedMaxActions, SavedMaxTime);
-
   inherited;
 end;
+
+
+{$IFDEF SCRIPT_GUI}
+{$I BashLib/optional/handlers/bashgui_host_scriptgui.simba}
+{$ENDIF}
 
 var
   Config: TConfig;
 {$ENDIF}
+
 
 begin
   {$IFDEF SCRIPT_GUI}
