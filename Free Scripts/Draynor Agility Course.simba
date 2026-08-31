@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'e03d0524-9b81-4cb9-98f6-d9fe1243c778'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '7'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '8'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -261,6 +261,19 @@ begin
   Minimap.SetCompassAngle(preferredAngle);
 end; 
 
+function DraynorAgility.RoofTile(X, Y: Int32): TPoint;
+begin
+  Result := [X + RSTranslator.MapWidth() * 3, Y];
+end;
+
+function DraynorAgility.RoofBox(X1, Y1, X2, Y2: Int32): TBox;
+var
+  Off: Int32;
+begin
+  Off := RSTranslator.MapWidth() * 3;
+  Result := [X1 + Off, Y1, X2 + Off, Y2];
+end;
+
 function DraynorAgility.GetLocation(): TLocation;
 begin
   if not RSClient.IsLoggedIn then Exit(UNKNOWN);
@@ -271,22 +284,52 @@ begin
 
   if MyFullPos.Plane = 3 then
   begin
-    if MyFullPos.InBox([8294, 37306, 8314, 37322]) then Exit(TIGHTROPE1);
-    if MyFullPos.InBox([8256, 37326, 8270, 37342]) then Exit(TIGHTROPE2);
-    if MyFullPos.InBox([8256, 37362, 8284, 37370]) then Exit(NARROWWALL);
-    if MyFullPos.InBox([8240, 37386, 8260, 37406]) then Exit(WALL);
-    if MyFullPos.InBox([8254, 37410, 8310, 37418]) then Exit(GAP);
-    if MyFullPos.InBox([8278, 37386, 8288, 37410]) then Exit(CRATE);
+    if MyFullPos.InBox(Self.RoofBox(8288, 37300, 8324, 37328)) then Exit(TIGHTROPE1);
+    if MyFullPos.InBox(Self.RoofBox(8256, 37326, 8270, 37342)) then Exit(TIGHTROPE2);
+    if MyFullPos.InBox(Self.RoofBox(8256, 37362, 8284, 37370)) then Exit(NARROWWALL);
+    if MyFullPos.InBox(Self.RoofBox(8240, 37386, 8260, 37406)) then Exit(WALL);
+    if MyFullPos.InBox(Self.RoofBox(8254, 37410, 8310, 37418)) then Exit(GAP);
+    if MyFullPos.InBox(Self.RoofBox(8278, 37386, 8288, 37410)) then Exit(CRATE);
   end;
 
   Exit(UNKNOWN);
+end;
+
+procedure DraynorAgility.DebugLocation(Context: String; NextIdx: Int32);
+var
+  Loc: TLocation;
+  Name: String;
+  Off: Int32;
+begin
+  Loc := Self.GetLocation();
+  Off := RSTranslator.MapWidth() * 3;
+  if (NextIdx >= Low(Self.Obs_Names)) and (NextIdx <= High(Self.Obs_Names)) then
+    Name := Self.Obs_Names[NextIdx]
+  else
+    Name := 'NONE';
+
+  WriteLn('[DEBUG] ', Context);
+  WriteLn('[DEBUG]   Pos: (', MyFullPos.X, ', ', MyFullPos.Y, ') Plane: ', MyFullPos.Plane);
+  WriteLn('[DEBUG]   Ground-equivalent X: ', MyFullPos.X - Off);
+  WriteLn('[DEBUG]   Location: ', ToStr(Loc), ' | Obstacle index: ', NextIdx, ' | Looking for: ', Name);
+  WriteLn('[DEBUG]   Compass: ', Minimap.GetCompassAngle(True));
+
+  if Loc = UNKNOWN then
+  begin
+    WriteLn('[DEBUG]   Not in any location box. Plane 3 box checks:');
+    WriteLn('[DEBUG]     TIGHTROPE1 ', ToStr(Self.RoofBox(8288, 37300, 8324, 37328)), ' = ', MyFullPos.InBox(Self.RoofBox(8288, 37300, 8324, 37328)));
+    WriteLn('[DEBUG]     TIGHTROPE2 ', ToStr(Self.RoofBox(8256, 37326, 8270, 37342)), ' = ', MyFullPos.InBox(Self.RoofBox(8256, 37326, 8270, 37342)));
+    WriteLn('[DEBUG]     NARROWWALL ', ToStr(Self.RoofBox(8256, 37362, 8284, 37370)), ' = ', MyFullPos.InBox(Self.RoofBox(8256, 37362, 8284, 37370)));
+    WriteLn('[DEBUG]     WALL       ', ToStr(Self.RoofBox(8240, 37386, 8260, 37406)), ' = ', MyFullPos.InBox(Self.RoofBox(8240, 37386, 8260, 37406)));
+    WriteLn('[DEBUG]     GAP        ', ToStr(Self.RoofBox(8254, 37410, 8310, 37418)), ' = ', MyFullPos.InBox(Self.RoofBox(8254, 37410, 8310, 37418)));
+    WriteLn('[DEBUG]     CRATE      ', ToStr(Self.RoofBox(8278, 37386, 8288, 37410)), ' = ', MyFullPos.InBox(Self.RoofBox(8278, 37386, 8288, 37410)));
+  end;
 end;
 
 function DraynorAgility.GetNextObstacle(): Int32;
 var
   Loc: TLocation;
 begin
-
   Loc := Self.GetLocation();
 
   case Loc of
@@ -529,6 +572,11 @@ begin
   Self.DoAntiban();
   if not RSClient.IsLoggedIn then Exit;
 
+  WriteLn('[DEBUG] HandleObstacle index=', Obs.Index,
+          ' uptext=', ToStr(Obs.UpText),
+          ' tiles=', ToStr(Obs.MMTiles),
+          ' walk=', ToStr(Obs.WalkTile));
+
   while Minimap.IsPlayerMoving() do
     Wait(75, 125);
 
@@ -551,7 +599,11 @@ begin
     end;
   end;
 
-  if not Mainscreen.IsUpText(Obs.UpText, 65) then Exit(NOTFOUND);
+  if not Mainscreen.IsUpText(Obs.UpText, 65) then
+  begin
+    WriteLn('[DEBUG] UpText mismatch. Expected: ', ToStr(Obs.UpText), ' got: ', MainScreen.GetUpText());
+    Exit(NOTFOUND);
+  end;
 
   Mouse.Click(MOUSE_LEFT);
   if not MainScreen.DidRedClick then Exit;
@@ -648,7 +700,7 @@ begin
   begin
     Index   := 1;
     UpText  := ['oss'];
-    MMTiles := [[8296, 37322]];
+    MMTiles := [Self.RoofTile(8296, 37322)];
     Colors   := [CTS2(3821917, 6, 0.16, 0.11)];
     XP      := 8;
     NextLoc := TIGHTROPE2;
@@ -658,7 +710,7 @@ begin
   begin
     Index    := 2;
     UpText   := ['oss'];
-    MMTiles  := [[8272, 37330]];
+    MMTiles  := [Self.RoofTile(8272, 37330)];
     Colors := [CTS2(3821917, 6, 0.16, 0.11)];
     XP       := 7;
     NextLoc  := NARROWWALL;
@@ -668,7 +720,7 @@ begin
   begin
     Index   := 3;
     UpText  := ['ance']; 
-    MMTiles := [[8262, 37374]];
+    MMTiles := [Self.RoofTile(8262, 37374)];
     Colors := [CTS2(1776416, 1, 0.01, 0.01)];
     AngleMin := 40;
     AngleMax := 83;
@@ -681,7 +733,7 @@ begin
   begin
     Index   := 4;
     UpText  := ['ump'];
-    MMTiles := [[8256, 37406]];
+    MMTiles := [Self.RoofTile(8256, 37406)];
     XP      := 10;
     NextLoc := GAP;
     MaxTime := 4500;
@@ -690,7 +742,7 @@ begin
   begin
     Index   := 5;
     UpText  := ['ump'];
-    MMTiles := [[8284, 37410]];
+    MMTiles := [Self.RoofTile(8284, 37410)];
     XP      := 4;
     NextLoc := CRATE;
     MaxTime := 3500;
@@ -699,7 +751,7 @@ begin
   begin
     Index   := 6;
     UpText  := ['imb'];
-    MMTiles := [[8312, 37388]];
+    MMTiles := [Self.RoofTile(8312, 37388)];
     Colors := [CTS2(862515, 2, 0.44, 9.19)];
     XP      := 79;
     NextLoc := FINISH;
@@ -752,12 +804,28 @@ var
   TRes: ResultEx;
   Recal, StartOver: Boolean;
   TargetMinAngle, TargetMaxAngle: Int32;
+  NextIdx: Int32;
 begin
   Recal := False;
   StartOver := False;
-  for Index := Self.GetNextObstacle to High(Self.Obstacles) do
+
+  NextIdx := Self.GetNextObstacle();
+  Self.DebugLocation('ProcessObstacles', NextIdx);
+
+  if (NextIdx < 0) or (NextIdx > High(Self.Obstacles)) then
   begin
+    WriteLn('[DEBUG] Skipping click - invalid obstacle index ', NextIdx);
+    Wait(200, 350);
+    Exit;
+  end;
+
+  for Index := NextIdx to High(Self.Obstacles) do
+  begin
+    WriteLn('[DEBUG] Handling obstacle ', Index, ': ', Self.Obs_Names[Index]);
     TRes := Self.HandleObstacle(Self.Obstacles[Index]);
+    MyFullPos := Map.FullPosition;
+    WriteLn('[DEBUG] Result: ', ToStr(TRes),
+            ' | Pos: (', MyFullPos.X, ', ', MyFullPos.Y, ') Plane: ', MyFullPos.Plane);
     if TRes = NOTFOUND then
     begin
       Inc(Self.Attempts);

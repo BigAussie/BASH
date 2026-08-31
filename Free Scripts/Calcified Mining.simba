@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'cf2ed007-5328-4914-b6fc-cd521759f893'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '12'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '13'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -56,11 +56,13 @@ type
     CalcifiedMoths: TRSitem;
     HammerBank: TRSBankItem;
 
-    ItemsToKeep: TRSItemArray;
+    ItemsToDeposit: TRSItemArray;
+    BankTripItems: TRSItemArray;
 
     StartXP: Integer;
     CurrentXP: Integer;
     TotalShardsMined: Integer;
+    TotalShardsBanked: Integer;
     TotalCalcifiedMoths: Integer;
     CalcifiedMothValue: Integer;
     StartingShards: Integer;
@@ -224,6 +226,8 @@ begin
 end;
 
 procedure CalcifiedMiner.HANDLEBANKING();
+var
+  shardCount: Integer;
 begin
   if not Bank.IsOpen then
   begin
@@ -231,15 +235,17 @@ begin
     if not WaitUntil(Bank.IsOpen, 120, 3000) then Exit;
   end;
 
+  shardCount := Inventory.CountItemStack('Blessed bone shards');
   TotalCalcifiedMoths += Inventory.CountItemStack(CalcifiedMoths);
-  writeln('Depositing items.');
+  writeln('Depositing mining loot.');
   if Inventory.ContainsItem('Open gem bag') then
+  begin
     Inventory.ClickItem('Open gem bag', 'Empty');
+    WaitUntil(Inventory.ContainsItem('Open gem bag'), 120, 3000);
+  end;
 
-  WaitUntil(Inventory.ContainsItem('Open gem bag'), 120, 3000);
-
-  if Inventory.ContainsRandomItems(itemsToKeep) then
-    Bank.DepositRandomItems(itemsToKeep);
+  Bank.DepositItems(Self.ItemsToDeposit, True);
+  TotalShardsBanked += shardCount - Inventory.CountItemStack('Blessed bone shards');
 
   if not (Inventory.ContainsItem(HammerItem) or Inventory.ContainsItem('Imcando hammer')) then
     Bank.WithdrawItem(HammerBank, TRUE);
@@ -481,7 +487,7 @@ begin
   end
   else if Inventory.ContainsItem(CalcifiedDeposit) and not (Self.GetLocation() in [EASTMINESITE, WESTMINESITE]) then
     Exit(STATE_WALKTOBLACKSMITH)
-  else if (not Inventory.ContainsItem(CalcifiedDeposit)) and Inventory.ContainsRandomItems(itemsToKeep) and not (Self.GetLocation() in [EASTMINESITE, WESTMINESITE]) then
+  else if (not Inventory.ContainsItem(CalcifiedDeposit)) and Inventory.ContainsAny(Self.BankTripItems) and not (Self.GetLocation() in [EASTMINESITE, WESTMINESITE]) then
     Exit(STATE_OPENBANK)
   else if (Self.GetLocation() = WESTMINESITE) or (Self.GetLocation() = EASTMINESITE) then
     Exit(STATE_MINECALCIFIEDROCKS)
@@ -514,7 +520,7 @@ begin
   Runtime := Timer.ElapsedTime;
   Totalshards := 0;
   Currentshards := Inventory.CountItemStack('Blessed bone shards');
-  Totalshards := Currentshards - StartingShards;
+  Totalshards := Currentshards + Self.TotalShardsBanked - StartingShards;
 
   PrayerXP := Totalshards * 5; // Each bone shard is worth 5 prayer XP
   SunfirePrayerXP := Totalshards * 6; // Each bone shard is worth 6 prayer XP with Sunfire wine
@@ -572,7 +578,21 @@ begin
   HammerItem := ('Hammer');
   HammerBank := TRSBankItem.Setup(HammerItem, 1, FALSE);
   CalcifiedMoths := ('Calcified moth');
-  itemsToKeep := ['Blessed bone shards', 'Gem bag', 'Open gem bag', 'Hammer', 'Imcando hammer', 'Gem bag', 'Bronze pickaxe', 'Adamant pickaxe', 'Crystal pickaxe', 'Dragon pickaxe', 'Rune pickaxe', 'Mithril pickaxe', 'Black pickaxe', 'Steel pickaxe', 'Iron pickaxe', 'Gilded pickaxe', 'Dragon pickaxe (or)', 'Infernal pickaxe (or)', '3rd age pickaxe', 'Infernal pickaxe'];
+  ItemsToDeposit := [
+    'Blessed bone shards',
+    'Calcified moth',
+    'Uncut sapphire', 'Uncut emerald', 'Uncut ruby', 'Uncut diamond',
+    'Clue geode (beginner)', 'Clue geode (easy)', 'Clue geode (medium)',
+    'Clue geode (hard)', 'Clue geode (elite)',
+    'Loop half of key'
+  ];
+  BankTripItems := [
+    'Calcified moth',
+    'Uncut sapphire', 'Uncut emerald', 'Uncut ruby', 'Uncut diamond',
+    'Clue geode (beginner)', 'Clue geode (easy)', 'Clue geode (medium)',
+    'Clue geode (hard)', 'Clue geode (elite)',
+    'Loop half of key'
+  ];
   StartXP := XPBar.Read();
   SetupObjects();
   CalcifiedMothValue := ItemData.GetAverage(29090);

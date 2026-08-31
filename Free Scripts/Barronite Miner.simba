@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := '6201fd4a-a3b1-408e-a420-13cfc8c218f7'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '9'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '12'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -22,7 +22,6 @@ Github: https://github.com/BigAussie/BASH
 Const
 // Settings
 EXPERIMENTALWALK = True;
-ITEMSTOKEEP: TRSItemArray := ['Hammer', 'Barronite shards']; //  Items to keep when depositing at bank.
 
 var
   RSW: TRSWalker;
@@ -54,6 +53,7 @@ type
     BarroniteDeposit: TRSitem;
     NotedBasalt: TRSitem;
     HammerItem: TRSitem;
+    ItemsToDeposit: TRSItemArray;
 
     StartXP: Integer;
     CurrentXP: Integer;
@@ -165,11 +165,12 @@ begin
       end else begin
         // screen walking struggles, so disable it
         if Self.AdaptiveWalk then
-          Self.ScreenWalk := False
-        else if (Fails = 5) then
+          Self.ScreenWalk := False;
+
+        if (Fails = 5) then
           case SRL.Dice(50) of
-            True:  Minimap.SetCompassAngle(Minimap.GetCompassAngle() - SRL.TruncatedGauss(30, 360, 3));
-            False: Minimap.SetCompassAngle(Minimap.GetCompassAngle() + SRL.TruncatedGauss(30, 360, 3));
+            True:  Minimap.SetCompassAngle(Minimap.GetCompassAngle() - SRL.TruncatedGauss(20, 70, 3));
+            False: Minimap.SetCompassAngle(Minimap.GetCompassAngle() + SRL.TruncatedGauss(20, 70, 3));
           end;
       end;
 
@@ -196,9 +197,6 @@ procedure OnWalkEvent(Sender: PRSWalker; Position: TPoint; Destination: TPoint);
 begin
   if SRL.Dice(5) then
     Mouse.RandomMovement;
-
-  if EXPERIMENTALWALK then
-    Sender^.ScreenWalk := SRL.Dice(35);
 
   Position    := [];
   Destination := [];
@@ -296,6 +294,7 @@ var
   MinedShards: Integer;
   InitialShards: Integer;
   CurrentShards: Integer;
+  RotateTries: Integer;
 begin
   WriteLn('Mining barronite.');
   PlayerBox := MainScreen.GetPlayerBox();
@@ -307,42 +306,51 @@ begin
   begin
     if not BarroniteRocks.IsVisible() then
     begin
-      writeln('Looking for rocks');
-      Antiban.RandomRotate();
+      Inc(RotateTries);
+      writeln('Looking for rocks (', RotateTries, ')');
+      if RotateTries > 4 then
+      begin
+        writeln('Could not find rocks, walking back to the mine spot.');
+        Self.RSW.WebWalk(MineSpot1, 12);
+        RotateTries := 0;
+        if not BarroniteRocks.IsVisible() then
+          Exit;
+      end
+      else
+        Minimap.SetCompassAngle(Minimap.GetCompassAngle() + Random(-50, 50));
+      Continue;
     end;
 
-    if BarroniteRocks.IsVisible() then
+    RotateTries := 0;
+    BarroniteRocks.Click();
+
+    MiningDuration := RandomRange(600, 750);
+    T.Start();
+
+    while (T.ElapsedTime < MiningDuration) do
     begin
-      BarroniteRocks.Click();
-
-      MiningDuration := RandomRange(600, 750);
-      T.Start();
-
-      while (T.ElapsedTime < MiningDuration) do
+      if XPBar.Read() > XP then
       begin
-        if XPBar.Read() > XP then
+        XP := XPBar.Read();
+        T.Start();
+      end;
+
+      if (SRL.PercentShift(PlayerBox, 500) >= 14) then
+        T.Start();
+
+      Wait(100);
+      WL.Activity.Restart();
+
+      if ReportTimer.ElapsedTime >= 3000 then
+      begin
+        CurrentShards := Inventory.CountItemStack('Barronite shards');
+        if CurrentShards > InitialShards then
         begin
-          XP := XPBar.Read();
-          T.Start();
+          Self.TotalShardsMined += CurrentShards - InitialShards;
+          InitialShards := CurrentShards;
         end;
-
-        if (SRL.PercentShift(PlayerBox, 500) >= 14) then
-          T.Start();
-
-        Wait(100);
-        WL.Activity.Restart();
-
-        if ReportTimer.ElapsedTime >= 3000 then
-        begin
-          CurrentShards := Inventory.CountItemStack('Barronite shards');
-          if CurrentShards > InitialShards then
-          begin
-            Self.TotalShardsMined += CurrentShards - InitialShards;
-            InitialShards := CurrentShards;
-          end;
-          Self.Report();
-          ReportTimer.Start();
-        end;
+        Self.Report();
+        ReportTimer.Start();
       end;
     end;
   end;
@@ -359,10 +367,21 @@ var
 begin
   InitialShards := Inventory.CountItemStack('Barronite shards');
   ReportTimer.Start();
-  while not Anvil.IsVisible() do
+
+  for 1 to 4 do
   begin
-    Antiban.RandomRotate();
-    Wait(500);
+    if Anvil.IsVisible() then
+      Break;
+    Minimap.SetCompassAngle(Minimap.GetCompassAngle() + Random(-50, 50));
+    Wait(400, 700);
+  end;
+
+  if not Anvil.IsVisible() then
+  begin
+    writeln('Anvil not visible, walking closer.');
+    Self.RSW.WebWalk(AnvilLoc, 8);
+    if not Anvil.IsVisible() then
+      Exit;
   end;
 
   if Anvil.IsVisible() then
@@ -388,30 +407,38 @@ end;
 
 function BarroniteMiner.BANKITEMS(): Boolean;
 begin
-  while not BankChest.IsVisible() do
-  begin
-    Antiban.RandomRotate();
-    Wait(500);
-  end;
+  if BankPin.IsOpen() then
+    BankPin.Enter(Login.GetPlayerPin());
 
   if not Bank.IsOpen() then
   begin
-    for 1 to 3 do
-    Repeat
-      BankChest.Hover();
-    Until Mainscreen.IsUpText(['Bank chest']);
-      BankChest.Click();
-      if not mainscreen.DidRedClick then Exit;
-      WaitUntil(Bank.IsOpen(), 85, 3500);
+    if BankChest.IsVisible() then
+      Bank.Open(BankChest)
+    else
+    begin
+      writeln('Bank chest not visible, walking closer.');
+      Bank.WalkOpen(BankChest);
+    end;
+
+    if BankPin.IsOpen() then
+      BankPin.Enter(Login.GetPlayerPin());
   end;
 
-  if Bank.IsOpen() then
+  if not Bank.IsOpen() then
+    Exit;
+
+  writeln('Depositing mining loot.');
+  if Inventory.ContainsItem('Open gem bag') then
   begin
-    Bank.DepositRandomItems(ITEMSTOKEEP);
-    WaitUntil(Inventory.Count() <= 2, 375, 2150);
-    Bank.Close();
-    WaitUntil(not Bank.IsOpen(), 375, 3500);
+    Inventory.ClickItem('Open gem bag', 'Empty');
+    WaitUntil(Inventory.ContainsItem('Open gem bag'), 120, 3000);
   end;
+
+  Bank.DepositItems(Self.ItemsToDeposit, True);
+  WaitUntil(not Inventory.ContainsAny(Self.ItemsToDeposit), 375, 2150);
+  Bank.Close();
+  WaitUntil(not Bank.IsOpen(), 375, 3500);
+  Result := not Inventory.ContainsAny(Self.ItemsToDeposit);
 end;
 
 procedure BarroniteMiner.doAction();
@@ -440,7 +467,7 @@ begin
     STATE_USEANVIL:
       begin
         USEANVIL();
-        if not Inventory.ContainsRandomItems(ITEMSTOKEEP) then
+        if not Inventory.ContainsAny(Self.ItemsToDeposit) then
           Self.CurrentState := STATE_WALKTOMINESPOTS
         else
           Self.CurrentState := STATE_WALK_TO_BANK;
@@ -454,7 +481,7 @@ begin
     STATE_BANKITEMS:
       begin
         BANKITEMS();
-        if Inventory.Count() <= 2 then
+        if not Inventory.ContainsAny(Self.ItemsToDeposit) then
           Self.CurrentState := STATE_WALKTOMINESPOTS;
       end;
   end;
@@ -558,6 +585,15 @@ begin
   BarroniteShardsItem := ('Barronite shards');
   BarroniteDeposit := ('barronite deposit');
   HammerItem := ('Hammer');
+  ItemsToDeposit := [
+    'Uncut sapphire', 'Uncut emerald', 'Uncut ruby', 'Uncut diamond',
+    'Clue geode (beginner)', 'Clue geode (easy)', 'Clue geode (medium)',
+    'Clue geode (hard)', 'Clue geode (elite)',
+    'Barronite head',
+    'Imcando hammer (broken)',
+    'Ancient astroscope', 'Ancient carcanet', 'Ancient globe',
+    'Ancient ledger', 'Ancient treatise'
+  ];
 
   StartXP := XPBar.Read();
 end;

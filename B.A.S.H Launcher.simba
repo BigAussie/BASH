@@ -1,5 +1,5 @@
 {$DEFINE SCRIPT_ID := 'bfde3085-80dc-4bd6-870a-8cb3186a938c'}
-{$DEFINE SCRIPT_REVISION := '38'}
+{$DEFINE SCRIPT_REVISION := '39'}
 
 {.$DEFINE DEVELOPER_MODE}
 
@@ -2921,30 +2921,34 @@ begin
   TerminateScript('BashScriptClient could not load scripts (no catalog.json and API unavailable). Add catalog.json to the scripts repo or retry later.');
 end;
 
-function TBashScriptClient.ScanLocalScripts(const directory: String): TScriptDataArray;
+function TBashScriptClient.ScanLocalScripts(const directory: String; recursive: Boolean = True): TScriptDataArray;
 var
   files: TStringArray;
   i: Int32;
-  path, header, rel: String;
+  path, header, rel, dir: String;
   script: TScriptData;
 begin
   Result := [];
   if (directory = '') or (not DirectoryExists(directory)) then
     Exit;
 
-  files := FindFiles(directory, True);
+  dir := directory;
+  if not dir.EndsWith(DirectorySeparator) then
+    dir += DirectorySeparator;
+
+  files := FindFiles(dir, recursive);
   for i := 0 to High(files) do
   begin
     path := files[i];
     if not path.EndsWith('.simba') then
       Continue;
-    if path.Contains('BigAussieLauncher') or path.Contains('B.A.S.HLauncher') then
+    if IsBashLauncherRepoPath(path) then
       Continue;
 
     if not FileExists(path) then
     begin
-      if FileExists(directory + path) then
-        path := directory + path
+      if FileExists(dir + path) then
+        path := dir + path
       else
         Continue;
     end;
@@ -2958,8 +2962,8 @@ begin
       SetLength(header, 8192);
 
     rel := path;
-    if rel.StartsWith(directory) then
-      rel := Copy(rel, Length(directory) + 1, Length(rel) - Length(directory));
+    if rel.StartsWith(dir) then
+      rel := Copy(rel, Length(dir) + 1, Length(rel) - Length(dir));
 
     script := Self.ParseScriptHeader(header, rel);
     script.Source := EScriptSource.LOCAL;
@@ -2977,11 +2981,19 @@ begin
 end;
 
 function TBashScriptClient.GetLocalScripts(): TScriptDataArray;
+var
+  extra: TScriptDataArray;
+  script: TScriptData;
 begin
   if Self.LocalLoaded then
     Exit(Self.LocalScripts);
 
-  Result := Self.ScanLocalScripts(WASPSCRIPTS_DIR);
+  Result := Self.ScanLocalScripts(WASPSCRIPTS_DIR, True);
+  extra := Self.ScanLocalScripts(ScriptPath, False);
+  for script in extra do
+    Result += script;
+
+  Result := Result.Sorted();
   Self.LocalScripts := Result;
   Self.LocalLoaded := True;
 end;
@@ -7139,6 +7151,11 @@ begin
   Result := ScriptPath + BASH_LAUNCHER_FILE;
 end;
 
+function NormalizeSimbaNewlines(const s: String): String;
+begin
+  Result := s.Replace(#13#10, #10).Replace(#13, #10);
+end;
+
 function BashDefaultSimbaBody(): String;
 begin
   Result :=
@@ -7154,13 +7171,14 @@ end;
 
 function PatchDefaultSimbaToBashLauncher(): Boolean;
 var
-  path, content: String;
+  path, content, expected: String;
 begin
   Result := False;
   if not FileExists(BashLauncherPath()) then
     Exit;
 
   path := AppPath + 'Data' + DirectorySeparator + 'default.simba';
+  expected := BashDefaultSimbaBody();
   try
     if FileExists(path) then
       content := ReadFileContents(path)
@@ -7170,11 +7188,11 @@ begin
     content := '';
   end;
 
-  if content.Contains('bash-launcher.simba') and (not content.Contains('wasp-launcher.simba')) then
+  if NormalizeSimbaNewlines(content) = NormalizeSimbaNewlines(expected) then
     Exit(True);
 
   try
-    if WriteFileContents(path, BashDefaultSimbaBody(), False) then
+    if WriteFileContents(path, expected, False) then
     begin
       WriteLn('[B.A.S.H] Replaced Data\default.simba to open bash-launcher.simba');
       Exit(True);
