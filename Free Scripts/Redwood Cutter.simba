@@ -1324,7 +1324,7 @@ begin
 
   inherited;
 
-  RandomEvents.EnableGenie();
+  RandomEvents.Enable();
 
   if OVERRIDEBREAKS then
   begin
@@ -1375,9 +1375,6 @@ begin
 
   if RSClient.Mode <> ERSClientMode.FIXED then
     TerminateScript('FIXED CLASSIC mode is required');
-
-  if Length(Login.GetPlayer().Worlds) = 0 then
-    TerminateScript('Worlds list is empty');
 
   Self.WorldList := Login.GetPlayer.Worlds;
 
