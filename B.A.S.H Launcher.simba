@@ -1,5 +1,5 @@
 {$DEFINE SCRIPT_ID := 'bfde3085-80dc-4bd6-870a-8cb3186a938c'}
-{$DEFINE SCRIPT_REVISION := '39'}
+{$DEFINE SCRIPT_REVISION := '40'}
 
 {.$DEFINE DEVELOPER_MODE}
 
@@ -4023,7 +4023,7 @@ begin
             'totem-fletching.showZeroPoints=true' + LineEnding +
             'herbiboar.showClickboxes=false' + LineEnding +
             'runecraft.showLaw=true' + LineEnding +
-            'runelite.fishingplugin=false' + LineEnding +
+            'runelite.fishingplugin=true' + LineEnding +
             'itemCharge.braceletOfClayNotification={"enabled"\:true,"initialized"\:false,"override"\:false,"tray"\:false,"volume"\:0,"timeout"\:0,"gameMessage"\:false,"sendWhenFocused"\:false}' + LineEnding +
             'timers.showAntiFire=true' + LineEnding +
             'defaultworld.useLastWorld=false' + LineEnding +
@@ -5104,6 +5104,53 @@ begin
             'pyramidplunder.timerLowWarning=30';
 end;
 
+procedure TWaspUpdater.EnsureFishingPluginEnabled();
+var
+  dir, path, content, updated: String;
+  files: TStringArray;
+  i: Int32;
+begin
+  dir := GetEnvironmentVariable('userprofile') + DirectorySeparator + '.runelite' +
+         DirectorySeparator + 'profiles2' + DirectorySeparator;
+  if not DirectoryExists(dir) then
+    Exit;
+
+  files := FindFiles(dir, False);
+  for i := 0 to High(files) do
+  begin
+    path := files[i];
+    if not LowerCase(path).EndsWith('.properties') then
+      Continue;
+    if not FileExists(path) then
+    begin
+      if FileExists(dir + path) then
+        path := dir + path
+      else
+        Continue;
+    end;
+
+    content := ReadFileContents(path);
+    if content = '' then
+      Continue;
+    if (Pos('runelite.totemfletchingplugin=true', content) = 0) and
+       (Pos('runelite.woodcuttingplugin=true', content) = 0) then
+      Continue;
+    if Pos('runelite.fishingplugin=true', content) > 0 then
+      Continue;
+
+    if Pos('runelite.fishingplugin=false', content) > 0 then
+      updated := StringReplace(content, 'runelite.fishingplugin=false', 'runelite.fishingplugin=true', [rfReplaceAll])
+    else
+      updated := content + LineEnding + 'runelite.fishingplugin=true' + LineEnding;
+
+    if WriteFileContents(path, updated, False) then
+      WriteLn('[B.A.S.H] Enabled RuneLite Fishing plugin in ', ExtractFileName(path),
+              '. Restart RuneLite if it is already open.')
+    else
+      WriteLn('[B.A.S.H] Failed to enable RuneLite Fishing plugin in ', ExtractFileName(path), '.');
+  end;
+end;
+
 function TWaspUpdater.RegisterProfile(path, name: String; id: Int32): Boolean;
 var
   jsonContent, entry, idNameMarker: String;
@@ -5250,6 +5297,7 @@ begin
   Self.MonitorBashLib.Timer.setInterval(200);
 
   AddOnTerminate(@Self.Free);
+  Self.EnsureFishingPluginEnabled();
 end;
 
 {$IFNDEF WS_FORM_INCLUDED}
@@ -7429,7 +7477,7 @@ end;
 
 procedure FinishBashLauncherRestart();
 begin
-  WriteLn('[B.A.S.H] Launcher ready at bash-launcher.simba — press New / play to open it');
+  WriteLn('[B.A.S.H] Launcher ready at bash-launcher.simba. Press New / play to open it');
   try
     SimbaCloseCurrentTab();
   except
