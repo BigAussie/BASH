@@ -1346,6 +1346,8 @@ begin
   Self.TimeRunning.Pause();
   Self.OnAntiban := True;
 
+  WorldHopper.TryHopOnBreak(checkBreaks, checkSleeps);
+
   checkBreaks := checkBreaks and (WLSettings.GetObject('antiban').getBoolean('breaks') or OVERRIDEBREAKS);
   checkSleeps := checkSleeps and WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('enabled');
 
@@ -1380,6 +1382,8 @@ begin
 
   if Length(Self.WorldList) = 0 then
     TerminateScript('Worlds list is empty');
+
+  WorldHopper.SetupTimedHopping(ENABLEWORLDHOPPING, WORLDHOPINTERVAL);
 
   if not RSClient.IsLoggedIn() then
     Login.LoginPlayer();
@@ -1514,7 +1518,7 @@ begin
   Self.WebhookTestPrefix := 'Test message from BigAussies Redwood Cutter';
   Self.HasFarm := False;
   Self.HasAIChat := False;
-  Self.HasWorldHopping := False;
+  Self.HasWorldHopping := True;
   Self.HasMaxActions := True;
   Self.HasStopAtLevel := True;
   Self.StopAtLevelSkills := RW_STOP_AT_LEVEL_SKILLS;
