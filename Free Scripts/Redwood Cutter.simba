@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'd4b8e2a7-9c31-4f6b-8a15-7e2c9d04f6b8'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '1'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '2'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -1383,7 +1383,7 @@ begin
   if Length(Self.WorldList) = 0 then
     TerminateScript('Worlds list is empty');
 
-  WorldHopper.SetupTimedHopping(ENABLEWORLDHOPPING, WORLDHOPINTERVAL);
+  WorldHopper.SetupTimedHopping(ENABLEWORLDHOPPING, WORLDHOPINTERVAL, WORLDHOPVARIATION);
 
   if not RSClient.IsLoggedIn() then
     Login.LoginPlayer();
