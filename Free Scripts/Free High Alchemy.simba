@@ -1,0 +1,371 @@
+{$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'f8c2a1e4-7b39-4d6a-9e15-3c0b8f7d2a61'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '1'}
+{$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
+{$I SRL-B/osr.simba}
+{$I BashLib/osr.simba}
+{$IFDEF SCRIPT_GUI}
+{$I BashLib/optional/handlers/bashgui.simba}
+{$ENDIF}
+
+{
+----------------------------------------------------------------------------------
+Free High Alchemy
+This is the free version. For the more complete version, use AIO Bankstander.
+AIO Bankstander can high alch entire bank tabs and more features.
+----------------------------------------------------------------------------------
+~~~ Need Support? Contact Me ~~~
+Website: https://bashscripts.shop/
+Discord Server: https://discord.gg/qsmKs5uKfR
+Email: thebigaussie@proton.me
+Github: https://github.com/BigAussie/BASH
+----------------------------------------------------------------------------------
+}
+
+type
+  TAlcher = record(TBaseScript)
+    CurrentItem: TRSItem;
+    StartXP, GainedXP: Int32;
+    LastReportTime: UInt64;
+  end;
+
+var
+  Alcher: TAlcher;
+
+procedure TAntiban.Setup(); override;
+begin
+  Self.Skills := [ERSSkill.MAGIC, ERSSkill.TOTAL];
+  Self.MinZoom := 0;
+  Self.MaxZoom := 10;
+  inherited;
+end;
+
+procedure TAntiban.BioClick(button: Int32; max: Int32 = 3); override;
+begin
+  if max < 0 then
+    Exit;
+  Mouse.Click(button);
+end;
+
+function TAntiban.BioYellowClick(button: Int32; max: Int32 = 3): Boolean; override;
+begin
+  if max < 0 then
+    Exit(False);
+  Mouse.Click(button);
+  Result := MainScreen.DidYellowClick();
+end;
+
+function TAntiban.BioRedClick(button: Int32; max: Int32 = 3): Boolean; override;
+begin
+  if max < 0 then
+    Exit(False);
+  Mouse.Click(button);
+  Result := MainScreen.DidRedClick();
+end;
+
+function TBaseScript.DoAntiban(checkBreaks: Boolean = True; checkSleeps: Boolean = True): Boolean; override;
+begin
+  Antiban.DismissRandom();
+  Self.TimeRunning.Pause();
+  Self.OnAntiban := True;
+
+  checkBreaks := checkBreaks and (WLSettings.GetObject('antiban').getBoolean('breaks') or OVERRIDEBREAKS);
+  checkSleeps := checkSleeps and WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('enabled');
+
+  if WLSettings.GetObject('antiban').getJSONObject('tasks').getBoolean('enabled') or checkBreaks or checkSleeps then
+    Result := Antiban.DoAntiban(checkBreaks, checkSleeps);
+
+  Self.TimeRunning.Resume();
+  Self.OnAntiban := False;
+
+  if not RSClient.IsLoggedIn() then
+    Login.LoginPlayer();
+end;
+
+function BareItemName(Name: String): String;
+begin
+  Result := LowerCase(Trim(Name));
+  if Result.StartsWith('noted ') then
+    Result := Result.After('noted ');
+end;
+
+function IsSkippedAlchItem(Name: String): Boolean;
+var
+  Bare: String;
+begin
+  Bare := BareItemName(Name);
+  Result := (Bare = '') or (Bare = 'coins') or Bare.EndsWith(' rune') or Bare.EndsWith(' runes') or Bare.Contains('rune pouch');
+end;
+
+function FindAlchTarget(out Item: TRSItem; out Slot: Int32): Boolean;
+var
+  PerSlot: array of TRSItemArray;
+  I, J: Int32;
+  Name: String;
+  SlotIsSupply: Boolean;
+begin
+  if not Inventory.Open() then
+    Exit(False);
+
+  PerSlot := Inventory.DiscoverAllEx();
+  for I := 0 to High(PerSlot) do
+  begin
+    Name := '';
+    SlotIsSupply := False;
+    for J := 0 to High(PerSlot[I]) do
+    begin
+      if IsSkippedAlchItem(PerSlot[I][J]) then
+      begin
+        SlotIsSupply := True;
+        Break;
+      end;
+      if Name = '' then
+        Name := LowerCase(Trim(VarToStr(PerSlot[I][J])));
+    end;
+
+    if SlotIsSupply or (Name = '') then
+      Continue;
+
+    Item := Name;
+    Slot := I;
+    Exit(True);
+  end;
+end;
+
+function CurrentAlchTarget(out Item: TRSItem; out Slot: Int32): Boolean;
+begin
+  Item := Alcher.CurrentItem;
+  if (Item <> '') and Inventory.FindItem(Item, Slot) then
+    Exit(True);
+
+  Alcher.CurrentItem := '';
+  Result := FindAlchTarget(Item, Slot);
+  if Result then
+    Alcher.CurrentItem := Item;
+end;
+
+procedure AlcherReport();
+var
+  RunTime: Int64;
+  Hours: Double;
+  XP: Int32;
+begin
+  if (GetTickCount() - Alcher.LastReportTime) < 10000 then
+    Exit;
+  Alcher.LastReportTime := GetTickCount();
+
+  XP := XPBar.Read() - Alcher.StartXP;
+  if XP > Alcher.GainedXP then
+    Alcher.GainedXP := XP;
+
+  RunTime := GetTimeRunning();
+  Hours := Max(RunTime / 3600000, 0.0001);
+
+  WriteLn('========================================');
+  WriteLn('       B.A.S.H Free High Alchemy        ');
+  WriteLn('========================================');
+  WriteLn('   Runtime: ', SRL.MsToTime(RunTime, Time_Short));
+  WriteLn('   XP Gained: ', Alcher.GainedXP);
+  WriteLn('   XP/Hour: ', Round(Alcher.GainedXP / Hours));
+  WriteLn('   ', Antiban.BreakScheduleText());
+  WriteLn('   ', Antiban.SleepScheduleText());
+  WriteLn('========================================');
+  WriteLn('    Revision: ' + {$MACRO SCRIPT_REVISION});
+  WriteLn('========================================');
+
+  StopAtLevel.WriteReport();
+end;
+
+function TryCastHighAlch(): Boolean;
+begin
+  if Inventory.IsOpen() and MainScreen.IsUpText('Cast') then
+    Exit(True);
+
+  if not Magic.Open() then
+    Exit(False);
+
+  if Magic.FiltersIsOpen() then
+    Magic.CloseFilters();
+
+  if not Magic.CanActivate(ERSSpell.HIGH_LEVEL_ALCHEMY) then
+  begin
+    WriteLn('High Level Alchemy is not castable.');
+    TerminateScript('High Level Alchemy is not castable');
+  end;
+
+  Result := Magic.CastSpell(ERSSpell.HIGH_LEVEL_ALCHEMY);
+end;
+
+procedure CastOneHighAlch();
+var
+  Item: TRSItem;
+  Slot: Int32;
+begin
+  if not RSClient.IsLoggedIn() then
+  begin
+    Login.LoginPlayer();
+    Exit;
+  end;
+
+  if Bank.IsOpen() or (RSInterface.IsOpen() and not Inventory.IsOpen() and not Magic.IsOpen()) then
+  begin
+    RSInterface.Close(50);
+    Exit;
+  end;
+
+  if not (Inventory.IsOpen() and MainScreen.IsUpText('Cast')) then
+  begin
+    if not TryCastHighAlch() then
+    begin
+      WriteLn('Failed to cast High Level Alchemy');
+      Exit;
+    end;
+    if not WaitUntil(Inventory.IsOpen(), 35, 2500) then
+    begin
+      WriteLn('Inventory did not open after High Level Alchemy');
+      Exit;
+    end;
+  end;
+
+  if not CurrentAlchTarget(Item, Slot) then
+  begin
+    WriteLn('No items left to high alch.');
+    Alcher.LastReportTime := 0;
+    AlcherReport();
+    TerminateScript('No items left to high alch');
+  end;
+
+  if not Inventory.ClickSlot(Slot, '>') then
+    Exit;
+
+  if not WaitUntil(Magic.IsOpen(), 35, 5000) then
+  begin
+    if Chat.FindMessage('do not have enough') then
+    begin
+      WriteLn('High Level Alchemy is not castable.');
+      TerminateScript('High Level Alchemy is not castable');
+    end;
+    WriteLn('Magic tab did not open after high alch');
+    Exit;
+  end;
+
+  Inc(Alcher.TotalActions);
+  AlcherReport();
+  if (Alcher.TotalActions mod 4) = 0 then
+    Alcher.DoAntiban(True, True);
+end;
+
+procedure TAlcher.Init(MaxActions: UInt32; MaxTime: UInt64); override;
+begin
+  inherited;
+
+  if RSClient.Mode <> ERSClientMode.FIXED then
+  begin
+    WriteLn('FIXED CLASSIC mode is required.');
+    TerminateScript('Screen mode not supported');
+  end;
+
+  Self.Name := 'Free High Alchemy';
+  Self.CurrentItem := '';
+  Self.LastReportTime := 0;
+
+  if not RSClient.IsLoggedIn() then
+    Login.LoginPlayer();
+  if WaitUntil(RSClient.IsLoggedIn(), 250, 12000) then
+    Self.StartXP := XPBar.Read();
+
+  if RSInterface.IsOpen() then
+    RSInterface.Close(50);
+
+  {$IFDEF SCRIPT_GUI}
+  ENABLEWEBHOOKS := False;
+  Discord.Webhook.URL := '';
+  {$ENDIF}
+
+  Antiban.Setup();
+  Mouse.Speed := Random(16, 20);
+  ItemFinder.Similarity := 0.998;
+  WriteLn('High alching inventory items.');
+  WriteLn('This is the free version. For more locations and whole bank tabs, use AIO Bankstander.');
+end;
+
+procedure TAlcher.Run(MaxActions: UInt32; MaxTime: UInt64);
+begin
+  Self.Init(MaxActions, MaxTime);
+
+  repeat
+    CastOneHighAlch();
+  until Self.ShouldStop();
+
+  Self.LastReportTime := 0;
+  AlcherReport();
+end;
+
+{$IFDEF SCRIPT_GUI}
+type
+  TConfig = record(TBASHPremiumGUI)
+    HintLabel: TLabel;
+  end;
+  TScriptGUI = TConfig;
+
+procedure TConfig.InitGUI(); override;
+begin
+  Self.BrandTitle := 'Free High Alchemy';
+  Self.WindowTitle := 'BASH Free High Alchemy';
+  Self.WebhookTestPrefix := 'Test message from BASH Free High Alchemy';
+  Self.HasFarm := False;
+  Self.HasAIChat := False;
+  Self.HasWorldHopping := False;
+  Self.HasMaxActions := True;
+  Self.HasStopAtLevel := False;
+end;
+
+procedure TConfig.LoadActionSettings(); override;
+begin
+end;
+
+procedure TConfig.BuildAccountsExtras(); override;
+begin
+  ENABLEWEBHOOKS := False;
+  if Assigned(Self.EnableWebhooksCheckBox) then
+    Self.EnableWebhooksCheckBox.SetVisible(False);
+  if Assigned(Self.WebhookInfo) then
+    Self.WebhookInfo.SetVisible(False);
+  if Assigned(Self.WebHookInput) then
+    Self.WebHookInput.SetVisible(False);
+  if Assigned(Self.TestButton) then
+    Self.TestButton.SetVisible(False);
+end;
+
+procedure TConfig.BuildActionSection(); override;
+begin
+  Self.AddHeader(Self.ActionSection, 'Action', 'High alch whatever is already in your inventory.');
+  Self.HintLabel := Self.MakeLabel(Self.ActionSection,
+    'This is the free version. For the more complete version, use AIO Bankstander, which can high alch entire bank tabs and more features.' + #10 +
+    'Have all requirements to cast high level alchemy ready before you start.',
+    24, 120, 10, BASH_GUI_MUTED, False);
+  Self.HintLabel.SetWidth(TControl.AdjustToDPI(820));
+  Self.HintLabel.SetHeight(TControl.AdjustToDPI(80));
+end;
+
+procedure TConfig.ApplyActionSettings(); override;
+begin
+end;
+
+procedure TConfig.StartScript(Sender: TObject); override;
+begin
+  if Sender = nil then;
+  inherited;
+end;
+
+{$I BashLib/optional/handlers/bashgui_host_scriptgui.simba}
+
+var
+  Config: TConfig;
+{$ENDIF}
+
+begin
+  {$IFDEF SCRIPT_GUI}
+  Sync(@Config.Run);
+  {$ENDIF}
+  Alcher.Run(WLSettings.MaxActions, WLSettings.MaxTime);
+end.
