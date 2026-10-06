@@ -1,0 +1,2733 @@
+{$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'e4b7a2c9-1f58-4d63-8a20-6c9e3b1d7f45'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '1'}
+{$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
+{$I SRL-B/osr.simba}
+{$I BashLib/osr.simba}
+{$I BashLib/optional/handlers/bashcommon.simba}
+{$SCOPEDENUMS OFF}
+{$IFDEF SCRIPT_GUI}
+{$I BashLib/optional/handlers/bashgui.simba}
+{$ENDIF}
+
+{
+----------------------------------------------------------------------------------
+Free Agility
+This is the free version. It runs the Draynor Village and Varrock rooftop courses.
+For every course, plus farm runs, birdhouse runs, and Discord reports, use AIO Agility.
+----------------------------------------------------------------------------------
+~~~ Need Support? Contact Me ~~~
+Website: https://bashscripts.shop/
+Discord Server: https://discord.gg/qsmKs5uKfR
+Email: thebigaussie@proton.me
+Github: https://github.com/BigAussie/BASH
+----------------------------------------------------------------------------------
+}
+
+type
+  EState = (
+    STATE_LEVEL_UP,
+    STATE_RUN_COURSE
+  );
+
+  ResultEx = (COMPLETE, FAILED, NOTFOUND);
+
+  TAgilityObstacleDef = record
+    Name: String;
+    World: TPoint;
+    Plane: Int32;
+    UpText: TStringArray;
+    XP: Int32;
+    MaxTime: Int32;
+    AngleMin, AngleMax: Int32;
+    Index: Int32;
+    MMTiles: TPointArray;
+    WalkTile: TPoint;
+    MarkTiles: TPointArray;
+  end;
+
+  TAgilityObstacleDefArray = array of TAgilityObstacleDef;
+
+  TAgilityCourseDef = record
+    Name: String;
+    LevelReq: Int32;
+    HasMarks: Boolean;
+    Obstacles: TAgilityObstacleDefArray;
+    BankWorld: TPoint;
+    Chunks: array of TRSMapChunk;
+  end;
+
+  AIOAgility = record(TBaseBankScript)
+    CurrentState: EState;
+    RunningTime, ActiveTimer, ActivityTimer: TStopwatch;
+    WorldList: TIntegerArray;
+    CourseIndex: Int32;
+    Obstacles: TAgilityObstacleDefArray;
+    Index: Int32;
+    Attempts: Int32;
+    NoXPStepped: Boolean;
+    PluginMode: Boolean;
+    MarkMode: Boolean;
+    LapCount, MarksGained, StartingMarks: Int32;
+    LastReportTime: UInt64;
+    StartXP, PrevXP: Int64;
+    PetReceived: Boolean;
+    LastSystemUpdateCheck: UInt64;
+    PosCache: TRSPosition;
+    PosCacheTick: UInt64;
+    StillSince: UInt64;
+  end;
+
+const
+  BA_SETTINGS_FILE = 'Configs/BASettings.ini';
+  BA_AGILITY_SETTINGS = ' Free Agility Settings';
+  BA_AGILITY_ANTIBAN = ' Free Agility Antiban Manager';
+
+  AGILITY_PLUGIN_MIN_PIXELS = 20;
+  AGILITY_MARK_MIN_PIXELS = 15;
+  AGILITY_OVERLAY_EXPAND = 20;
+  AGILITY_OVERLAY_HEIGHT = 7;
+  AGILITY_CLICK_RETRIES = 3;
+  AGILITY_BANK_LOCAL_RADIUS = 400;
+  AGILITY_BANK_LOCAL_KEEP = 2;
+  AGILITY_XP_GRACE_MS = 800;
+  AGILITY_XP_MAX_DELTA = 3000;
+  AGILITY_WALK_PX = 68;
+  AGILITY_WALK_STOP_PX = 48;
+  AGILITY_CLICK_SETTLE_MS = 400;
+  AGILITY_ON_OBSTACLE_PX = 12;
+  AGILITY_STANDING_PX = 24;
+  AGILITY_MARKS_PER_AMYLASE_PACK = 10;
+  AGILITY_AMYLASE_PER_PACK = 100;
+
+  AGILITY_STOP_AT_LEVEL_SKILLS: array of ERSSkill := [
+    ERSSkill.AGILITY
+  ];
+
+type
+  TConfig = record(TBASHPremiumGUI)
+    CourseOpt: TLabeledComboBox;
+    RequiredHeader: TLabel;
+    RequiredLabel: TLabel;
+    SavedCourse: String;
+  end;
+  TScriptGUI = TConfig;
+
+var
+  Script: AIOAgility;
+  AGILITY_CATALOG: array of TAgilityCourseDef;
+  WallApproachTry: UInt64;
+  PluginHoverBox: TBox;
+
+{$IFDEF SCRIPT_GUI}
+var
+  Config: TConfig;
+{$ENDIF}
+
+function LoginPlayerHere(): Boolean;
+begin
+  Result := Login.LoginPlayer();
+end;
+
+
+function LoginIfNot(): Boolean;
+begin
+  if not RSClient.IsLoggedIn() then
+  begin
+    if not LoginPlayerHere() then
+      TerminateScript('Could not log in player')
+    else
+      Result := True;
+  end;
+end;
+
+function AgilityPluginGreen(): TCTS2Color;
+begin
+  Result := CTS2(1823792, 8, 0.26, 3.04);
+end;
+
+function AgilityPluginMark(): TCTS2Color;
+begin
+  Result := CTS2(1517778, 7, 0.27, 3.15);
+end;
+
+function HasMapTile(tile: TPoint): Boolean;
+begin
+  Result := (tile.X <> 0) or (tile.Y <> 0);
+end;
+
+function WorldToV2(rsX, rsY: Int32): TPoint;
+begin
+  Result := [rsX * 4 - 4096, 50430 - rsY * 4];
+end;
+
+function V2ToWorld(v2: TPoint): TPoint;
+begin
+  Result := [(v2.X + 4096) div 4, (50430 - v2.Y) div 4];
+end;
+
+function WorldToMapTile(wx, wy, plane: Int32): TPoint;
+begin
+  Result := WorldToV2(wx, wy);
+  if plane > 0 then
+    Result.X := Result.X + RSTranslator.MapWidth() * plane;
+end;
+
+function ChunksFromWorld(const pts: TPointArray; pad: Int32 = 2): TRSMapChunk;
+var
+  i, cx, cy, minX, minY, maxX, maxY: Int32;
+begin
+  minX := 9999;
+  minY := 9999;
+  maxX := -9999;
+  maxY := -9999;
+  for i := 0 to High(pts) do
+  begin
+    cx := pts[i].X div 64;
+    cy := pts[i].Y div 64;
+    if cx < minX then
+      minX := cx;
+    if cy < minY then
+      minY := cy;
+    if cx > maxX then
+      maxX := cx;
+    if cy > maxY then
+      maxY := cy;
+  end;
+  Result := Chunk(Box(minX - pad, maxY + pad, maxX + pad, minY - pad), [0, 1, 2, 3]);
+end;
+
+function ComboIndexOf(items: TStringArray; value: String): Int32;
+var
+  i: Int32;
+begin
+  for i := 0 to High(items) do
+    if SameText(items[i], value) then
+      Exit(i);
+  Result := 0;
+end;
+
+function MakeObs(name: String; wx, wy, plane: Int32; uptext: TStringArray; xp, maxTime: Int32): TAgilityObstacleDef;
+begin
+  Result := [];
+  Result.Name := name;
+  Result.World := [wx, wy];
+  Result.Plane := plane;
+  Result.UpText := uptext;
+  Result.XP := xp;
+  Result.MaxTime := maxTime;
+end;
+
+function WorldFromMapTile(mmx, mmy: Int32; out plane: Int32): TPoint;
+var
+  mapW, x: Int32;
+begin
+  plane := 0;
+  x := mmx;
+  mapW := RSTranslator.MapWidth();
+  if mapW < 1 then
+    mapW := 13056;
+  while x >= mapW do
+  begin
+    x := x - mapW;
+    Inc(plane);
+  end;
+  Result := V2ToWorld([x, mmy]);
+end;
+
+function MakeMappedObs(name: String; mmx, mmy: Int32; uptext: TStringArray; xp, maxTime: Int32): TAgilityObstacleDef;
+var
+  plane: Int32;
+  world: TPoint;
+begin
+  world := WorldFromMapTile(mmx, mmy, plane);
+  Result := MakeObs(name, world.X, world.Y, plane, uptext, xp, maxTime);
+  Result.MMTiles := [[mmx, mmy]];
+  Result.WalkTile := [mmx, mmy];
+end;
+
+function MakeMappedObs(name: String; mmx, mmy: Int32; uptext: TStringArray; xp, maxTime, angMin, angMax: Int32): TAgilityObstacleDef; overload;
+begin
+  Result := MakeMappedObs(name, mmx, mmy, uptext, xp, maxTime);
+  Result.AngleMin := angMin;
+  Result.AngleMax := angMax;
+end;
+
+procedure AppendCourse(name: String; levelReq: Int32; obstacles: TAgilityObstacleDefArray; bankWorld: TPoint);
+var
+  loc: TAgilityCourseDef;
+  i: Int32;
+  pts: TPointArray;
+begin
+  loc := [];
+  loc.Name := name;
+  loc.LevelReq := levelReq;
+  loc.HasMarks := True;
+  loc.Obstacles := obstacles;
+  loc.BankWorld := bankWorld;
+  pts := [];
+  for i := 0 to High(obstacles) do
+    pts += obstacles[i].World;
+  if HasMapTile(bankWorld) then
+    pts += V2ToWorld(bankWorld);
+  if Length(pts) > 0 then
+    loc.Chunks := [ChunksFromWorld(pts)]
+  else
+    loc.Chunks := [];
+  AGILITY_CATALOG += loc;
+end;
+
+
+procedure SortAgilityCatalog();
+var
+  i, j: Int32;
+  tmp: TAgilityCourseDef;
+begin
+  if Length(AGILITY_CATALOG) < 2 then
+    Exit;
+  for i := 0 to High(AGILITY_CATALOG) - 1 do
+    for j := i + 1 to High(AGILITY_CATALOG) do
+      if LowerCase(AGILITY_CATALOG[j].Name) < LowerCase(AGILITY_CATALOG[i].Name) then
+      begin
+        tmp := AGILITY_CATALOG[i];
+        AGILITY_CATALOG[i] := AGILITY_CATALOG[j];
+        AGILITY_CATALOG[j] := tmp;
+      end;
+end;
+
+procedure InitAgilityCatalog();
+var
+  obs: TAgilityObstacleDefArray;
+begin
+  SetLength(AGILITY_CATALOG, 0);
+
+  obs := [];
+  obs += MakeMappedObs('Rough wall', 8316, 37314, ['imb', 'ough', 'wall'], 5, 6000, 6, 83);
+  obs += MakeMappedObs('Tightrope', 47468, 37322, ['oss', 'ight'], 8, 11000);
+  obs += MakeMappedObs('Tightrope 2', 47436, 37326, ['oss', 'ight'], 7, 11000);
+  obs += MakeMappedObs('Narrow wall', 47428, 37370, ['ance', 'arro'], 7, 7000, 40, 83);
+  obs += MakeMappedObs('Wall', 47424, 37402, ['ump', 'wall'], 10, 6000);
+  obs += MakeMappedObs('Gap', 47448, 37410, ['ump', 'Gap'], 4, 7000);
+  obs += MakeMappedObs('Crate', 47472, 37386, ['imb', 'down', 'rate'], 79, 8000, 6, 83);
+  obs[0].MarkTiles := [[47468, 37314]];
+  obs[1].MarkTiles := [[47424, 37334]];
+  obs[2].MarkTiles := [[47440, 37366]];
+  obs[5].MarkTiles := [[47468, 37394]];
+  AppendCourse('Draynor Village Rooftop', 1, obs, [8272, 37450]);
+
+  obs := [];
+  obs += MakeMappedObs('Rough wall', 8788, 36774, ['imb', 'ough', 'Climb R'], 14, 11000);
+  obs += MakeMappedObs('Clothes line', 47928, 36774, ['oss', 'othe'], 23, 11000);
+  obs += MakeMappedObs('Gap', 47876, 36766, ['eap', 'Gap'], 19, 8000);
+  obs += MakeMappedObs('Wall', 21736, 36766, ['ance', 'Wall', 'ce W'], 28, 14000);
+  obs += MakeMappedObs('Gap 2', 47852, 36822, ['eap', 'Gap'], 10, 7000);
+  obs += MakeMappedObs('Gap 3', 47904, 36834, ['eap', 'Gap'], 25, 12000);
+  obs += MakeMappedObs('Gap 4', 47996, 36822, ['eap', 'Gap'], 5, 11000);
+  obs += MakeMappedObs('Ledge', 48024, 36798, ['urdle', 'edge'], 4, 7000);
+  obs += MakeMappedObs('Edge', 48024, 36770, ['ump', 'Edge', 'off'], 144, 6500);
+  obs[2].MarkTiles := [[21744, 36770]];
+  obs[3].MarkTiles := [[47812, 36854], [47836, 36854]];
+  obs[5].MarkTiles := [[47952, 36826]];
+  obs[6].MarkTiles := [[48024, 36806]];
+  AppendCourse('Varrock Rooftop', 30, obs, [8916, 36750]);
+
+  SortAgilityCatalog();
+
+  if Length(AGILITY_CATALOG) = 0 then
+    TerminateScript('Agility catalog is empty');
+end;
+
+function DisplayCourseName(loc: TAgilityCourseDef): String;
+begin
+  Result := loc.Name;
+end;
+
+
+function FindCourseIndex(name: String): Int32;
+var
+  i: Int32;
+begin
+  for i := 0 to High(AGILITY_CATALOG) do
+    if SameText(AGILITY_CATALOG[i].Name, name) or
+       SameText(DisplayCourseName(AGILITY_CATALOG[i]), name) then
+      Exit(i);
+  Result := 0;
+end;
+
+function CourseNames(): TStringArray;
+var
+  i: Int32;
+begin
+  Result := [];
+  for i := 0 to High(AGILITY_CATALOG) do
+    Result += DisplayCourseName(AGILITY_CATALOG[i]);
+end;
+
+procedure AddRequiredItem(var items: TStringArray; name: String);
+var
+  i: Int32;
+begin
+  name := Trim(name);
+  if name = '' then
+    Exit;
+  for i := 0 to High(items) do
+    if SameText(items[i], name) then
+      Exit;
+  items += name;
+end;
+
+function CourseRequiredText(loc: TAgilityCourseDef): String;
+var
+  parts: TStringArray;
+begin
+  parts := [];
+  AddRequiredItem(parts, 'Agility ' + ToStr(loc.LevelReq) + '+');
+  AddRequiredItem(parts, 'Agility plugin overlay');
+  Result := parts.Merge(#10);
+end;
+
+
+function TConfig.SelectedCourse(): TAgilityCourseDef;
+begin
+  Result := AGILITY_CATALOG[FindCourseIndex(Self.GetSelectedString(Self.CourseOpt))];
+end;
+
+procedure TConfig.RefreshRequired();
+var
+  text: String;
+begin
+  if not Assigned(Self.RequiredLabel) then
+    Exit;
+  text := CourseRequiredText(Self.SelectedCourse());
+  Self.RequiredLabel.SetCaption(text);
+  Self.RequiredLabel.SetHint(StringReplace(text, #10, ', ', [rfReplaceAll]));
+end;
+
+
+procedure TConfig.RefreshNavLayout(); override;
+begin
+  inherited;
+end;
+
+
+procedure TConfig.CourseOptChanged({$H-}sender: TObject); {$H+}
+begin
+  Self.RefreshRequired();
+end;
+
+procedure TConfig.OnFarmEnableChanged({$H-}sender: TObject); override; {$H+}
+begin
+  inherited;
+  Self.RefreshRequired();
+end;
+
+procedure TConfig.OnBirdhouseEnableChanged({$H-}sender: TObject); override; {$H+}
+begin
+  inherited;
+  Self.RefreshRequired();
+end;
+
+procedure TConfig.InitGUI(); override;
+begin
+  InitAgilityCatalog();
+  Self.BrandTitle := 'Free Agility';
+  Self.WindowTitle := 'BigAussies Free Agility';
+  Self.HasFarm := False;
+  Self.HasAIChat := False;
+  Self.HasWebhooks := False;
+  Self.HasWorldHopping := True;
+  Self.HasMaxActions := False;
+  Self.HasStopAtLevel := True;
+  Self.StopAtLevelSkills := AGILITY_STOP_AT_LEVEL_SKILLS;
+  Self.HasRandomEvents := True;
+  Self.LegacyAntibanSection := BA_AGILITY_ANTIBAN;
+end;
+
+procedure TConfig.SetupAIChat(); override;
+begin
+end;
+
+procedure TConfig.LoadActionSettings(); override;
+begin
+  Self.SavedCourse := ReadINI(Self.Username + BA_AGILITY_SETTINGS, 'Course', BA_SETTINGS_FILE);
+end;
+
+procedure TConfig.BuildActionSection(); override;
+var
+  names: TStringArray;
+  loc: TAgilityCourseDef;
+  note: TLabel;
+begin
+  Self.AddHeader(Self.ActionSection, 'Action', 'Choose an agility course. Courses use the Agility plugin overlay.');
+
+  names := CourseNames();
+  loc := AGILITY_CATALOG[FindCourseIndex(Self.SavedCourse)];
+
+  Self.AddCombo(Self.ActionSection, Self.CourseOpt, 'lcb_free_agility_course', 'Course', 24, 110, names, ComboIndexOf(names, DisplayCourseName(loc)));
+  Self.CourseOpt.ComboBox.SetOnChange(@Self.CourseOptChanged);
+
+  Self.RequiredHeader := Self.MakeLabel(Self.ActionSection, 'Required', 24, 200, 11, BASH_GUI_MUTED, True);
+  Self.RequiredLabel := Self.MakeLabel(Self.ActionSection, '', 24, 222, 10, BASH_GUI_TEXT, False);
+  Self.RequiredLabel.SetWidth(TControl.AdjustToDPI(540));
+
+  note := Self.MakeLabel(Self.ActionSection,
+    'This is the free version. For more courses and features, use the premium AIO Agility.',
+    24, 290, 10, BASH_GUI_MUTED, False);
+  note.SetWidth(TControl.AdjustToDPI(820));
+
+  Self.RefreshRequired();
+end;
+
+procedure TConfig.AfterBuildShell(); override;
+begin
+  inherited;
+end;
+
+procedure TConfig.ApplyActionSettings(); override;
+var
+  courseName: String;
+  loc: TAgilityCourseDef;
+begin
+  courseName := Self.GetSelectedString(Self.CourseOpt);
+  loc := Self.SelectedCourse();
+
+  Script.CourseIndex := FindCourseIndex(courseName);
+  WriteINI(Self.Username + BA_AGILITY_SETTINGS, 'Course', loc.Name, BA_SETTINGS_FILE);
+
+  WriteLn('Settings saved:');
+  WriteLn('Course: ', loc.Name);
+end;
+
+procedure TConfig.StartScript(Sender: TObject); override;
+var
+  loc: TAgilityCourseDef;
+begin
+  if Sender = nil then;
+
+  loc := Self.SelectedCourse();
+  if loc.Name = '' then
+  begin
+    ShowMessage('Select an agility course.');
+    Exit;
+  end;
+
+  try
+    Self._WarmBuildCache();
+  except
+  end;
+
+  inherited;
+end;
+
+{$IFDEF SCRIPT_GUI}
+{$I BashLib/optional/handlers/bashgui_host_scriptgui.simba}
+{$ENDIF}
+
+procedure OnBreakStart(Task: PBreakTask);
+var
+  T: PBreakTask;
+begin
+  T := Task;
+  Script.ActivityTimer.Pause();
+  Script.ActiveTimer.Pause();
+end;
+
+procedure OnBreakFinish(Task: PBreakTask);
+var
+  T: PBreakTask;
+begin
+  T := Task;
+  Script.ActivityTimer.Resume();
+  Script.ActiveTimer.Resume();
+end;
+
+procedure OnSleepStart(Task: PSleepTask);
+var
+  T: PSleepTask;
+begin
+  T := Task;
+  Script.ActivityTimer.Pause();
+  Script.ActiveTimer.Pause();
+end;
+
+procedure OnSleepFinish(Task: PSleepTask);
+var
+  T: PSleepTask;
+begin
+  T := Task;
+  Script.ActivityTimer.Resume();
+  Script.ActiveTimer.Resume();
+end;
+
+procedure TAntiban.TakeBreak(var task: TBreakTask); override;
+var
+  countdown: TCountDown;
+  i: Int32;
+  activeTasks: PAntibanTaskArray;
+begin
+  activeTasks := Self.GetActiveTasks();
+  for i := 0 to High(activeTasks) do
+    activeTasks[i]^.countdown.Pause();
+
+  countdown.Init(Abs(Round(SRL.GaussRand(task.Length, task.Length * task.StdVar))));
+
+  WriteLn('Taking a break for ' + SRL.MsToTime(countdown.TimeRemaining(), TIME_FORMAL));
+
+  if (@Self.OnStartBreak <> nil) then
+    Self.OnStartBreak(@task);
+
+  if Random() < task.LogoutChance then
+  begin
+    WriteLn('Logging out');
+    Script.ClickLogoutUntilOut();
+  end;
+
+  if Random() < 0.50 then
+    Self.LoseFocus();
+
+  i := 0;
+  while not countdown.IsFinished() do
+  begin
+    if (Inc(i) mod 12 = 0) then
+      WriteLn('Break time remaining: ' + ToString(countdown.TimeRemaining() div 60000) + ' minutes');
+
+    if (@Self.OnBreaking <> nil) then
+      Self.OnBreaking(@task, countdown);
+
+    Wait(Min(countdown.TimeRemaining(), 5 * ONE_SECOND));
+  end;
+
+  WriteLn('Break finished');
+
+  if (@Self.OnFinishBreak <> nil) then
+    Self.OnFinishBreak(@task);
+
+  for i := 0 to High(activeTasks) do
+    activeTasks[i]^.countdown.Resume();
+
+  task.NextAtTime := GetTimeRunning() + Abs(SRL.GaussRand(task.Interval, task.Interval * task.StdVar));
+end;
+
+
+procedure TAntiban.TakeSleep(var task: TSleepTask); override;
+begin
+  inherited;
+end;
+
+
+procedure TAntiban.AdjustZoom(); override;
+begin
+  inherited;
+end;
+
+
+procedure TAntiban.Setup(); override;
+begin
+  Self.Skills := [ERSSkill.AGILITY, ERSSkill.TOTAL];
+  Self.MinZoom := 0;
+  Self.MaxZoom := 15;
+
+  Self.OnStartBreak := @OnBreakStart;
+  Self.OnFinishBreak := @OnBreakFinish;
+  Self.OnStartSleep := @OnSleepStart;
+  Self.OnFinishSleep := @OnSleepFinish;
+
+  inherited;
+
+  RandomEvents.Enable();
+
+  if OVERRIDEBREAKS then
+  begin
+    WriteLn('[ANTIBAN] Custom break override enabled:');
+    WriteLn('  - Break Interval: ', CUSTOMBREAKINTERVAL, ' minutes');
+    WriteLn('  - Break Duration: ', CUSTOMBREAKDURATION, ' minutes');
+
+    Self.Breaks := [];
+    Self.AddBreak(CUSTOMBREAKINTERVAL * ONE_MINUTE, CUSTOMBREAKDURATION * ONE_MINUTE, 0.33, 0.15);
+  end;
+end;
+
+
+function TBaseScript.DoAntiban(checkBreaks: Boolean = True; checkSleeps: Boolean = True): Boolean; override;
+begin
+  Script.ActivityTimer.Pause();
+  Script.ActiveTimer.Pause();
+
+  if ChooseOption.IsOpen() then
+    ChooseOption.Close();
+  Self.TimeRunning.Pause();
+  Self.OnAntiban := True;
+
+  WorldHopper.TryHopOnBreak(checkBreaks, checkSleeps);
+
+  checkBreaks := checkBreaks and (WLSettings.GetObject('antiban').getBoolean('breaks') or OVERRIDEBREAKS);
+  checkSleeps := checkSleeps and WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('enabled');
+
+  if WLSettings.GetObject('antiban').getJSONObject('tasks').getBoolean('enabled') or checkBreaks or checkSleeps then
+    Result := Antiban.DoAntiban(checkBreaks, checkSleeps);
+
+  Self.TimeRunning.Resume();
+  Self.OnAntiban := False;
+
+  if not RSClient.IsLoggedIn() then
+    LoginPlayerHere();
+
+  Script.ActivityTimer.Resume();
+  Script.ActiveTimer.Resume();
+end;
+
+
+function TRSChat.CheckSystemUpdate(minuteTreshold: Integer): Boolean;
+var
+  b: TBox;
+  s: String;
+  numbers: TExtendedArray;
+begin
+  b := Chat.Bounds;
+  b.X1 += 4;
+  b.Y1 -= 16;
+  b.Y2 := Chat.Bounds.Y1 - 1;
+  b.X2 := b.X1 + 140;
+
+  s := OCR.Recognize(b, TOCRColorFilter.Create([65535]), RS_FONT_PLAIN_12);
+
+  if s.Contains('System update') then
+  begin
+    s := s.After(': ');
+    numbers := s.ExtractNumbers();
+    if (Length(numbers) > 0) and (numbers[0] <= minuteTreshold) then
+      Result := True;
+  end;
+end;
+
+procedure TRSMinimap.RotateWithinAngles(minA, maxA: Int32);
+var
+  minMaxAvg, preferredAngle: Int32;
+begin
+  minMaxAvg := Floor((minA + maxA) div 2);
+  preferredAngle := SRL.SkewedRand(minMaxAvg, minA, maxA);
+  if preferredAngle < 0 then
+    preferredAngle := preferredAngle + 360;
+  if InRange(Self.GetCompassAngle(True), minA, maxA) then
+    Exit;
+  Minimap.SetCompassAngle(preferredAngle);
+end;
+
+function FormatRoundedNumber(Number: Int64): String;
+begin
+  if Number >= 1000000 then
+    Result := FormatFloat('0.0M', Number / 1000000)
+  else if Number >= 1000 then
+    Result := FormatFloat('0K', Number / 1000)
+  else
+    Result := SRL.FormatNumber(Number);
+end;
+
+function AIOAgility.CurrentCourse(): TAgilityCourseDef;
+begin
+  Result := AGILITY_CATALOG[Self.CourseIndex];
+end;
+
+function AIOAgility.SafeReadXPBar(): Int64;
+begin
+  try
+    Result := XPBar.Read();
+  except
+    Result := Self.PrevXP;
+  end;
+end;
+
+procedure AIOAgility.CheckSystemUpdate();
+var
+  currentTime: UInt64;
+begin
+  currentTime := GetTickCount();
+  if (currentTime - Self.LastSystemUpdateCheck) < 30000 then
+    Exit;
+
+  Self.LastSystemUpdateCheck := currentTime;
+  if Chat.CheckSystemUpdate(15) then
+  begin
+    WriteLn('SYSTEM UPDATE DETECTED - logging out');
+    Self.ClickLogoutUntilOut();
+    TerminateScript('System update - safe logout completed');
+  end;
+end;
+
+procedure AIOAgility.TakeScreenshot(Name: String);
+var
+  screenshotPath: String;
+  fileCount: Integer;
+begin
+  try
+    if Name = '' then
+      Name := 'Unknown';
+    try
+      CreateDirectory('Screenshots/');
+    except
+      Exit;
+    end;
+    try
+      fileCount := Length(GetFiles('Screenshots/', 'png'));
+    except
+      fileCount := 0;
+    end;
+    screenshotPath := 'Screenshots/AIOAgility' + Name + '_' + IntToStr(fileCount) + '.png';
+    SaveScreenshot(screenshotPath);
+    WriteLn('[Screenshot] Saved: ', screenshotPath);
+  except
+  end;
+end;
+
+function AIOAgility.GainedPet(): Boolean;
+begin
+  Result := Chat.FindMessage('been followed', [CHAT_COLOR_RED]) or
+            Chat.FindMessage('sneaking into your backpack', [CHAT_COLOR_RED]);
+end;
+
+procedure AIOAgility.HandlePet();
+begin
+  if Self.PetReceived then
+    Exit;
+  if not Self.GainedPet() then
+    Exit;
+
+  Self.PetReceived := True;
+  WriteLn('CONGRATULATIONS! You have obtained the Giant squirrel pet!');
+  Self.TakeScreenshot('PetDrop');
+end;
+
+
+
+function RuntimeProgress(runTime: Int64): String;
+begin
+  Result := SRL.MsToTime(runTime, Time_Short);
+  if WLSettings.MaxTime() > 0 then
+    Result += '/' + IntToStr(WLSettings.MaxTime()) + 'm';
+end;
+
+function AIOAgility.SessionXP(): Int64;
+begin
+  Result := Max(0, Self.SafeReadXPBar() - Self.StartXP);
+end;
+
+
+function AIOAgility.MarksValue(): Int64;
+var
+  crystals: Int64;
+begin
+  Result := 0;
+  if not Self.CurrentCourse().HasMarks then
+    Exit;
+  crystals := Int64(Self.MarksGained) * AGILITY_AMYLASE_PER_PACK div AGILITY_MARKS_PER_AMYLASE_PACK;
+  Result := crystals * ItemData.GetAverage('Amylase crystal');
+end;
+
+function AIOAgility.SessionProfit(): Int64;
+begin
+  Result := Self.MarksValue();
+end;
+
+
+function AIOAgility.EconomyText(hours: Double): String;
+var
+  crystals: Int32;
+  total, xp: Int64;
+begin
+  Result := '';
+  crystals := Self.MarksGained * AGILITY_AMYLASE_PER_PACK div AGILITY_MARKS_PER_AMYLASE_PACK;
+  Result += 'Amylase crystals: ' + IntToStr(crystals) + ' (' +
+    FormatRoundedNumber(Self.MarksValue()) + ' gp)' + LineEnding;
+  total := Self.SessionProfit();
+  Result += 'Gold made: ' + FormatRoundedNumber(total) + ' gp' + LineEnding;
+  Result += 'GP/Hour: ' + FormatRoundedNumber(Round(total / hours)) + LineEnding;
+  xp := Self.SessionXP();
+  Result += 'XP Gained: ' + FormatRoundedNumber(xp) + LineEnding;
+  Result += 'XP/Hour: ' + FormatRoundedNumber(Round(xp / hours)) + LineEnding;
+end;
+
+
+procedure AIOAgility.WriteEconomy(hours: Double);
+var
+  line: String;
+  lines: TStringArray;
+begin
+  lines := Self.EconomyText(hours).Split(LineEnding);
+  for line in lines do
+    if line <> '' then
+      WriteLn('   ', line);
+end;
+
+procedure AIOAgility.Report();
+var
+  runTime: Int64;
+  hours: Double;
+  obsName: String;
+begin
+  if (GetTickCount() - Self.LastReportTime) < 10000 then
+    Exit;
+  Self.LastReportTime := GetTickCount();
+
+  runTime := Self.RunningTime.ElapsedTime();
+  hours := Max(runTime / 3600000, 0.0001);
+
+  obsName := 'None';
+  if (Self.Index >= 0) and (Self.Index <= High(Self.Obstacles)) then
+    obsName := Self.Obstacles[Self.Index].Name;
+
+  WriteLn('========================================');
+  WriteLn('         B.A.S.H Free Agility           ');
+  WriteLn('========================================');
+  WriteLn('   Runtime: ', RuntimeProgress(runTime));
+  WriteLn('   Course: ', Self.CurrentCourse().Name);
+  WriteLn('   Obstacle: ', obsName);
+  WriteLn('   Laps: ', FormatRoundedNumber(Self.LapCount));
+  WriteLn('   Laps/Hr: ', FormatRoundedNumber(Round(Self.LapCount / hours)));
+  WriteLn('   Marks of grace: ', IntToStr(Self.MarksGained));
+  Self.WriteEconomy(hours);
+  if Self.PetReceived then
+    WriteLn('   PET OBTAINED: Giant squirrel!');
+  WriteLn('   ', Antiban.BreakScheduleText());
+  WriteLn('   ', Antiban.SleepScheduleText());
+  WriteLn('========================================');
+  WriteLn('    Revision: ' + {$MACRO SCRIPT_REVISION});
+  WriteLn('========================================');
+
+  StopAtLevel.WriteReport();
+end;
+
+
+procedure AIOAgility.SetupCombinedMap();
+var
+  loc: TAgilityCourseDef;
+begin
+  loc := Self.CurrentCourse();
+  Map.SetupChunks(loc.Chunks, 8);
+end;
+
+procedure AIOAgility.ApplyWalkerSettings();
+begin
+  BASHRebindMap(True);
+  Map.Walker._DoorHandler.Enabled := True;
+  BASHBindLocalBanks(AGILITY_BANK_LOCAL_RADIUS, AGILITY_BANK_LOCAL_KEEP);
+end;
+
+procedure AIOAgility.SetupObstacles();
+var
+  src: TAgilityObstacleDefArray;
+  i: Int32;
+begin
+  src := Self.CurrentCourse().Obstacles;
+  SetLength(Self.Obstacles, Length(src));
+  for i := 0 to High(src) do
+  begin
+    Self.Obstacles[i] := src[i];
+    Self.Obstacles[i].Index := i;
+    if Length(src[i].MMTiles) = 0 then
+      Self.Obstacles[i].MMTiles := [WorldToMapTile(src[i].World.X, src[i].World.Y, src[i].Plane)];
+    if not HasMapTile(Self.Obstacles[i].WalkTile) then
+      Self.Obstacles[i].WalkTile := Self.Obstacles[i].MMTiles[0];
+  end;
+end;
+
+
+function AIOAgility.StartMapTile(): TPoint;
+begin
+  Result := [0, 0];
+  if Length(Self.Obstacles) = 0 then
+    Exit;
+  Result := WorldToMapTile(Self.Obstacles[0].World.X, Self.Obstacles[0].World.Y, 0);
+end;
+
+procedure AIOAgility.DropPositionCache();
+begin
+  Self.PosCacheTick := 0;
+end;
+
+function AIOAgility.ReadPosition(): TRSPosition;
+begin
+  if (Self.PosCacheTick <> 0) and (GetTickCount() - Self.PosCacheTick < 800) then
+    Exit(Self.PosCache);
+  Result := Map.FullPosition();
+  Self.PosCache := Result;
+  Self.PosCacheTick := GetTickCount();
+end;
+
+function AIOAgility.WorldFromPosition(pos: TRSPosition): TPoint;
+var
+  pt: TPoint;
+begin
+  pt := pos.ToPoint();
+  while pt.X > RSTranslator.MapWidth() do
+    pt.X := pt.X - RSTranslator.MapWidth();
+  Result := V2ToWorld(pt);
+end;
+
+function AIOAgility.PlayerWorld(): TPoint;
+begin
+  Result := Self.WorldFromPosition(Self.ReadPosition());
+end;
+
+function AIOAgility.DetectIndexFromPosition(): Int32;
+var
+  i, best, dist, bestDist, minIdx: Int32;
+  me: TPoint;
+  pos: TRSPosition;
+begin
+  Result := 0;
+  if Length(Self.Obstacles) = 0 then
+    Exit;
+  pos := Self.ReadPosition();
+  if pos.Plane = 0 then
+  begin
+    if (Self.Index = High(Self.Obstacles)) and (Self.Obstacles[Self.Index].Plane <> 0) then
+      Exit(Self.Index);
+    Exit(0);
+  end;
+
+  minIdx := 0;
+  if Self.Index > 0 then
+    minIdx := Self.Index;
+  Result := minIdx;
+
+  me := Self.PlayerWorld();
+  best := -1;
+  bestDist := 9999;
+  for i := minIdx to High(Self.Obstacles) do
+  begin
+    if Self.Obstacles[i].Plane <> pos.Plane then
+      Continue;
+    dist := Abs(me.X - Self.Obstacles[i].World.X) + Abs(me.Y - Self.Obstacles[i].World.Y);
+    if dist < bestDist then
+    begin
+      bestDist := dist;
+      best := i;
+    end;
+  end;
+
+  if best >= 0 then
+    Result := best;
+end;
+
+
+function AIOAgility.HasOverlay(color: TCTS2Color; minPixels: Int32): Boolean;
+var
+  TPA: TPointArray;
+begin
+  Result := SRL.FindColors(TPA, color, MainScreen.Bounds) >= minPixels;
+end;
+
+function AIOAgility.DetectMarkMode(): Boolean;
+begin
+  Self.MarkMode := Self.HasOverlay(AgilityPluginMark(), AGILITY_MARK_MIN_PIXELS);
+  Result := Self.MarkMode;
+end;
+
+function AIOAgility.DetectAgilityPlugin(): Boolean;
+begin
+  Result := Self.PluginMode;
+  if Result then
+  begin
+    Self.DetectMarkMode();
+    Exit;
+  end;
+
+  if Self.HasOverlay(AgilityPluginGreen(), AGILITY_PLUGIN_MIN_PIXELS) then
+  begin
+    Self.PluginMode := True;
+    Self.MarkMode := False;
+    WriteLn('[PLUGIN] Agility overlay detected - Plugin mode enabled');
+    Exit(True);
+  end;
+
+  if Self.HasOverlay(AgilityPluginMark(), AGILITY_MARK_MIN_PIXELS) then
+  begin
+    Self.PluginMode := True;
+    Self.MarkMode := True;
+    WriteLn('[PLUGIN] Agility mark overlay detected - Plugin mode enabled (RED)');
+    Exit(True);
+  end;
+end;
+
+function AIOAgility.PluginClickPoint(TPA: TPointArray): TPoint;
+var
+  Box: TBox;
+  PadX, PadY: Int32;
+begin
+  Box := TPA.Bounds;
+  PadX := Max(8, (Box.Width * 15) div 100);
+  PadY := Max(8, (Box.Height * 15) div 100);
+
+  if (Box.Width > (PadX * 2) + 2) and (Box.Height > (PadY * 2) + 2) then
+  begin
+    Box := Box.Expand(-PadX, -PadY);
+    Result := SRL.RandomPoint(Box);
+  end
+  else
+    Result := Box.Middle();
+end;
+
+function AIOAgility.TileOnCurrentPlane(tile: TPoint): Boolean;
+var
+  me: TPoint;
+  mapW: Int32;
+begin
+  Result := False;
+  if not HasMapTile(tile) then
+    Exit;
+  me := Self.ReadPosition().ToPoint();
+  mapW := RSTranslator.MapWidth();
+  if mapW < 1 then
+    Exit(True);
+  Result := Abs(me.X - tile.X) < (mapW div 2);
+end;
+
+function AIOAgility.StandingOnTile(tile: TPoint): Boolean;
+begin
+  Result := HasMapTile(tile) and Self.TileOnCurrentPlane(tile) and
+            (Round(Self.ReadPosition().ToPoint().DistanceTo(tile)) < AGILITY_STANDING_PX);
+end;
+
+function AIOAgility.ObstacleSearchBox(tile: TPoint): TBox;
+var
+  me: TPoint;
+  raised: TRectangle;
+begin
+  Result := [0, 0, 0, 0];
+  if not Self.TileOnCurrentPlane(tile) then
+    Exit;
+  me := Self.ReadPosition().ToPoint();
+  raised := Map.GetTileMS(me, tile, AGILITY_OVERLAY_HEIGHT);
+  Result := raised.Bounds.Expand(AGILITY_OVERLAY_EXPAND, MainScreen.Bounds);
+end;
+
+
+function AIOAgility.StepFromObstacle(Obs: TAgilityObstacleDef; tiles: Int32): TPoint;
+var
+  dx, dy, len: Double;
+begin
+  Result := Obs.WalkTile;
+  if (Obs.Index < 0) or (Obs.Index >= High(Self.Obstacles)) then
+    Exit;
+  dx := Self.Obstacles[Obs.Index + 1].World.X - Obs.World.X;
+  dy := Self.Obstacles[Obs.Index + 1].World.Y - Obs.World.Y;
+  len := Sqrt(dx * dx + dy * dy);
+  if len < 1 then
+    Exit;
+  Result := WorldToMapTile(
+    Obs.World.X + Round(dx / len * tiles),
+    Obs.World.Y + Round(dy / len * tiles),
+    Obs.Plane);
+end;
+
+function AIOAgility.NearestCluster(pixels: TPointArray; near: TPoint; out chosen: TPointArray): Boolean;
+var
+  clusters: T2DPointArray;
+  i, best: Int32;
+  dist, bestDist: Double;
+begin
+  Result := False;
+  if Length(pixels) < 4 then
+    Exit;
+
+  clusters := pixels.Cluster(8);
+  best := -1;
+  bestDist := 999999;
+  for i := 0 to High(clusters) do
+  begin
+    if Length(clusters[i]) < 4 then
+      Continue;
+    dist := clusters[i].Mean().DistanceTo(near);
+    if (best < 0) or (dist < bestDist) then
+    begin
+      best := i;
+      bestDist := dist;
+    end;
+  end;
+  if best < 0 then
+    Exit;
+
+  chosen := clusters[best];
+  Result := True;
+end;
+
+function AIOAgility.HoverClusterForUptext(chosen: TPointArray; uptext: TStringArray): Boolean;
+var
+  hoverBox: TBox;
+  hoverTry: Int32;
+begin
+  Result := False;
+  hoverBox := chosen.Bounds();
+  if (hoverBox.Width > 10) and (hoverBox.Height > 10) then
+    hoverBox := hoverBox.Expand(-4)
+  else if (hoverBox.Width > 6) and (hoverBox.Height > 6) then
+    hoverBox := hoverBox.Expand(-2);
+  PluginHoverBox := hoverBox;
+
+  for hoverTry := 1 to 3 do
+  begin
+    Mouse.Move(SRL.RandomPoint(hoverBox));
+    if MainScreen.GetUpText().ContainsAny(uptext) or MainScreen.IsUpText(uptext, 200) then
+      Exit(True);
+  end;
+end;
+
+function AIOAgility.HoverSmallestMatching(pixels: TPointArray; uptext: TStringArray): Boolean;
+var
+  clusters: T2DPointArray;
+  order: TIntegerArray;
+  areas: TIntegerArray;
+  i, j, tmp, area: Int32;
+  bounds: TBox;
+begin
+  Result := False;
+  if Length(pixels) < 4 then
+    Exit;
+  clusters := pixels.Cluster(3);
+  order := [];
+  areas := [];
+  for i := 0 to High(clusters) do
+  begin
+    if Length(clusters[i]) < 4 then
+      Continue;
+    bounds := clusters[i].Bounds();
+    area := Max(1, bounds.Width) * Max(1, bounds.Height);
+    order += i;
+    areas += area;
+  end;
+  for i := 0 to High(order) - 1 do
+    for j := i + 1 to High(order) do
+      if areas[j] < areas[i] then
+      begin
+        tmp := order[i];
+        order[i] := order[j];
+        order[j] := tmp;
+        tmp := areas[i];
+        areas[i] := areas[j];
+        areas[j] := tmp;
+      end;
+  for i := 0 to High(order) do
+    if Self.HoverClusterForUptext(clusters[order[i]], uptext) then
+      Exit(True);
+end;
+
+function AIOAgility.TryFindColorOverlay(color: TCTS2Color; area: TBox; near: TPoint; uptext: TStringArray): Boolean;
+var
+  pixels, chosen: TPointArray;
+begin
+  Result := False;
+  if (area.Width < 2) or (area.Height < 2) then
+    Exit;
+
+  SRL.FindColors(pixels, color, area);
+  if Self.NearestCluster(pixels, near, chosen) then
+    Result := Self.HoverClusterForUptext(chosen, uptext);
+end;
+
+function AIOAgility.TryFindPluginOverlay(area: TBox; near: TPoint; uptext: TStringArray; tight: Boolean = False; preferSmall: Boolean = False): Boolean;
+var
+  greenPx, redPx, pixels, chosen: TPointArray;
+  outline, search, grown: TBox;
+  pass: Int32;
+begin
+  Result := False;
+  if (area.Width < 2) or (area.Height < 2) then
+    Exit;
+
+  search := area;
+  for pass := 1 to 2 do
+  begin
+    SRL.FindColors(greenPx, AgilityPluginGreen(), search);
+    SRL.FindColors(redPx, AgilityPluginMark(), search);
+    if Length(redPx) > Length(greenPx) then
+      pixels := redPx
+    else
+      pixels := greenPx;
+    if Length(pixels) < 4 then
+      Break;
+
+    outline := pixels.Bounds();
+    if (not tight) and (pass = 1) then
+    begin
+      grown := search;
+      if outline.X1 <= search.X1 + 1 then
+        grown.X1 := Max(MainScreen.Bounds.X1, grown.X1 - 40);
+      if outline.Y1 <= search.Y1 + 1 then
+        grown.Y1 := Max(MainScreen.Bounds.Y1, grown.Y1 - 40);
+      if outline.X2 >= search.X2 - 1 then
+        grown.X2 := Min(MainScreen.Bounds.X2, grown.X2 + 40);
+      if outline.Y2 >= search.Y2 - 1 then
+        grown.Y2 := Min(MainScreen.Bounds.Y2, grown.Y2 + 40);
+      if (grown.X1 <> search.X1) or (grown.Y1 <> search.Y1) or
+         (grown.X2 <> search.X2) or (grown.Y2 <> search.Y2) then
+      begin
+        search := grown;
+        Continue;
+      end;
+    end;
+    Break;
+  end;
+
+  if Length(pixels) < 4 then
+    Exit(area.Expand(40, MainScreen.Bounds).Contains(Mouse.Position) and
+         MainScreen.IsUpText(uptext, 120));
+
+  if preferSmall then
+    Result := Self.HoverSmallestMatching(pixels, uptext)
+  else if Self.NearestCluster(pixels, near, chosen) then
+    Result := Self.HoverClusterForUptext(chosen, uptext);
+end;
+
+function AIOAgility.FindObstacleOverlay(Obs: TAgilityObstacleDef; search: TBox; mean: TPoint): Boolean;
+begin
+  Result := Self.TryFindPluginOverlay(search, mean, Obs.UpText);
+end;
+
+
+
+function AIOAgility.TryHoverTile(MSRect: TRectangle; uptext: TStringArray): Boolean;
+var
+  i: Int32;
+  pt: TPoint;
+begin
+  Result := False;
+  if not MainScreen.IsVisible(MSRect.Mean()) then
+    Exit;
+
+  for i := 1 to 4 do
+  begin
+    pt := SRL.RandomPoint(MSRect);
+    if MainScreen.GetPlayerBox().Contains(pt) then
+      Continue;
+    Mouse.Move(pt);
+    if WaitUntil(MainScreen.IsUpText(uptext), 35, 500) then
+      Exit(True);
+  end;
+end;
+
+function AIOAgility.FindObstacle(Obs: TAgilityObstacleDef): Boolean;
+var
+  Tile: TPoint;
+  MSRect: TRectangle;
+  search: TBox;
+  mean: TPoint;
+begin
+  Result := False;
+  if not RSClient.IsLoggedIn() then
+    Exit;
+
+  if Bank.IsOpen() then
+    Bank.Close();
+
+  if not Self.PluginMode then
+    Self.DetectAgilityPlugin();
+  Self.DetectMarkMode();
+
+  if Self.ReadPosition().Plane <> Obs.Plane then
+    Exit;
+
+  Self.FaceForObstacle(Obs);
+
+  for Tile in Obs.MMTiles do
+  begin
+    if not Self.TileOnCurrentPlane(Tile) then
+      Continue;
+    MSRect := Map.GetTileMS(Self.ReadPosition().ToPoint(), Tile, AGILITY_OVERLAY_HEIGHT);
+    mean := MSRect.Mean();
+    search := Self.ObstacleSearchBox(Tile);
+    if Self.FindObstacleOverlay(Obs, search, mean) then
+      Exit(True);
+    if (Obs.Plane <> 0) and HasMapTile(Tile) and
+       (Round(Self.ReadPosition().ToPoint().DistanceTo(Tile)) < AGILITY_ON_OBSTACLE_PX) then
+      Continue;
+    if Self.TryHoverTile(MSRect, Obs.UpText) then
+      Exit(True);
+  end;
+
+  if (Obs.AngleMin <> 0) and (Obs.AngleMax <> 0) then
+    Minimap.RotateWithinAngles(Obs.AngleMin, Obs.AngleMax)
+  else
+  begin
+    WriteLn('[CAMERA] no overlay for ', Obs.Name);
+    Antiban.RandomRotate();
+  end;
+end;
+
+function AIOAgility.ObstacleNeedsWalk(Obs: TAgilityObstacleDef): Boolean;
+var
+  dest, me: TPoint;
+  dist, plane: Int32;
+begin
+  Result := False;
+  plane := Self.ReadPosition().Plane;
+  if plane <> Obs.Plane then
+    Exit;
+  dest := Obs.WalkTile;
+  if not HasMapTile(dest) then
+    dest := Self.StartMapTile();
+  if not HasMapTile(dest) then
+    Exit;
+
+  me := Self.ReadPosition().ToPoint();
+  dist := Round(me.DistanceTo(dest));
+  if Self.TileOnScreen(dest) then
+    Exit;
+  Result := dist >= AGILITY_WALK_PX;
+  if Result then
+    WriteLn('[AGILITY] ', Obs.Name, ' is ', dist, 'px away, walking');
+end;
+
+
+function AIOAgility.TileOnScreen(tile: TPoint): Boolean;
+var
+  me: TPoint;
+begin
+  Result := False;
+  if not HasMapTile(tile) or not Self.TileOnCurrentPlane(tile) then
+    Exit;
+  me := Self.ReadPosition().ToPoint();
+  Result := MainScreen.Bounds.Contains(Map.GetTileMS(me, tile, AGILITY_OVERLAY_HEIGHT).Mean()) or
+            MainScreen.Bounds.Contains(Map.GetTileMS(me, tile, 0).Mean());
+end;
+
+function AIOAgility.ObstacleClearlyVisible(Obs: TAgilityObstacleDef): Boolean;
+var
+  mean: TPoint;
+begin
+  Result := False;
+  if not HasMapTile(Obs.WalkTile) or not Self.TileOnCurrentPlane(Obs.WalkTile) then
+    Exit;
+  mean := Map.GetTileMS(Self.ReadPosition().ToPoint(), Obs.WalkTile, AGILITY_OVERLAY_HEIGHT).Mean();
+  Result := MainScreen.Bounds.Expand(-40).Contains(mean);
+end;
+
+procedure AIOAgility.TurnCompass(angle: Double);
+var
+  wrapped: Int32;
+begin
+  wrapped := Round(angle);
+  while wrapped < 0 do
+    wrapped += 360;
+  while wrapped >= 360 do
+    wrapped -= 360;
+  Minimap.SetCompassAngle(wrapped);
+end;
+
+function AIOAgility.AimMM(tile: TPoint): TPoint;
+var
+  me, toward, mm: TPoint;
+  dist, step: Int32;
+  compass: Double;
+begin
+  Result := [0, 0];
+  if not HasMapTile(tile) then
+    Exit;
+  me := Self.ReadPosition().ToPoint();
+  compass := Minimap.GetCompassAngle(False);
+  mm := Map.Walker.PointToMM(me, tile, compass);
+  if Minimap.IsPointOn(mm) then
+    Exit(mm);
+
+  dist := Max(1, Round(me.DistanceTo(tile)));
+  for step := 12 to Min(dist, 96) do
+  begin
+    toward.X := me.X + Round((tile.X - me.X) * step / dist);
+    toward.Y := me.Y + Round((tile.Y - me.Y) * step / dist);
+    mm := Map.Walker.PointToMM(me, toward, compass);
+    if Minimap.IsPointOn(mm) then
+      Result := mm;
+  end;
+end;
+
+procedure AIOAgility.FaceMM(mm: TPoint);
+var
+  zoomTPA: TPointArray;
+  angle: Double;
+begin
+  if (not Minimap.IsPointOn(mm)) or Minimap.PointOnZoomRectangle(mm) then
+    Exit;
+
+  if Minimap.FacePoint(mm, Random(-6, 6)) then
+    Exit;
+
+  zoomTPA := Minimap.GetZoomRectangle().ToTPA().SortFrom(mm);
+  if Length(zoomTPA) < 1 then
+  begin
+    Self.TurnCompass(Minimap.GetCompassAngle(True) + 90);
+    Exit;
+  end;
+
+  angle := Minimap.Center.AngleBetween(zoomTPA[0]) - Minimap.Center.AngleBetween(mm);
+  Minimap.SetCompassAngle(angle + Random(-6, 6));
+end;
+
+procedure AIOAgility.FaceTile(tile: TPoint);
+var
+  i: Int32;
+  mm: TPoint;
+begin
+  if (not HasMapTile(tile)) or Self.TileOnScreen(tile) or (not Self.TileOnCurrentPlane(tile)) then
+    Exit;
+
+  for i := 1 to 3 do
+  begin
+    if Self.TileOnScreen(tile) then
+      Exit;
+
+    mm := Self.AimMM(tile);
+    if not Minimap.IsPointOn(mm) then
+      Self.TurnCompass(Minimap.GetCompassAngle(True) + 90)
+    else
+      Self.FaceMM(mm);
+
+    if Self.TileOnScreen(tile) or WaitUntil(Self.TileOnScreen(tile), 50, 800) then
+      Exit;
+
+    Antiban.RandomRotate();
+  end;
+
+  WriteLn('[CAMERA] tile still off-screen ', ToStr(tile));
+end;
+
+procedure AIOAgility.FaceForObstacle(Obs: TAgilityObstacleDef);
+begin
+  if Self.TileOnScreen(Obs.WalkTile) then
+    Exit;
+  if (Obs.Plane = 0) and Self.StandingOnTile(Obs.WalkTile) then
+    Self.FaceTile(Self.StepFromObstacle(Obs, 3))
+  else
+    Self.FaceTile(Obs.WalkTile);
+end;
+
+
+procedure AIOAgility.ClickWallWhileWalking(walker: PRSWalkerV2; position, destination: TPoint);
+var
+  obs: TAgilityObstacleDef;
+  tile, mean: TPoint;
+begin
+  if (Self.Index < 0) or (Self.Index > High(Self.Obstacles)) then
+    Exit;
+  obs := Self.Obstacles[Self.Index];
+  if position.DistanceTo(destination) > 40 then
+    Exit;
+  tile := obs.WalkTile;
+  if not HasMapTile(tile) then
+    Exit;
+  mean := Map.GetTileMS(position, tile, AGILITY_OVERLAY_HEIGHT).Mean();
+  if not MainScreen.Bounds.Contains(mean) then
+    Exit;
+  if WallApproachTry = 0 then
+    WriteLn('[AGILITY] ', obs.Name, ' on screen, stopping before the click');
+  WallApproachTry := GetTickCount() + 350;
+  walker^.Walking := False;
+end;
+
+
+function AIOAgility.WalkToObstacle(Obs: TAgilityObstacleDef): Boolean;
+var
+  dest: TPoint;
+  adaptive: Boolean;
+  plane: Int32;
+begin
+  Result := False;
+  dest := Obs.WalkTile;
+  if not HasMapTile(dest) then
+    dest := Self.StartMapTile();
+  if not HasMapTile(dest) then
+    Exit;
+
+  plane := Self.ReadPosition().Plane;
+  adaptive := Map.Walker.AdaptiveWalk;
+  Map.Walker.TargetUpText := Obs.UpText;
+  Map.Walker.ActionUpText := Obs.UpText;
+  Map.Walker.RedClicked := False;
+  if plane = 0 then
+  begin
+    dest := Self.StepFromObstacle(Obs, -5);
+    if not HasMapTile(dest) then
+      dest := Obs.WalkTile;
+    WriteLn('[AGILITY] walking to ', Obs.Name);
+    Map.Walker.AdaptiveWalk := False;
+    Map.Walker.ScreenWalk := False;
+    WallApproachTry := 0;
+    Map.Walker.OnWaitMovingEvent := @Self.ClickWallWhileWalking;
+    Result := Map.Walker.WalkBlind(dest, 8);
+    Map.Walker.OnWaitMovingEvent := nil;
+    Self.DropPositionCache();
+    if (not Map.Walker.RedClicked) and (WallApproachTry = 0) and
+       (Self.ReadPosition().ToPoint().DistanceTo(dest) > 40) then
+    begin
+      WriteLn('[AGILITY] still far from ', Obs.Name, ', web walking the rest');
+      Map.Walker.AdaptiveWalk := False;
+      Map.Walker.ScreenWalk := False;
+      WallApproachTry := 0;
+      Map.Walker.OnWaitMovingEvent := @Self.ClickWallWhileWalking;
+      Result := Map.Walker.WebWalk(dest, 16, 0.2);
+      Map.Walker.OnWaitMovingEvent := nil;
+      Self.DropPositionCache();
+    end;
+  end
+  else
+  begin
+    WriteLn('[AGILITY] walking to ', Obs.Name);
+    Result := Map.Walker.WalkBlind(dest, AGILITY_WALK_STOP_PX);
+  end;
+  Map.Walker.AdaptiveWalk := adaptive;
+  Map.Walker.ScreenWalk := False;
+  Map.Walker.TargetUpText := [];
+  Map.Walker.ActionUpText := [];
+  if Map.Walker.RedClicked then
+    Exit(True);
+  WaitUntil(not Minimap.IsPlayerMoving(), 50, 6000);
+  Self.DropPositionCache();
+  if Self.TileOnScreen(Obs.WalkTile) or Self.TileOnScreen(dest) then
+    Result := True;
+end;
+
+
+function AIOAgility.WalkToStart(): Boolean;
+var
+  tile: TPoint;
+begin
+  Result := False;
+  tile := Self.StartMapTile();
+  if not HasMapTile(tile) then
+    Exit;
+
+  try
+    Result := Map.Walker.WebWalk(tile, 12, 0.2);
+  except
+    Exit(False);
+  end;
+
+  if not Result then
+    Exit(False);
+
+  WaitUntil(not Minimap.IsPlayerMoving(), 50, 6000);
+  Self.Index := 0;
+end;
+
+
+function AIOAgility.UptextIsMark(): Boolean;
+var
+  text: String;
+begin
+  text := MainScreen.GetUpText();
+  Result := (Pos('Take', text) > 0) and
+            ((Pos('ark', text) > 0) or (Pos('race', text) > 0));
+end;
+
+function AIOAgility.TryClickMarkOverlay(MSRect: TRectangle): Boolean;
+var
+  TPA: TPointArray;
+  ATPA: T2DPointArray;
+  Finder: TRSObjectFinder;
+  center: TPoint;
+  Square: TBox;
+  spots: TPointArray;
+  InitialMarkCount, i, best, score, bestScore: Int32;
+begin
+  Result := False;
+  Finder.Colors := [AgilityPluginMark()];
+  Finder.ClusterDistance := 4;
+  Finder.MinShortSide := 4;
+  Finder.MinLongSide := 4;
+
+  ATPA := MainScreen.FindObject(Finder, MSRect.Bounds);
+  if Length(ATPA) < 1 then
+    Exit;
+
+  best := 0;
+  bestScore := 9999;
+  for i := 0 to High(ATPA) do
+  begin
+    Square := ATPA[i].Bounds();
+    score := Abs(Int32(Square.Width()) - Int32(Square.Height())) * 3 +
+             Round(Square.Center().DistanceTo(MSRect.Mean()));
+    if score < bestScore then
+    begin
+      bestScore := score;
+      best := i;
+    end;
+  end;
+
+  TPA := ATPA[best];
+  Square := TPA.Bounds();
+  if (Square.Width > 6) and (Square.Height > 6) then
+    Square := Square.Expand(-Max(1, Square.Width div 5), -Max(1, Square.Height div 5));
+  center := Square.Center();
+
+  spots := [center, SRL.RandomPoint(Square), SRL.RandomPoint(Square)];
+  for i := 0 to High(spots) do
+  begin
+    Mouse.Move(spots[i]);
+    Wait(70);
+    if not Self.UptextIsMark() then
+      Continue;
+
+    InitialMarkCount := Inventory.CountItemStack('Mark of grace');
+    Mouse.Click(MOUSE_LEFT);
+    Result := MainScreen.DidRedClick;
+    if not Result then
+      Exit;
+
+    if WaitUntil(Inventory.CountItemStack('Mark of grace') > InitialMarkCount, 50, 4000) then
+    begin
+      Self.MarksGained := Inventory.CountItemStack('Mark of grace') - Self.StartingMarks;
+      WriteLn('[AGILITY] Picked up a Mark of grace');
+      WL.Activity.Restart();
+    end;
+    Self.DetectMarkMode();
+    Exit(True);
+  end;
+end;
+
+function AIOAgility.MarkTileOnMinimap(tile: TPoint): TPoint;
+var
+  me: TPoint;
+begin
+  me := Self.ReadPosition().ToPoint();
+  Result := Map.Walker.PointToMM(me, tile, Minimap.GetCompassAngle(False));
+end;
+
+function AIOAgility.TryTakeRoofMark(tile: TPoint): Boolean;
+var
+  dots: TPointArray;
+  expect, dot: TPoint;
+  i, best, d, bestD, attempt: Int32;
+  MSRect: TRectangle;
+  known: Boolean;
+begin
+  Result := False;
+  known := False;
+  for attempt := 1 to 3 do
+  begin
+    if Minimap.IsPlayerMoving() or (attempt > 1) then
+    begin
+      WaitUntil(not Minimap.IsPlayerMoving(), 50, 2500);
+      Wait(200);
+    end;
+
+    Self.DropPositionCache();
+    expect := Self.MarkTileOnMinimap(tile);
+    dots := Minimap.GetDots(ERSMinimapDot.ITEM);
+    best := -1;
+    bestD := 9999;
+    for i := 0 to High(dots) do
+    begin
+      d := Round(dots[i].DistanceTo(expect));
+      if d < bestD then
+      begin
+        bestD := d;
+        best := i;
+      end;
+    end;
+
+    if (best < 0) or (bestD > 24) then
+    begin
+      if known then
+        Continue;
+      Exit;
+    end;
+
+    if not known then
+    begin
+      known := True;
+      if Minimap.IsPlayerMoving() then
+      begin
+        WaitUntil(not Minimap.IsPlayerMoving(), 50, 2500);
+        Wait(200);
+        Self.DropPositionCache();
+      end;
+    end;
+
+    dot := dots[best];
+    if not Minimap.PointOnZoomRectangle(dot) then
+      Self.FaceTile(tile);
+
+    if Self.TileOnCurrentPlane(tile) then
+      MSRect := Minimap.PointToMSRect(dot, 4, 4).Expand(48)
+    else
+      MSRect := Minimap.PointToMSRect(dot, 1, 1);
+    if Self.TryClickMarkOverlay(MSRect) then
+      Exit(True);
+  end;
+end;
+
+function AIOAgility.CheckForMarks(finishedIdx: Int32): Boolean;
+var
+  tile: TPoint;
+  markPlane: Int32;
+begin
+  Result := False;
+  if not Self.CurrentCourse().HasMarks then
+    Exit;
+  if not RSClient.IsLoggedIn() then
+    Exit;
+  if (finishedIdx < 0) or (finishedIdx > High(Self.Obstacles)) then
+    Exit;
+  if Length(Self.Obstacles[finishedIdx].MarkTiles) < 1 then
+    Exit;
+
+  Self.DetectAgilityPlugin();
+  Self.DetectMarkMode();
+  if not Self.MarkMode then
+    Exit;
+
+  if Length(Minimap.GetDots(ERSMinimapDot.ITEM)) < 1 then
+    Exit;
+
+  if finishedIdx < High(Self.Obstacles) then
+    markPlane := Self.Obstacles[finishedIdx + 1].Plane
+  else
+    markPlane := 0;
+  if Self.ReadPosition().Plane <> markPlane then
+    Exit;
+
+  for tile in Self.Obstacles[finishedIdx].MarkTiles do
+    if Self.TryTakeRoofMark(tile) then
+      Exit(True);
+end;
+
+function AIOAgility.ReadObstacleClick(time: UInt32 = 250): ERSClickType;
+var
+  area: TBox;
+  t: UInt64;
+begin
+  area := Box(Mouse.Position(), 10, 10);
+  area.LimitTo(MainScreen.Bounds);
+  t := GetTickCount() + UInt64(time);
+  Result := ERSClickType.NONE;
+  repeat
+    Result := MainScreen.FindClick(area);
+    if Result <> ERSClickType.NONE then
+      Exit;
+    Wait(20);
+  until GetTickCount() >= t;
+end;
+
+function AIOAgility.PosDebug(): String;
+var
+  pos: TRSPosition;
+  me: TPoint;
+begin
+  pos := Self.ReadPosition();
+  me := pos.ToPoint();
+  Result := 'plane=' + ToStr(pos.Plane) + ' bashmap=' + ToStr(me.X) + ',' + ToStr(me.Y);
+end;
+
+function AIOAgility.ReadConfirmedXP(out xp: Int64): Boolean;
+var
+  first: Int64;
+begin
+  first := Self.SafeReadXPBar();
+  Wait(35);
+  xp := Self.SafeReadXPBar();
+  Result := (xp > 0) and (xp = first);
+  if not Result then
+    xp := 0;
+end;
+
+procedure AIOAgility.RememberXP(xp: Int64; {$H-}why: String);
+begin
+  if (xp <= 0) or (xp <= Self.PrevXP) then
+    Exit;
+  Self.PrevXP := xp;
+  WL.Activity.Restart();
+end;
+
+function AIOAgility.LatchPendingXP(why: String): Boolean;
+var
+  xp: Int64;
+begin
+  Result := False;
+  if not Self.ReadConfirmedXP(xp) then
+    Exit;
+  if (xp <= Self.PrevXP) or ((xp - Self.PrevXP) > AGILITY_XP_MAX_DELTA) then
+    Exit;
+  Self.RememberXP(xp, why);
+  Result := True;
+end;
+
+function AIOAgility.ObstacleFell(idx: Int32): Boolean;
+var
+  plane: Int32;
+begin
+  Result := False;
+  if (idx < 0) or (idx > High(Self.Obstacles)) then
+    Exit;
+  if idx >= High(Self.Obstacles) then
+    Exit;
+  Self.DropPositionCache();
+  plane := Self.ReadPosition().Plane;
+  if (idx < High(Self.Obstacles)) and (plane = Self.Obstacles[idx + 1].Plane) then
+    Exit;
+  Result := (plane = 0) and (Self.Obstacles[idx].Plane <> 0);
+end;
+
+function AIOAgility.ObstacleInTransit(idx: Int32): Boolean;
+var
+  plane: Int32;
+begin
+  Result := False;
+  if (idx < 0) or (idx > High(Self.Obstacles)) then
+    Exit;
+  Self.DropPositionCache();
+  plane := Self.ReadPosition().Plane;
+  if plane = Self.Obstacles[idx].Plane then
+    Exit;
+  if Self.ObstacleFell(idx) then
+    Exit;
+  Result := True;
+end;
+
+procedure AIOAgility.WaitUntilStopped(maxMs: Int32);
+begin
+  WaitUntil(not Minimap.IsPlayerMoving(), 80, Max(0, maxMs));
+end;
+
+procedure AIOAgility.NoteMovement();
+begin
+  if Minimap.IsPlayerMoving() then
+    Self.StillSince := 0
+  else if Self.StillSince = 0 then
+    Self.StillSince := GetTickCount();
+end;
+
+function AIOAgility.WaitForPlane(plane, maxMs: Int32): Boolean;
+var
+  started: UInt64;
+begin
+  started := GetTickCount();
+  while GetTickCount() - started < UInt64(Max(0, maxMs)) do
+  begin
+    Self.DropPositionCache();
+    if Self.ReadPosition().Plane = plane then
+      Exit(True);
+    Wait(200);
+  end;
+  Self.DropPositionCache();
+  WriteLn('[AGILITY] plane ', plane, ' not reached in ', maxMs, 'ms');
+  Result := False;
+end;
+
+
+function AIOAgility.WaitForObstacleXP(maxTime: Int32; why: String; absorbExisting: Boolean; passedIdx: Int32 = -1): Boolean;
+var
+  t, started, hardStop, nextLook, planeLook: UInt64;
+  baseline, xp, raw: Int64;
+  elapsed: UInt64;
+  holding, xpSeen, needPlane: Boolean;
+  nextPlane, settle, distHere: Int32;
+  me: TPoint;
+begin
+  holding := False;
+  xpSeen := False;
+  needPlane := False;
+  nextPlane := 0;
+  Result := False;
+  Self.StillSince := 0;
+  started := GetTickCount();
+  nextLook := started + 2000;
+  planeLook := 0;
+  if (passedIdx >= 0) and (passedIdx < High(Self.Obstacles)) then
+  begin
+    nextPlane := Self.Obstacles[passedIdx + 1].Plane;
+    needPlane := nextPlane <> Self.Obstacles[passedIdx].Plane;
+  end
+  else if passedIdx = High(Self.Obstacles) then
+    needPlane := Self.Obstacles[passedIdx].Plane <> 0;
+  baseline := Self.PrevXP;
+
+  if absorbExisting and Self.ReadConfirmedXP(xp) and (xp > baseline) then
+  begin
+    if (xp - baseline) <= AGILITY_XP_MAX_DELTA then
+    begin
+      Self.RememberXP(xp, why + ' (previous obstacle)');
+      baseline := Self.PrevXP;
+    end;
+  end;
+
+  t := GetTickCount() + UInt64(Max(0, maxTime));
+  hardStop := t + 6000;
+  while GetTickCount() < hardStop do
+  begin
+    raw := Self.SafeReadXPBar();
+    if (not xpSeen) and (raw > baseline) and (raw > 0) then
+    begin
+      if not Self.ReadConfirmedXP(xp) then
+      else if (xp > baseline) and ((xp - baseline) <= AGILITY_XP_MAX_DELTA) then
+      begin
+        elapsed := GetTickCount() - started;
+        if absorbExisting and (elapsed < AGILITY_XP_GRACE_MS) then
+        begin
+          Self.RememberXP(xp, why + ' (previous obstacle)');
+          baseline := Self.PrevXP;
+        end
+        else
+        begin
+          Self.RememberXP(xp, why);
+          xpSeen := True;
+          if needPlane and Self.ReachedNextObstacle(passedIdx) then
+            Exit(True);
+        end;
+      end;
+    end;
+
+    Self.NoteMovement();
+    if xpSeen and (Self.StillSince <> 0) and
+       (GetTickCount() - Self.StillSince >= 200) then
+    begin
+      if not needPlane then
+      begin
+        settle := AGILITY_CLICK_SETTLE_MS;
+        if (passedIdx >= 0) and (passedIdx <= High(Self.Obstacles)) and
+           (GetTickCount() - Self.StillSince < AGILITY_CLICK_SETTLE_MS) then
+        begin
+          me := Self.PlayerWorld();
+          distHere := Abs(me.X - Self.Obstacles[passedIdx].World.X) +
+                      Abs(me.Y - Self.Obstacles[passedIdx].World.Y);
+          if distHere > 4 then
+            settle := 200;
+        end;
+        if GetTickCount() - Self.StillSince >= settle then
+          Exit(True);
+      end
+      else if (GetTickCount() - Self.StillSince >= AGILITY_CLICK_SETTLE_MS) and
+              (GetTickCount() >= planeLook) then
+      begin
+        planeLook := GetTickCount() + 400;
+        Self.DropPositionCache();
+        if Self.ReachedNextObstacle(passedIdx) then
+          Exit(True);
+      end;
+    end;
+
+    if (not xpSeen) and (passedIdx >= 0) and (passedIdx < High(Self.Obstacles)) and
+       (GetTickCount() >= nextLook) then
+    begin
+      nextLook := GetTickCount() + 2000;
+      if (Self.StillSince <> 0) and
+         (GetTickCount() - Self.StillSince >= AGILITY_CLICK_SETTLE_MS) and
+         Self.CloserToNextObstacle(Self.Obstacles[passedIdx]) then
+      begin
+        me := Self.PlayerWorld();
+        distHere := Abs(me.X - Self.Obstacles[passedIdx + 1].World.X) +
+                    Abs(me.Y - Self.Obstacles[passedIdx + 1].World.Y);
+        if distHere <= 4 then
+        begin
+          Self.LatchPendingXP(why);
+          WriteLn('[AGILITY] ', why, ' already at ', Self.Obstacles[passedIdx + 1].Name);
+          Exit(True);
+        end;
+      end;
+    end;
+
+    if GetTickCount() >= t then
+    begin
+      if (not xpSeen) and (passedIdx >= 0) and (passedIdx < High(Self.Obstacles)) and
+         Self.PassedTowardNext(Self.Obstacles[passedIdx]) then
+      begin
+        WriteLn('[AGILITY] ', why, ' already on the way to ', Self.Obstacles[passedIdx + 1].Name);
+        Self.LatchPendingXP(why);
+        Exit(True);
+      end;
+      if xpSeen and (not needPlane) and (not Minimap.IsPlayerMoving()) then
+        Exit(True);
+      if Self.ObstacleFell(passedIdx) and (not xpSeen) then
+        Break;
+      if (not xpSeen) and (passedIdx >= 0) and (passedIdx <= High(Self.Obstacles)) then
+      begin
+        me := Self.PlayerWorld();
+        distHere := Abs(me.X - Self.Obstacles[passedIdx].World.X) +
+                    Abs(me.Y - Self.Obstacles[passedIdx].World.Y);
+        if distHere <= 6 then
+          holding := True;
+      end;
+      if holding or Self.ObstacleInTransit(passedIdx) or (xpSeen and needPlane) then
+      begin
+        holding := True;
+        if GetTickCount() + 200 >= hardStop then
+          Break;
+        t := GetTickCount() + 250;
+      end
+      else
+        Break;
+    end;
+    Wait(50);
+  end;
+
+  if xpSeen then
+    Exit(True);
+
+  WriteLn('[AGILITY] ', why, ' no new XP in ', GetTickCount() - started, 'ms');
+end;
+
+
+function AIOAgility.ReachedNextObstacle(idx: Int32): Boolean;
+var
+  nextIdx, distNext: Int32;
+  me: TPoint;
+  pos: TRSPosition;
+begin
+  Result := False;
+  if (idx < 0) or (idx > High(Self.Obstacles)) then
+    Exit;
+  pos := Self.ReadPosition();
+  if idx >= High(Self.Obstacles) then
+    Exit(pos.Plane = 0);
+  nextIdx := idx + 1;
+  if pos.Plane <> Self.Obstacles[nextIdx].Plane then
+    Exit;
+  if Self.Obstacles[idx].Plane = 0 then
+    Exit(True);
+
+  me := Self.PlayerWorld();
+  distNext := Abs(me.X - Self.Obstacles[nextIdx].World.X) +
+              Abs(me.Y - Self.Obstacles[nextIdx].World.Y);
+  Result := (distNext <= 10) or Self.CloserToNextObstacle(Self.Obstacles[idx]);
+end;
+
+function AIOAgility.CloserToNextObstacle(Obs: TAgilityObstacleDef): Boolean;
+var
+  me: TPoint;
+  nextIdx, distHere, distNext: Int32;
+begin
+  Result := False;
+  nextIdx := Obs.Index + 1;
+  if (Obs.Index < 0) or (nextIdx > High(Self.Obstacles)) then
+    Exit;
+  if Self.Obstacles[nextIdx].Plane <> Self.ReadPosition().Plane then
+    Exit;
+  me := Self.PlayerWorld();
+  distHere := Abs(me.X - Obs.World.X) + Abs(me.Y - Obs.World.Y);
+  distNext := Abs(me.X - Self.Obstacles[nextIdx].World.X) + Abs(me.Y - Self.Obstacles[nextIdx].World.Y);
+  Result := (distHere > 8) and (distNext + 2 < distHere);
+end;
+
+
+function AIOAgility.PassedTowardNext(Obs: TAgilityObstacleDef): Boolean;
+var
+  me: TPoint;
+  nextIdx, dx, dy, along, distHere: Int32;
+  len2, span: Double;
+begin
+  Result := False;
+  nextIdx := Obs.Index + 1;
+  if (Obs.Index < 0) or (nextIdx > High(Self.Obstacles)) then
+    Exit;
+  if Self.ReadPosition().Plane <> Obs.Plane then
+    Exit;
+  if Self.Obstacles[nextIdx].Plane <> Obs.Plane then
+    Exit;
+  me := Self.PlayerWorld();
+  dx := Self.Obstacles[nextIdx].World.X - Obs.World.X;
+  dy := Self.Obstacles[nextIdx].World.Y - Obs.World.Y;
+  len2 := dx * dx + dy * dy;
+  if len2 < 1 then
+    Exit;
+  along := (me.X - Obs.World.X) * dx + (me.Y - Obs.World.Y) * dy;
+  distHere := Abs(me.X - Obs.World.X) + Abs(me.Y - Obs.World.Y);
+  if (along / len2 >= 0.2) and (distHere >= 6) then
+    Exit(True);
+  span := Sqrt(len2);
+  Result := (span <= 8) and ((along / span) >= 2);
+end;
+
+
+function AIOAgility.NearestCourseObstacle(out dist: Int32): Int32;
+var
+  i, d, bestDist: Int32;
+  me: TPoint;
+  pos: TRSPosition;
+begin
+  Result := -1;
+  dist := 9999;
+  if Length(Self.Obstacles) = 0 then
+    Exit;
+  pos := Self.ReadPosition();
+  me := Self.PlayerWorld();
+  bestDist := 9999;
+  for i := 0 to High(Self.Obstacles) do
+  begin
+    if Self.Obstacles[i].Plane <> pos.Plane then
+      Continue;
+    d := Abs(me.X - Self.Obstacles[i].World.X) + Abs(me.Y - Self.Obstacles[i].World.Y);
+    if d < bestDist then
+    begin
+      bestDist := d;
+      Result := i;
+    end;
+  end;
+  dist := bestDist;
+end;
+
+
+function AIOAgility.ObstacleFinished(Obs: TAgilityObstacleDef): Boolean;
+var
+  plane, nextPlane: Int32;
+begin
+  plane := Self.ReadPosition().Plane;
+  if plane = Obs.Plane then
+    Exit(False);
+
+  if (Obs.Plane = 0) and (plane > 0) then
+    Exit(True);
+
+  if (Obs.Index >= 0) and (Obs.Index < High(Self.Obstacles)) then
+  begin
+    nextPlane := Self.Obstacles[Obs.Index + 1].Plane;
+    Exit((plane = nextPlane) and (nextPlane <> Obs.Plane));
+  end;
+
+  Result := plane = 0;
+end;
+
+function AIOAgility.CompleteCurrentObstacle(Obs: TAgilityObstacleDef; xpReady: Boolean = False): ResultEx;
+var
+  landed: Boolean;
+begin
+  landed := (Obs.Index = High(Self.Obstacles)) and (Self.ReadPosition().Plane = 0);
+  if not xpReady then
+  begin
+    if not Self.WaitForObstacleXP(Obs.MaxTime, Obs.Name, False, Obs.Index) then
+    begin
+      if not landed then
+      begin
+        WriteLn('[AGILITY] ', Obs.Name, ' not confirmed - no XP');
+        Exit(NOTFOUND);
+      end;
+    end;
+  end;
+  Self.Attempts := 0;
+  Self.ChainGreenObstacles();
+  Result := COMPLETE;
+end;
+
+function AIOAgility.TryClickGreenObstacle(Obs: TAgilityObstacleDef): ERSClickType;
+var
+  tile, mean: TPoint;
+  pos: TRSPosition;
+  search: TBox;
+  clickTry: Int32;
+begin
+  Result := ERSClickType.NONE;
+  if not RSClient.IsLoggedIn() then
+    Exit;
+  if Bank.IsOpen() then
+    Bank.Close();
+
+  tile := Obs.WalkTile;
+  if not HasMapTile(tile) then
+  begin
+    if Length(Obs.MMTiles) < 1 then
+      Exit;
+    tile := Obs.MMTiles[0];
+  end;
+  pos := Self.ReadPosition();
+  if (Obs.Plane <> pos.Plane) or (not Self.TileOnCurrentPlane(tile)) then
+    Exit;
+
+  mean := Map.GetTileMS(pos.ToPoint(), tile, AGILITY_OVERLAY_HEIGHT).Mean();
+  if not Self.TileOnScreen(tile) then
+    Exit;
+
+  search := Self.ObstacleSearchBox(tile);
+  if not Self.FindObstacleOverlay(Obs, search, mean) then
+    Exit;
+
+  for clickTry := 1 to AGILITY_CLICK_RETRIES do
+  begin
+    if clickTry > 1 then
+    begin
+      Mouse.Move(SRL.RandomPoint(PluginHoverBox));
+      if not WaitUntil(MainScreen.IsUpText(Obs.UpText), 40, 400) then
+        Continue;
+    end;
+
+    Mouse.Click(MOUSE_LEFT);
+    Result := Self.ReadObstacleClick();
+    if Result <> ERSClickType.YELLOW then
+      Exit;
+
+    WriteLn('[AGILITY] yellow misclick on ', Obs.Name, ' - retrying');
+  end;
+end;
+
+
+procedure AIOAgility.OfferCourseBreak();
+begin
+  Self.DoAntiban(True, True);
+end;
+
+
+procedure AIOAgility.ChainGreenObstacles();
+var
+  nextIdx, plane: Int32;
+  nextObs: TAgilityObstacleDef;
+begin
+  while True do
+  begin
+    if Self.Index >= High(Self.Obstacles) then
+      Exit;
+
+    Self.CheckForMarks(Self.Index);
+    nextIdx := Self.Index + 1;
+    if nextIdx > High(Self.Obstacles) then
+      Exit;
+    nextObs := Self.Obstacles[nextIdx];
+    plane := Self.ReadPosition().Plane;
+    if (nextObs.Plane <> plane) and (not Self.WaitForPlane(nextObs.Plane, 4000)) then
+      Exit;
+
+    if Self.TryClickGreenObstacle(nextObs) <> ERSClickType.RED then
+      Exit;
+    if not Self.WaitForObstacleXP(nextObs.MaxTime, nextObs.Name, True, nextIdx) then
+    begin
+      WriteLn('[AGILITY] clicked ', nextObs.Name, ' but no new XP');
+      Exit;
+    end;
+
+    Self.Index := nextIdx;
+    Self.Attempts := 0;
+    Self.OfferCourseBreak();
+  end;
+end;
+
+
+function AIOAgility.AfterObstacleClick(Obs: TAgilityObstacleDef): ResultEx;
+begin
+  if Self.WaitForObstacleXP(Obs.MaxTime, Obs.Name, True, Obs.Index) then
+  begin
+    Self.ChainGreenObstacles();
+    Self.Attempts := 0;
+    Self.NoXPStepped := False;
+    Exit(COMPLETE);
+  end;
+  if (Obs.Plane <> 0) and (Self.ReadPosition().Plane = 0) and
+     ((Obs.Index >= High(Self.Obstacles)) or (Self.Obstacles[Obs.Index + 1].Plane <> 0)) then
+  begin
+    WriteLn('[AGILITY] Failed ', Obs.Name, ' - back on the ground');
+    Exit(FAILED);
+  end;
+  WriteLn('[AGILITY] No XP after ', Obs.Name);
+  if (not Self.NoXPStepped) and (Obs.Index < High(Self.Obstacles)) then
+  begin
+    Self.NoXPStepped := True;
+    Self.Index := Obs.Index + 1;
+    WriteLn('[AGILITY] ', Obs.Name, ' gave no XP, trying ', Self.Obstacles[Self.Index].Name);
+  end;
+  Result := NOTFOUND;
+end;
+
+
+function AIOAgility.HandleObstacle(Obs: TAgilityObstacleDef): ResultEx;
+var
+  i, clickTry, plane: Int32;
+  needWalk, found: Boolean;
+  click: ERSClickType;
+begin
+  Result := NOTFOUND;
+  if not RSClient.IsLoggedIn() then
+    Exit;
+
+  if Obs.WalkTile.X < 2 then
+    Obs.WalkTile := Obs.MMTiles[0];
+
+  plane := Self.ReadPosition().Plane;
+  if plane <> Obs.Plane then
+  begin
+    if Self.ObstacleFinished(Obs) then
+      Exit(Self.CompleteCurrentObstacle(Obs));
+    WriteLn('[AGILITY] ', Obs.Name, ' still moving - waiting for its XP before the next obstacle');
+    if Self.WaitForObstacleXP(Obs.MaxTime, Obs.Name, False, Obs.Index) then
+      Exit(Self.CompleteCurrentObstacle(Obs, True));
+    if Self.ObstacleFinished(Obs) then
+    begin
+      if (Obs.Index = High(Self.Obstacles)) and (Self.ReadPosition().Plane = 0) then
+        Exit(Self.CompleteCurrentObstacle(Obs, True));
+      Exit(Self.CompleteCurrentObstacle(Obs));
+    end;
+    WriteLn('[AGILITY] ', Obs.Name, ' unfinished after plane wait');
+    Exit(NOTFOUND);
+  end;
+
+  if Self.CloserToNextObstacle(Obs) or Self.PassedTowardNext(Obs) then
+  begin
+    Self.LatchPendingXP(Obs.Name);
+    WriteLn('[AGILITY] ', Obs.Name, ' already passed, moving to ', Self.Obstacles[Obs.Index + 1].Name);
+    Self.Attempts := 0;
+    Exit(COMPLETE);
+  end;
+
+  Self.CheckForMarks(Obs.Index - 1);
+
+  needWalk := Self.ObstacleNeedsWalk(Obs);
+  if needWalk then
+  begin
+    if not Self.WalkToObstacle(Obs) then
+    begin
+      WriteLn('[AGILITY] Failed to walk to ', Obs.Name);
+      Exit(NOTFOUND);
+    end;
+    if Map.Walker.RedClicked then
+    begin
+      Map.Walker.RedClicked := False;
+      Exit(Self.AfterObstacleClick(Obs));
+    end;
+    Self.CheckForMarks(Obs.Index - 1);
+  end;
+
+  if Self.ObstacleFinished(Obs) then
+  begin
+    WriteLn('[AGILITY] ', Obs.Name, ' already completed');
+    Exit(Self.CompleteCurrentObstacle(Obs));
+  end;
+
+  Self.FaceForObstacle(Obs);
+
+  click := Self.TryClickGreenObstacle(Obs);
+  if click = ERSClickType.YELLOW then
+  begin
+    WriteLn('[AGILITY] yellow misclick on ', Obs.Name, ' - not waiting for XP');
+    Exit(NOTFOUND);
+  end;
+  if click = ERSClickType.RED then
+    Exit(Self.AfterObstacleClick(Obs));
+
+  found := False;
+  for i := 1 to 3 do
+  begin
+    if Self.ObstacleFinished(Obs) then
+    begin
+      WriteLn('[AGILITY] ', Obs.Name, ' completed during search');
+      Exit(Self.CompleteCurrentObstacle(Obs));
+    end;
+    if Self.ReadPosition().Plane <> Obs.Plane then
+      Break;
+
+    if Self.FindObstacle(Obs) then
+    begin
+      found := True;
+      Break;
+    end;
+
+    if (i >= 2) and (not Self.ObstacleClearlyVisible(Obs)) then
+    begin
+      WriteLn('[AGILITY] ', Obs.Name, ' still not visible after ', i, ' searches, walking closer');
+      if not Self.WalkToObstacle(Obs) then
+      begin
+        WriteLn('[AGILITY] Failed to walk to ', Obs.Name);
+        Exit(NOTFOUND);
+      end;
+      if Map.Walker.RedClicked then
+      begin
+        Map.Walker.RedClicked := False;
+        Exit(Self.AfterObstacleClick(Obs));
+      end;
+      if Self.FindObstacle(Obs) then
+      begin
+        found := True;
+        Break;
+      end;
+    end
+    else if i = 3 then
+    begin
+      if Self.ObstacleNeedsWalk(Obs) then
+      begin
+        if not Self.WalkToObstacle(Obs) then
+        begin
+          WriteLn('[AGILITY] Failed to walk to ', Obs.Name);
+          Exit(NOTFOUND);
+        end;
+        if Map.Walker.RedClicked then
+        begin
+          Map.Walker.RedClicked := False;
+          Exit(Self.AfterObstacleClick(Obs));
+        end;
+      end;
+      found := Self.FindObstacle(Obs);
+    end
+    else if Self.ReadPosition().Plane <> Obs.Plane then
+      Break
+    else if (Obs.AngleMin <> 0) and (Obs.AngleMax <> 0) then
+      Minimap.RotateWithinAngles(Obs.AngleMin, Obs.AngleMax)
+    else if Self.TileOnScreen(Obs.WalkTile) and (Obs.Plane <> 0) then
+      Wait(200)
+    else
+      Self.FaceForObstacle(Obs);
+  end;
+  if not found then
+    Exit(NOTFOUND);
+
+  click := ERSClickType.NONE;
+  for clickTry := 1 to AGILITY_CLICK_RETRIES do
+  begin
+    Mouse.Click(MOUSE_LEFT);
+    click := Self.ReadObstacleClick();
+    if click = ERSClickType.RED then
+      Break;
+    if click <> ERSClickType.YELLOW then
+      Exit(NOTFOUND);
+
+    WriteLn('[AGILITY] yellow misclick on ', Obs.Name, ' - retrying');
+    if (clickTry < AGILITY_CLICK_RETRIES) and (not Self.FindObstacle(Obs)) then
+      Exit(NOTFOUND);
+  end;
+  if click <> ERSClickType.RED then
+    Exit(NOTFOUND);
+
+  Exit(Self.AfterObstacleClick(Obs));
+end;
+
+
+procedure AIOAgility.HandleFailedObstacle();
+begin
+  WriteLn('[AGILITY] Failed to locate obstacle');
+  if (Self.Index >= 0) and (Self.Index <= High(Self.Obstacles)) then
+    WriteLn('[AGILITY] Looking for: ', Self.Obstacles[Self.Index].Name);
+  WriteLn('[AGILITY] Pos: ', Self.PosDebug());
+  Self.TakeScreenshot('FailedObstacle');
+  Self.ClickLogoutUntilOut();
+  TerminateScript('Failed to find agility obstacle');
+end;
+
+
+procedure AIOAgility.RunRooftop();
+var
+  TRes: ResultEx;
+  Obs: TAgilityObstacleDef;
+  newIdx: Int32;
+begin
+  if Length(Self.Obstacles) = 0 then
+  begin
+    TerminateScript('No obstacles loaded for ' + Self.CurrentCourse().Name);
+    Exit;
+  end;
+
+  if (Self.Index < 0) or (Self.Index > High(Self.Obstacles)) then
+    Self.Index := Self.DetectIndexFromPosition()
+  else if Self.ReadPosition().Plane <> Self.Obstacles[Self.Index].Plane then
+  begin
+    if not ((Self.Index > 0) and
+            (Self.ReadPosition().Plane = Self.Obstacles[Self.Index - 1].Plane) and
+            Self.WaitForPlane(Self.Obstacles[Self.Index].Plane, 2000)) then
+    begin
+      newIdx := Self.DetectIndexFromPosition();
+      if (newIdx < Self.Index) then
+      begin
+        WriteLn('[AGILITY] resync ', Self.Obstacles[Self.Index].Name, ' -> ', Self.Obstacles[newIdx].Name);
+        Self.Index := newIdx;
+        Self.Attempts := 0;
+      end;
+    end;
+  end;
+
+  Obs := Self.Obstacles[Self.Index];
+  TRes := Self.HandleObstacle(Obs);
+
+  case TRes of
+    COMPLETE:
+      begin
+        Self.Attempts := 0;
+        Self.NoXPStepped := False;
+        Inc(Self.Index);
+        if Self.Index > High(Self.Obstacles) then
+        begin
+          Inc(Self.LapCount);
+          Self.Index := 0;
+          WriteLn('[AGILITY] Lap ', Self.LapCount, ' complete');
+          if RandomEvents.Enabled and RandomEvents.Handle() then
+            WriteLn('[AGILITY] handled a random event');
+          Self.OfferCourseBreak();
+          Self.DropPositionCache();
+        end
+        else
+          Self.OfferCourseBreak();
+      end;
+    FAILED:
+      Self.WalkToStart();
+    NOTFOUND:
+      begin
+        Inc(Self.Attempts);
+        WriteLn('[AGILITY] Still on ', Self.Obstacles[Self.Index].Name, ' (attempt ', Self.Attempts, ')');
+        if Self.Attempts >= 3 then
+          Self.HandleFailedObstacle();
+      end;
+  end;
+end;
+
+procedure AIOAgility.EnsureAttackOptions();
+begin
+  if Options.GetNPCAttackOption() <> ERSAttackOption.HIDDEN then
+  begin
+    if Options.SetNPCAttackOption(ERSAttackOption.HIDDEN) then
+      WriteLn('[AGILITY] NPC attack option set to hidden')
+    else
+      WriteLn('[AGILITY] could not hide NPC attack option');
+  end;
+end;
+
+
+procedure AIOAgility.Init(MaxActions: UInt32; MaxTime: UInt64); override;
+var
+  loc: TAgilityCourseDef;
+begin
+  if Length(AGILITY_CATALOG) = 0 then
+    InitAgilityCatalog();
+
+  StopAtLevel.SetAvailableSkills(AGILITY_STOP_AT_LEVEL_SKILLS);
+  inherited;
+
+  ClearDebug();
+
+  if RSClient.Mode <> ERSClientMode.FIXED then
+    TerminateScript('FIXED CLASSIC mode is required');
+
+  if Length(Login.GetPlayer().Worlds) = 0 then
+    TerminateScript('Worlds list is empty');
+
+  Self.WorldList := Login.GetPlayer.Worlds;
+  if Length(Self.WorldList) = 0 then
+    TerminateScript('Worlds list is empty');
+
+  loc := Self.CurrentCourse();
+  WorldHopper.SetupTimedHopping(ENABLEWORLDHOPPING, WORLDHOPINTERVAL, WORLDHOPVARIATION);
+
+  if not RSClient.IsLoggedIn() then
+    LoginPlayerHere();
+
+  Self.EnsureAttackOptions();
+
+  Self.LastSystemUpdateCheck := 0;
+  Self.PluginMode := False;
+  Self.MarkMode := False;
+  Self.Attempts := 0;
+  Self.LapCount := 0;
+  Self.Index := 0;
+
+  Antiban.Setup();
+  Self.ActiveTimer.Start();
+  Self.RunningTime.Start();
+  Self.ActivityTimer.Start();
+
+  Self.SetupCombinedMap();
+  Self.ApplyWalkerSettings();
+  Self.SetupObstacles();
+
+  RSW.EnableRunAtEnergy := 85;
+  Mouse.Speed := SRL.NormalRange(18, 24);
+
+  XPBar.Setup();
+  Self.StartXP := Self.SafeReadXPBar();
+  Self.PrevXP := Self.StartXP;
+  Self.StartingMarks := Inventory.CountItemStack('Mark of grace');
+  if Self.StartingMarks < 0 then
+    Self.StartingMarks := 0;
+  Self.MarksGained := 0;
+  Self.PetReceived := False;
+
+  Self.DetectAgilityPlugin();
+  Self.Index := Self.DetectIndexFromPosition();
+  WriteLn('[AGILITY] ', loc.Name, ' starting at obstacle ', Self.Index, ' (need Agility ', loc.LevelReq, '+)');
+
+  BASHEnsureRunZoom(0, 15);
+end;
+
+
+function AIOAgility.ClickLogoutUntilOut(): Boolean;
+var
+  started, left: UInt64;
+  tryTime, waitMs: Int32;
+begin
+  Result := False;
+  if not RSClient.IsLoggedIn() then
+    Exit(True);
+  started := GetTickCount();
+  while RSClient.IsLoggedIn() do
+  begin
+    if GetTickCount() - started >= 15000 then
+      Break;
+    left := 15000 - (GetTickCount() - started);
+    tryTime := 2500;
+    if left < 2500 then
+      tryTime := left;
+    WriteLn('[AGILITY] clicking logout');
+    Logout.ClickLogout(1, tryTime);
+    if not RSClient.IsLoggedIn() then
+      Exit(True);
+    if GetTickCount() - started >= 15000 then
+      Break;
+    left := 15000 - (GetTickCount() - started);
+    waitMs := 2000 + Random(3001);
+    if left < UInt64(waitMs) then
+      waitMs := left;
+    if waitMs < 400 then
+      Break;
+    WriteLn('[AGILITY] still logged in, waiting ', waitMs, 'ms to click logout again');
+    Wait(waitMs);
+  end;
+  if not RSClient.IsLoggedIn() then
+    Exit(True);
+  WriteLn('[AGILITY] could not logout in combat');
+  TerminateScript('Could not logout in combat');
+end;
+
+procedure AIOAgility.CheckItemStops();
+var
+  gained: Int32;
+begin
+  gained := Inventory.CountItemStack('Mark of grace');
+  if gained < 0 then
+    gained := 0;
+  gained := gained - Self.StartingMarks;
+  if gained > Self.MarksGained then
+    Self.MarksGained := gained;
+end;
+
+
+function AIOAgility.GetState(): EState;
+begin
+  if WL.Activity.IsFinished() then
+    TerminateScript('No activity detected in 5 minutes');
+
+  if InRange(Chat.GetScrollPosition, 1, 99) then
+    Chat.SetScrollPosition(100);
+
+  if Chat.LeveledUp() then
+    Exit(STATE_LEVEL_UP);
+
+  Result := STATE_RUN_COURSE;
+end;
+
+procedure AIOAgility.Run(MaxActions: UInt32; MaxTime: UInt64);
+begin
+  Self.Init(MaxActions, MaxTime);
+
+  repeat
+    LoginIfNot();
+    Self.CheckItemStops();
+    Self.CheckSystemUpdate();
+    Self.HandlePet();
+    Self.Report();
+
+    Self.CurrentState := Self.GetState();
+    case Self.CurrentState of
+      STATE_LEVEL_UP: Chat.HandleLevelUp();
+      STATE_RUN_COURSE: Self.RunRooftop();
+    end;
+
+    Self.TotalActions := Self.LapCount;
+  until Self.ShouldStop();
+
+  Self.LastReportTime := 0;
+  Self.Report();
+end;
+
+begin
+  InitAgilityCatalog();
+  SettingsHandler.CheckBashProfileRequired();
+  {$IFDEF SCRIPT_GUI}
+  Sync(@Config.Run);
+  {$ENDIF}
+  Script.Run(WLSettings.MaxActions, WLSettings.MaxTime);
+end.

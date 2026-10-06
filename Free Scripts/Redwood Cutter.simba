@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'd4b8e2a7-9c31-4f6b-8a15-7e2c9d04f6b8'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '2'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '3'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -53,6 +53,7 @@ type
     Ladder: TRSObjectV2;
     PluginBox: TBox;
     HasPluginBox: Boolean;
+    PluginBoxVisible: Boolean;
     ChopOCRState: Int32;
     HasSeenChopOverlay: Boolean;
     LastTreeClickTime: UInt64;
@@ -98,12 +99,27 @@ const
   RW_IDLE_MS = 28000;
 
   RW_LADDER_TILE: TPoint = [2202, 36498];
+  RW_LADDER_DOWN_TILE: TPoint = [15260, 36498];
+  RW_LADDER_STAND_TILE: TPoint = [15256, 36498];
   RW_CLIMB_MS = 15000;
   RW_LADDER_UPTEXT: TStringArray = ['Climb-up Rope ladder'];
   RW_LADDER_DOWNTEXT: TStringArray = ['Climb-down Rope ladder', 'Climb-down'];
   RW_CUT_UPTEXT: TStringArray = ['Cut redwood tree', 'Cut Redwood tree', 'redwood tree'];
+  RW_TILE_TRIES = 3;
+  RW_TILE_PASSES = 3;
+  RW_TREE_TILES: TPointArray = [
+    [15240, 36510],
+    [15244, 36510],
+    [15252, 36498],
+    [15252, 36502],
+    [15240, 36490],
+    [15244, 36490],
+    [15232, 36498],
+    [15232, 36502]
+  ];
 
-  RW_BANK_TILE: TPoint = [2272, 36526];
+  RW_BANK_TILE: TPoint = [2272, 36530];
+  RW_BANK_AREA: TBox = [2260, 36506, 2280, 36522];
   RW_BANK_SIZE: Vector3 = [1, 1, 2];
   RW_BANK_UPTEXT: TStringArray = ['ank', 'ches'];
 
@@ -251,7 +267,7 @@ end;
 
 function RedwoodBankFinder(): TCTS2Color;
 begin
-  Result := CTS2(2578283, 10, 0.05, 0.78);
+  Result := CTS2(2052967, 8, 0.04, 0.41);
 end;
 
 function UpTextContains(upText: String; needles: TStringArray): Boolean;
@@ -344,6 +360,7 @@ var
 begin
   Result := False;
   Self.HasPluginBox := False;
+  Self.PluginBoxVisible := False;
   Self.PluginBox := [0, 0, -1, -1];
 
   ReadChopOverlay(chopAt, notAt, locateChop, locateNot);
@@ -365,6 +382,7 @@ begin
     if PluginBoxSizeOK(Self.PluginBox) then
     begin
       Self.HasPluginBox := True;
+      Self.PluginBoxVisible := True;
       Exit(True);
     end;
   end;
@@ -564,9 +582,73 @@ begin
   TerminateScript(MSG);
 end;
 
-function RedwoodCutter.OnRedwoodPlatform(): Boolean;
+function RedwoodCutter.ClickRedwoodTile(tile: TPoint): Boolean;
+var
+  rect: TRectangle;
+  b: TBox;
+  upText: String;
+  attempt: Int32;
 begin
-  Result := Self.OnUpperFloor() or Self.HasRedwoodIcons();
+  Result := False;
+  for attempt := 1 to 2 do
+  begin
+    rect := Map.GetTileMS(tile, 2);
+    b := rect.Bounds();
+    if not MainScreen.Bounds.Contains(b.Center()) then
+    begin
+      Map.Walker.MakePointVisible(tile);
+      rect := Map.GetTileMS(tile, 2);
+      b := rect.Bounds();
+    end;
+    b.LimitTo(MainScreen.Bounds);
+    if (b.Width() < 2) or (b.Height() < 2) then
+      Exit;
+
+    Mouse.Move(SRL.RandomPoint(b));
+    WaitUntil(MainScreen.GetUpText() <> '', 40, 250);
+    upText := MainScreen.GetUpText();
+    if UpTextContains(upText, ['Cut redwood tree', 'Cut Redwood tree']) then
+    begin
+      Mouse.Click(MOUSE_LEFT);
+      Minimap.WaitMoving();
+      Exit(True);
+    end;
+
+    if attempt = 1 then
+      Antiban.RandomRotate();
+  end;
+end;
+
+function RedwoodCutter.ClickClosestRedwoodTiles(): Boolean;
+var
+  pass, i: Int32;
+  tiles: TPointArray;
+begin
+  Result := False;
+  for pass := 1 to RW_TILE_PASSES do
+  begin
+    tiles := RW_TREE_TILES;
+    tiles := tiles.SortFrom(Map.Position());
+    for i := 0 to Min(RW_TILE_TRIES, Length(tiles)) - 1 do
+      if Self.ClickRedwoodTile(tiles[i]) then
+        Exit(True);
+  end;
+end;
+
+function RedwoodCutter.OnRedwoodPlatform(): Boolean;
+var
+  me: TPoint;
+  i: Int32;
+begin
+  Result := False;
+  me := Map.Position();
+  if (me.X = 0) and (me.Y = 0) then
+    Exit;
+  if me.InRange(RW_LADDER_DOWN_TILE, 96) then
+    Exit(True);
+  for i := 0 to High(RW_TREE_TILES) do
+    if me.InRange(RW_TREE_TILES[i], 96) then
+      Exit(True);
 end;
 
 function RedwoodCutter.WalkToRedwoodLadder(): Boolean;
@@ -581,6 +663,92 @@ begin
   Minimap.WaitMoving();
 end;
 
+function RedwoodCutter.TryRedwoodLadderDown(): Boolean;
+var
+  attempt: Int32;
+  rect: TRectangle;
+  savedCoords: TPointArray;
+  savedRotations: TSingleArray;
+begin
+  Result := False;
+  savedCoords := Self.Ladder.Coordinates;
+  savedRotations := Self.Ladder.Rotations;
+  Self.Ladder.Coordinates := [RW_LADDER_DOWN_TILE];
+  SetLength(Self.Ladder.Rotations, 1);
+  Self.Ladder.UpText := RW_LADDER_DOWNTEXT;
+  Self.Ladder.Filter.UpText := True;
+  Self.Ladder.Filter.Finder := True;
+  Self.Ladder.Filter.Walker := True;
+
+  for attempt := 1 to 3 do
+  begin
+    WriteLn('[REDWOOD] Ladder down attempt ', attempt, '/3 with colour');
+    if not Self.Ladder.Hover(0) then
+      Continue;
+    if not MainScreen.IsUpText(RW_LADDER_DOWNTEXT, 500) then
+      Continue;
+    Mouse.Click(MOUSE_LEFT);
+    Self.Ladder.Coordinates := savedCoords;
+    Self.Ladder.Rotations := savedRotations;
+    Self.Ladder.Filter.Finder := True;
+    Exit(True);
+  end;
+
+  for attempt := 1 to 3 do
+  begin
+    WriteLn('[REDWOOD] Ladder down hover ', attempt, '/3 at ', ToStr(RW_LADDER_DOWN_TILE));
+    try
+      rect := Map.GetTileMS(RW_LADDER_DOWN_TILE);
+    except
+      WriteLn('[REDWOOD] Ladder tile is not on screen');
+      Break;
+    end;
+
+    if not rect.Bounds().Overlap(MainScreen.Bounds) then
+    begin
+      WriteLn('[REDWOOD] Ladder tile is not on screen');
+      Break;
+    end;
+
+    Mouse.Move(rect);
+    if MainScreen.IsUpText(RW_LADDER_DOWNTEXT, 500) then
+    begin
+      Mouse.Click(MOUSE_LEFT);
+      Self.Ladder.Coordinates := savedCoords;
+      Self.Ladder.Rotations := savedRotations;
+      Self.Ladder.Filter.Finder := True;
+      Exit(True);
+    end;
+
+    WriteLn('[REDWOOD] Uptext was not the ladder');
+  end;
+
+  Self.Ladder.Coordinates := savedCoords;
+  Self.Ladder.Rotations := savedRotations;
+  Self.Ladder.Filter.Finder := True;
+end;
+
+function RedwoodCutter.ClickRedwoodLadderDown(): Boolean;
+var
+  adaptive: Boolean;
+begin
+  Result := Self.TryRedwoodLadderDown();
+  if Result then
+    Exit;
+
+  WriteLn('[REDWOOD] Walking in front of the ladder');
+  adaptive := Map.Walker.AdaptiveWalk;
+  Map.Walker.TargetUpText := [];
+  Map.Walker.RedClicked := False;
+  Map.Walker.AdaptiveWalk := False;
+  Map.Walker.ScreenWalk := False;
+  Map.Walker.WalkBlind(RW_LADDER_STAND_TILE, 6);
+  Map.Walker.AdaptiveWalk := adaptive;
+  Map.Walker.ScreenWalk := False;
+  Minimap.WaitMoving();
+  Result := Self.TryRedwoodLadderDown();
+end;
+
 function RedwoodCutter.ClickRedwoodLadder(goingUp: Boolean): Boolean;
 begin
   Result := False;
@@ -593,11 +761,7 @@ begin
     Result := Self.Ladder.WalkClick(True, 4);
   end
   else
-  begin
-    Self.Ladder.UpText := RW_LADDER_DOWNTEXT;
-    Self.Ladder.Filter.Walker := False;
-    Result := Self.Ladder.Click(True, 4);
-  end;
+    Result := Self.ClickRedwoodLadderDown();
 end;
 
 function RedwoodCutter.EnsureRedwoodPlatform(): Boolean;
@@ -614,7 +778,7 @@ begin
   end;
 
   Minimap.WaitMoving();
-  Result := WaitUntil(Self.OnUpperFloor() or Self.HasRedwoodIcons(), 200, RW_CLIMB_MS);
+  Result := WaitUntil(Self.OnRedwoodPlatform(), 200, RW_CLIMB_MS);
   if Result then
   begin
     WriteLn('[REDWOOD] Climbed up to the redwood floor');
@@ -637,7 +801,7 @@ begin
   end;
 
   Minimap.WaitMoving();
-  Result := WaitUntil(not Self.OnUpperFloor(), 200, RW_CLIMB_MS);
+  Result := WaitUntil(not Self.OnRedwoodPlatform(), 200, RW_CLIMB_MS);
   if Result then
     WriteLn('[REDWOOD] Climbed down to the guild floor')
   else
@@ -652,6 +816,10 @@ var
   upText: String;
 begin
   Result := False;
+  Self.FindPluginBox();
+  if not Self.PluginBoxVisible then
+    Exit(Self.ClickClosestRedwoodTiles());
+
   boxes := Self.FindRedwoodIconBoxes();
 
   for i := 0 to High(boxes) do
@@ -715,6 +883,128 @@ begin
   Result := Self.WaitForBankOpen();
 end;
 
+function RedwoodCutter.ClickRedwoodBank(): Boolean;
+var
+  attempt: Int32;
+  rect: TRectangle;
+  upText: TStringArray;
+begin
+  Result := False;
+  upText := Self.BankChest.UpText;
+  Self.BankChest.Filter.Finder := True;
+  Self.BankChest.Filter.UpText := True;
+  Self.BankChest.Filter.Walker := True;
+
+  for attempt := 1 to 3 do
+  begin
+    if Minimap.IsPlayerMoving() then
+      Minimap.WaitMoving();
+    if Bank.IsOpen() or BankPin.IsOpen() then
+      Exit(Self.WaitForBankOpen());
+    WriteLn('[BANK] Click attempt ', attempt, '/3 with colour');
+    if not Self.BankChest.Hover(0) then
+      Continue;
+    if not MainScreen.IsUpText(upText, 500) then
+      Continue;
+    Mouse.Click(MOUSE_LEFT);
+    if not (Bank.IsOpen() or BankPin.IsOpen()) then
+      if Minimap.IsPlayerMoving() or WaitUntil(Minimap.IsPlayerMoving(), 50, 800) then
+        Minimap.WaitMoving();
+    if Self.WaitForBankOpen() then
+      Exit(True);
+  end;
+
+  for attempt := 1 to 2 do
+  begin
+    if Minimap.IsPlayerMoving() then
+      Minimap.WaitMoving();
+    if Bank.IsOpen() or BankPin.IsOpen() then
+      Exit(Self.WaitForBankOpen());
+    WriteLn('[BANK] Click attempt without colour at ', ToStr(RW_BANK_TILE));
+    try
+      rect := Map.GetTileMS(RW_BANK_TILE);
+    except
+      WriteLn('[BANK] Tile is not on screen');
+      Break;
+    end;
+
+    if not rect.Bounds().Overlap(MainScreen.Bounds) then
+    begin
+      WriteLn('[BANK] Tile is not on screen');
+      Break;
+    end;
+
+    Mouse.Move(rect);
+    if MainScreen.IsUpText(upText, 500) then
+    begin
+      Mouse.Click(MOUSE_LEFT);
+      if not (Bank.IsOpen() or BankPin.IsOpen()) then
+        if Minimap.IsPlayerMoving() or WaitUntil(Minimap.IsPlayerMoving(), 50, 800) then
+          Minimap.WaitMoving();
+      if Self.WaitForBankOpen() then
+        Exit(True);
+    end;
+
+    WriteLn('[BANK] Uptext was not the bank');
+  end;
+end;
+
+function RedwoodCutter.WalkToBankArea(): Boolean;
+var
+  dest, me, step: TPoint;
+  i, dx, dy: Int32;
+  dist: Double;
+  adaptive: Boolean;
+begin
+  Result := False;
+  me := Map.Position();
+  if RW_BANK_AREA.Contains(me) then
+    Exit;
+
+  dest := [Random(RW_BANK_AREA.X1, RW_BANK_AREA.X2), Random(RW_BANK_AREA.Y1, RW_BANK_AREA.Y2)];
+  adaptive := Map.Walker.AdaptiveWalk;
+  Map.Walker.TargetUpText := RW_BANK_UPTEXT;
+  Map.Walker.RedClicked := False;
+  Map.Walker.AdaptiveWalk := False;
+  Map.Walker.ScreenWalk := False;
+
+  for i := 1 to 15 do
+  begin
+    if Bank.IsOpen() or BankPin.IsOpen() then
+    begin
+      Map.Walker.AdaptiveWalk := adaptive;
+      Map.Walker.ScreenWalk := False;
+      Exit(True);
+    end;
+    if Self.BankChest.IsVisible() and Self.ClickRedwoodBank() then
+    begin
+      Map.Walker.AdaptiveWalk := adaptive;
+      Map.Walker.ScreenWalk := False;
+      Exit(True);
+    end;
+
+    me := Map.Position();
+    if RW_BANK_AREA.Contains(me) then
+      Break;
+
+    dx := dest.X - me.X;
+    dy := dest.Y - me.Y;
+    dist := Sqrt(Sqr(dx) + Sqr(dy));
+    if dist <= 12 then
+      step := dest
+    else
+      step := [me.X + Round(dx / dist * 24), me.Y + Round(dy / dist * 24)];
+
+    Map.Walker.WalkBlind(step, 8);
+    Minimap.WaitMoving();
+    if Map.Position().DistanceTo(me) < 4 then
+      Break;
+  end;
+
+  Map.Walker.AdaptiveWalk := adaptive;
+  Map.Walker.ScreenWalk := False;
+end;
+
 function RedwoodCutter.OpenBank(): Boolean;
 begin
   Result := False;
@@ -725,22 +1015,14 @@ begin
     if not Self.ClimbRedwoodDown() then
       Exit;
 
-  Map.Walker.TargetUpText := [];
-  Map.Walker.RedClicked := False;
-
-  if Self.BankChest.IsVisible() or Map.Position().InRange(RW_BANK_TILE, RW_BANK_CLICK_PX) then
-  begin
-    if Self.ClickBankChest() then
-      Exit(True);
-  end;
-
-  Map.Walker.WebWalk(RW_BANK_TILE, 6);
-  Minimap.WaitMoving();
-  if Self.ClickBankChest() then
+  if Self.WalkToBankArea() then
+    Exit(True);
+  if Self.ClickRedwoodBank() then
     Exit(True);
 
-  Result := Banks.WalkOpen();
-  Result := Self.WaitForBankOpen();
+  if Self.WalkToBankArea() then
+    Exit(True);
+  Result := Self.ClickRedwoodBank();
 end;
 
 procedure RedwoodCutter.DropLogs();
@@ -930,8 +1212,6 @@ begin
 
   if not Self.EnsureRedwoodPlatform() then
     Exit;
-
-  Self.RequireRedwoodIcons();
 
   Self.MaybeUseSpec();
   if Self.IsChopping() then
@@ -1394,6 +1674,7 @@ begin
   Self.ChopUnknownSince := 0;
   Self.ChopUnknownWaitMs := RW_OCR_UNKNOWN_MIN_MS;
   Self.HasSeenChopOverlay := False;
+  Self.PluginBoxVisible := False;
   Self.SpecArmed := False;
   Self.CheckedTreeIcons := False;
   Self.FletchMakeIndex := -1;
