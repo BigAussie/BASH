@@ -1,0 +1,1433 @@
+{$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'b3f8e2a1-6c47-4d91-9e05-8a1c7d4f2b60'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '1'}
+{$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
+{$I SRL-B/osr.simba}
+{$I BashLib/osr.simba}
+{$I BashLib/optional/handlers/bashcommon.simba}
+{$I BashLib/optional/interfaces/mainscreen/anvil.simba}
+{$SCOPEDENUMS OFF}
+{$IFDEF SCRIPT_GUI}
+{$I BashLib/optional/handlers/bashgui.simba}
+{$ENDIF}
+
+{
+----------------------------------------------------------------------------------
+Free Anvil Smither
+Smiths bars into items at the anvils south of Varrock west bank.
+This is the free version. For more locations and extra features, use the premium Anvil Smither.
+----------------------------------------------------------------------------------
+~~~ Need Support? Contact Me ~~~
+Website: https://bashscripts.shop/
+Discord Server: https://discord.gg/qsmKs5uKfR
+Email: thebigaussie@proton.me
+Github: https://github.com/BigAussie/BASH
+----------------------------------------------------------------------------------
+}
+
+const
+  AS_SETTINGS_FILE = 'Configs/BASettings.ini';
+  AS_SETTINGS = ' Free Anvil Smither Settings';
+  AS_ANTIBAN = ' Free Anvil Smither Antiban Manager';
+
+  AS_LOCATION_NAME = 'Varrock West';
+  AS_ANVIL_ANCHOR: TPoint = [8656, 36734];
+  AS_BANK_ANCHOR: TPoint = [8648, 36670];
+
+  AS_TILE = 4;
+  AS_ANVIL_ANCHOR_RADIUS = 20 * AS_TILE;
+  AS_BANK_BIND_RADIUS = 60 * AS_TILE;
+  AS_BANK_WALK_DISTANCE = 15 * AS_TILE;
+
+  AS_IMCANDO_HAMMERS: TRSItemArray = ['Imcando hammer', 'Imcando hammer (off-hand)'];
+
+  AS_METAL_TYPES: TStringArray = [
+    'Bronze', 'Iron', 'Steel', 'Mithril', 'Adamant', 'Rune'
+  ];
+
+  AS_ITEM_TYPES: TStringArray = [
+    '2h sword',
+    'Arrowtips',
+    'Axe',
+    'Battleaxe',
+    'Bolts (unf)',
+    'Chainbody',
+    'Claws',
+    'Dagger',
+    'Dart tip',
+    'Full helm',
+    'Javelin heads',
+    'Kiteshield',
+    'Knife',
+    'Limbs',
+    'Longsword',
+    'Mace',
+    'Med helm',
+    'Nails',
+    'Platebody',
+    'Platelegs',
+    'Plateskirt',
+    'Scimitar',
+    'Sq shield',
+    'Sword',
+    'Warhammer',
+    'Wire'
+  ];
+
+  AS_STOP_AT_LEVEL_SKILLS: array of ERSSkill := [
+    ERSSkill.SMITHING
+  ];
+
+type
+  EAnvilState = (
+    ST_HANDLE_LOGIN, ST_LEVEL_UP, ST_CLOSE_INTERFACE, ST_HOP_WORLDS,
+    ST_OPEN_BANK, ST_DEPOSIT_PRODUCT, ST_DEPOSIT_JUNK, ST_WITHDRAW_TOOL, ST_WITHDRAW_BARS,
+    ST_OPEN_ANVIL, ST_SMITH_ITEM, ST_WAIT_SMITH,
+    ST_OUT_OF_BARS
+  );
+
+  AIOAnvilSmither = record(TBaseBankScript)
+    State: EAnvilState;
+
+    MetalType, ItemType: String;
+    Product, Bar: TRSItem;
+    BarAmount, Multiplier: Int32;
+
+    AnvilObj, BankObj: TRSObjectV2;
+    UsingManualBank: Boolean;
+
+    NeedsHammer: Boolean;
+    DepositAllChance, RandomAnvilChance: Int32;
+    UseSpaceBar, SpaceBarPrimed: Boolean;
+    Smithing: Boolean;
+    OutOfBars: Boolean;
+    SmithFails, WithdrawFails, AnvilFails: Int32;
+
+    StartXP, GainedXP, ItemsMade, BarsUsed: Int32;
+    ProductValue, BarValue: Int32;
+
+    AntiBanChance: Double;
+    LastReportTime: UInt64;
+    LastSystemUpdateCheck: UInt64;
+  end;
+
+  TConfig = record(TBASHPremiumGUI)
+    MetalCombo, ItemCombo: TLabeledComboBox;
+    DepositAllCheck, RandomAnvilCheck, SpaceBarCheck: TLabeledCheckBox;
+    DepositAllChanceEdit, RandomAnvilChanceEdit: TLabeledEdit;
+    lab_Info: TLabel;
+    ActivityAntibanChip: TImage;
+    SavedMetal, SavedItem: String;
+  end;
+  TScriptGUI = TConfig;
+
+var
+  Smither: AIOAnvilSmither;
+
+function ComboIndexOf(items: TStringArray; value: String): Int32;
+var
+  i: Int32;
+begin
+  for i := 0 to High(items) do
+    if SameText(items[i], value) then
+      Exit(i);
+  Result := 0;
+end;
+
+function BuildProductName(metal, item: String): String;
+var
+  m: String;
+begin
+  m := metal;
+  case item of
+    'Bolts (unf)':
+      begin
+        if SameText(metal, 'Adamant') then
+          Exit('Adamant bolts(unf)');
+        if SameText(metal, 'Rune') then
+          m := 'Runite';
+        Exit(m + ' bolts (unf)');
+      end;
+    'Nails':
+      begin
+        if SameText(metal, 'Adamant') then
+          m := 'Adamantite';
+        Exit(m + ' nails');
+      end;
+    'Limbs':
+      begin
+        if SameText(metal, 'Adamant') then
+          m := 'Adamantite'
+        else if SameText(metal, 'Rune') then
+          m := 'Runite';
+        Exit(m + ' limbs');
+      end;
+  end;
+
+  Result := m + ' ' + LowerCase(item);
+end;
+
+function BuildBarName(metal: String): String;
+begin
+  if SameText(metal, 'Adamant') then
+    Exit('Adamantite bar');
+  if SameText(metal, 'Rune') then
+    Exit('Runite bar');
+  Result := metal + ' bar';
+end;
+
+function GetBarsPerItem(item: String): Int32;
+const
+  BAR_3: TStringArray = ['Warhammer', 'Battleaxe', 'Chainbody', 'Kiteshield', '2h sword', 'Platelegs', 'Plateskirt'];
+  BAR_2: TStringArray = ['Scimitar', 'Longsword', 'Full helm', 'Sq shield', 'Claws'];
+var
+  i: Int32;
+begin
+  if SameText(item, 'Platebody') then
+    Exit(5);
+  for i := 0 to High(BAR_3) do
+    if SameText(BAR_3[i], item) then
+      Exit(3);
+  for i := 0 to High(BAR_2) do
+    if SameText(BAR_2[i], item) then
+      Exit(2);
+  Result := 1;
+end;
+
+function GetOutputMultiplier(item: String): Int32;
+begin
+  if SameText(item, 'Dart tip') or SameText(item, 'Bolts (unf)') then
+    Exit(10);
+  if SameText(item, 'Knife') or SameText(item, 'Javelin heads') then
+    Exit(5);
+  if SameText(item, 'Arrowtips') or SameText(item, 'Nails') then
+    Exit(15);
+  Result := 1;
+end;
+
+function ProductIsAvailable(metal, item: String): Boolean;
+begin
+  if SameText(item, 'Wire') then
+    Exit(SameText(metal, 'Bronze'));
+  Result := True;
+end;
+
+function TRSChat.CheckSystemUpdate(minuteTreshold: Integer): Boolean;
+var
+  b: TBox;
+  s: String;
+  numbers: TExtendedArray;
+begin
+  b := Chat.Bounds;
+  b.X1 += 4;
+  b.Y1 -= 16;
+  b.Y2 := Chat.Bounds.Y1 - 1;
+  b.X2 := b.X1 + 140;
+
+  s := OCR.Recognize(
+    b,
+    TOCRColorFilter.Create([65535]),
+    RS_FONT_PLAIN_12
+  );
+
+  if s.Contains('System update') then
+  begin
+    s := s.After(': ');
+    numbers := s.ExtractNumbers();
+    if (Length(numbers) > 0) and (numbers[0] <= minuteTreshold) then
+      Result := True;
+  end;
+end;
+
+procedure OnBreakStart(Task: PBreakTask);
+begin
+  WL.Activity.Pause();
+end;
+
+procedure OnBreakFinish(Task: PBreakTask);
+begin
+  WL.Activity.Resume();
+end;
+
+procedure OnSleepStart(Task: PSleepTask);
+begin
+  WL.Activity.Pause();
+end;
+
+procedure OnSleepFinish(Task: PSleepTask);
+begin
+  WL.Activity.Resume();
+end;
+
+procedure TAntiban.TakeBreak(var task: TBreakTask); override;
+var
+  countdown: TCountDown;
+  i: Int32;
+  activeTasks: PAntibanTaskArray;
+begin
+  activeTasks := Self.GetActiveTasks();
+  for i := 0 to High(activeTasks) do
+    activeTasks[i]^.countdown.Pause();
+
+  countdown.Init(Abs(Round(SRL.GaussRand(task.Length, task.Length * task.StdVar))));
+
+  WriteLn('Taking a break for ' + SRL.MsToTime(countdown.TimeRemaining(), TIME_FORMAL));
+
+  if (@Self.OnStartBreak <> nil) then
+    Self.OnStartBreak(@task);
+
+  if Random() < task.LogoutChance then
+  begin
+    WriteLn('Logging out');
+    Logout.ClickLogout();
+  end;
+
+  if Random() < 0.50 then
+    Self.LoseFocus();
+
+  i := 0;
+  while not countdown.IsFinished() do
+  begin
+    if (Inc(i) mod 12 = 0) then
+      WriteLn('Break time remaining: ' + ToString(countdown.TimeRemaining() div 60000) + ' minutes');
+
+    if (@Self.OnBreaking <> nil) then
+      Self.OnBreaking(@task, countdown);
+
+    Wait(Min(countdown.TimeRemaining(), 5 * ONE_SECOND));
+  end;
+
+  WriteLn('Break finished');
+
+  if (@Self.OnFinishBreak <> nil) then
+    Self.OnFinishBreak(@task);
+
+  for i := 0 to High(Self.Breaks) do
+    Self.Breaks[i].NextAtTime += GetTickCount() - (countdown.Timeout - countdown.Length);
+
+  for i := 0 to High(activeTasks) do
+    activeTasks[i]^.countdown.Resume();
+
+  task.NextAtTime := GetTimeRunning() + Abs(SRL.GaussRand(task.Interval, task.Interval * task.StdVar));
+end;
+
+function TBaseScript.DoAntiban(checkBreaks: Boolean = True; checkSleeps: Boolean = True): Boolean; override;
+begin
+  Antiban.DismissRandom();
+  Self.TimeRunning.Pause();
+  Self.OnAntiban := True;
+
+  WorldHopper.TryHopOnBreak(checkBreaks, checkSleeps);
+
+  checkBreaks := checkBreaks and (WLSettings.GetObject('antiban').getBoolean('breaks') or OVERRIDEBREAKS);
+  checkSleeps := checkSleeps and WLSettings.GetObject('antiban').getJSONObject('sleep').getBoolean('enabled');
+
+  if WLSettings.GetObject('antiban').getJSONObject('tasks').getBoolean('enabled') or checkBreaks or checkSleeps then
+    Result := Antiban.DoAntiban(checkBreaks, checkSleeps);
+
+  Self.TimeRunning.Resume();
+  Self.OnAntiban := False;
+
+  if not RSClient.IsLoggedIn() then
+    Login.LoginPlayer();
+end;
+
+procedure TAntiban.Setup(); override;
+begin
+  Self.Skills := [ERSSkill.SMITHING, ERSSkill.TOTAL];
+
+  Self.MinZoom := 0;
+  Self.MaxZoom := 10;
+
+  Self.OnStartBreak := @OnBreakStart;
+  Self.OnFinishBreak := @OnBreakFinish;
+  Self.OnStartSleep := @OnSleepStart;
+  Self.OnFinishSleep := @OnSleepFinish;
+
+  inherited;
+
+  if OVERRIDEBREAKS then
+  begin
+    WriteLn('[ANTIBAN] Custom break override enabled:');
+    WriteLn('  - Break Interval: ', CUSTOMBREAKINTERVAL, ' minutes');
+    WriteLn('  - Break Duration: ', CUSTOMBREAKDURATION, ' minutes');
+
+    Self.Breaks := [];
+    Self.AddBreak(CUSTOMBREAKINTERVAL * ONE_MINUTE, CUSTOMBREAKDURATION * ONE_MINUTE, 0.33, 0.15);
+
+    WriteLn('[ANTIBAN] Custom breaks initialized');
+  end
+  else
+    WriteLn('[ANTIBAN] Using default break system');
+end;
+
+function FormatRoundedNumber(Number: Int64): String;
+begin
+  if Number >= 1000000 then
+    Result := FormatFloat('0.0M', Number / 1000000)
+  else if Number >= 1000 then
+    Result := FormatFloat('0K', Number / 1000)
+  else
+    Result := SRL.FormatNumber(Number);
+end;
+
+{$IFDEF SCRIPT_GUI}
+procedure TConfig.SetComboItems(var box: TLabeledComboBox; items: TStringArray; prefer: String);
+var
+  idx: Int32;
+begin
+  if not Assigned(box) then
+    Exit;
+  if Length(items) = 0 then
+    items := ['(none)'];
+  box.Clear();
+  box.AddItemArray(items);
+  idx := ComboIndexOf(items, prefer);
+  if (idx < 0) or (idx > High(items)) then
+    idx := 0;
+  box.SetItemIndex(idx);
+end;
+
+procedure TConfig.RefreshInfoLabel();
+var
+  metal, item, product, text: String;
+begin
+  if not Assigned(Self.lab_Info) then
+    Exit;
+
+  metal := Self.GetSelectedString(Self.MetalCombo);
+  item := Self.GetSelectedString(Self.ItemCombo);
+
+  if not ProductIsAvailable(metal, item) then
+    text := item + ' can only be made from Bronze bars.'
+  else
+  begin
+    product := BuildProductName(metal, item);
+    text := 'Product: ' + product + '  |  Bars: ' + BuildBarName(metal) +
+      ' x' + IntToStr(GetBarsPerItem(item)) + ' per smith';
+    if GetOutputMultiplier(item) > 1 then
+      text += '  |  Makes ' + IntToStr(GetOutputMultiplier(item)) + ' per smith';
+  end;
+
+  text += #10 + 'Location: Varrock West. Bars must be visible in the main bank tab.';
+  text += #10 + 'Start near the west bank.';
+
+  Self.lab_Info.SetCaption(text);
+end;
+
+procedure TConfig.OnProductChanged({$H-}sender: TObject); {$H+}
+begin
+  Self.RefreshInfoLabel();
+end;
+
+procedure TConfig.InitGUI(); override;
+begin
+  Self.BrandTitle := 'Free Anvil Smither';
+  Self.WindowTitle := 'BigAussies Free Anvil Smither';
+  Self.HasFarm := False;
+  Self.HasAIChat := False;
+  Self.HasWebhooks := False;
+  Self.HasWorldHopping := True;
+  Self.HasMaxActions := True;
+  Self.HasStopAtLevel := True;
+  Self.StopAtLevelSkills := AS_STOP_AT_LEVEL_SKILLS;
+  Self.HasRandomEvents := True;
+  Self.LegacyAntibanSection := AS_ANTIBAN;
+end;
+
+procedure TConfig.SetupAIChat(); override;
+begin
+end;
+
+procedure TConfig.LoadActionSettings(); override;
+begin
+  Self.SavedMetal := ReadINI(Self.Username + AS_SETTINGS, 'Metal', AS_SETTINGS_FILE);
+  if Self.SavedMetal = '' then
+    Self.SavedMetal := 'Steel';
+  Self.SavedItem := ReadINI(Self.Username + AS_SETTINGS, 'Item', AS_SETTINGS_FILE);
+  if Self.SavedItem = '' then
+    Self.SavedItem := 'Platebody';
+end;
+
+procedure TConfig.ActivityAntibanClick(sender: TObject);
+begin
+  if sender = nil then;
+  Self.ShowAntibanProfile(sender);
+  if Assigned(Self.AntibanProfilePages) and Assigned(Self.AntibanScriptTab) then
+    Self.AntibanProfilePages.SetActivePage(Self.AntibanScriptTab);
+end;
+
+procedure TConfig.BuildActionSection(); override;
+var
+  note: TLabel;
+begin
+  Self.AddHeader(Self.ActionSection, 'Action', 'Smith at the anvils south of Varrock west bank.');
+
+  Self.AddCombo(Self.ActionSection, Self.MetalCombo, 'lcb_free_as_metal', 'Metal', 24, 100,
+    AS_METAL_TYPES, ComboIndexOf(AS_METAL_TYPES, Self.SavedMetal));
+  Self.MetalCombo.SetTooltip('Bar type to smith with. Bars must be in the main bank tab.');
+  Self.MetalCombo.ComboBox.SetOnChange(@Self.OnProductChanged);
+
+  Self.AddCombo(Self.ActionSection, Self.ItemCombo, 'lcb_free_as_item', 'Item', BASH_GUI_COL2, 100,
+    AS_ITEM_TYPES, ComboIndexOf(AS_ITEM_TYPES, Self.SavedItem));
+  Self.ItemCombo.SetTooltip('Item to smith. Make sure you have the Smithing level for it.');
+  Self.ItemCombo.ComboBox.SetOnChange(@Self.OnProductChanged);
+
+  Self.ActivityAntibanChip.Create(Self.ActionSection);
+  Self.ActivityAntibanChip.SetLeft(TControl.AdjustToDPI(BASH_GUI_COL3));
+  Self.ActivityAntibanChip.SetTop(TControl.AdjustToDPI(112));
+  Self.ActivityAntibanChip.SetWidth(TControl.AdjustToDPI(180));
+  Self.ActivityAntibanChip.SetHeight(TControl.AdjustToDPI(34));
+  Self.ActivityAntibanChip.SetCursor(crHandPoint);
+  Self.PaintRoundChip(Self.ActivityAntibanChip, 'Activity Antiban', BASH_GUI_NAV_IDLE, BASH_GUI_BG, False, True);
+  Self.ActivityAntibanChip.SetOnClick(@Self.ActivityAntibanClick);
+  Self.ActivityAntibanChip.SetTooltip('Opens the antiban profile on the Activity Antiban tab.');
+
+  Self.lab_Info := Self.MakeLabel(Self.ActionSection, '', 24, 190, 10, BASH_GUI_MUTED, False);
+  Self.lab_Info.SetWidth(TControl.AdjustToDPI(820));
+  Self.lab_Info.SetHeight(TControl.AdjustToDPI(80));
+
+  note := Self.MakeLabel(Self.ActionSection,
+    'This is the free version. It smiths at Varrock West Only. For more locations, farm runs, birdhouse runs, and Discord reports, use Anvil Smither.',
+    24, 290, 10, BASH_GUI_MUTED, False);
+  note.SetWidth(TControl.AdjustToDPI(820));
+
+  Self.RefreshInfoLabel();
+end;
+
+procedure TConfig.FillActivityAntibanChances(bio: Boolean);
+var
+  depositChance, anvilChance: Int32;
+  user: String;
+begin
+  if bio then
+  begin
+    user := Self.ActiveAntibanUser();
+    depositChance := 3 + Round(BASHFieldHash(user, 'anvildepositall') * 7);
+    anvilChance := 4 + Round(BASHFieldHash(user, 'anvilrandomanvil') * 8);
+  end
+  else
+  begin
+    depositChance := 3 + Random(8);
+    anvilChance := 4 + Random(9);
+  end;
+
+  if Assigned(Self.DepositAllChanceEdit) then
+    Self.DepositAllChanceEdit.SetText(IntToStr(depositChance));
+  if Assigned(Self.RandomAnvilChanceEdit) then
+    Self.RandomAnvilChanceEdit.SetText(IntToStr(anvilChance));
+  if Assigned(Self.DepositAllCheck) then
+    Self.DepositAllCheck.CheckBox.SetChecked(True);
+  if Assigned(Self.RandomAnvilCheck) then
+    Self.RandomAnvilCheck.CheckBox.SetChecked(True);
+  Self.SyncActivityChanceEdits();
+end;
+
+procedure TConfig.RandomiseAntibanProfile(sender: TObject); override;
+begin
+  inherited;
+  Self.FillActivityAntibanChances(False);
+end;
+
+procedure TConfig.BioHashAntibanProfile(sender: TObject); override;
+begin
+  inherited;
+  Self.FillActivityAntibanChances(True);
+end;
+
+procedure TConfig.AfterBuildShell(); override;
+begin
+  inherited;
+  if Assigned(Self.AntibanRandomiseButton) then
+    Self.AntibanRandomiseButton.SetOnClick(@Self.RandomiseAntibanProfile);
+  if Assigned(Self.AntibanBioButton) then
+    Self.AntibanBioButton.SetOnClick(@Self.BioHashAntibanProfile);
+end;
+
+procedure TConfig.ApplyActionSettings(); override;
+begin
+  Smither.MetalType := Self.GetSelectedString(Self.MetalCombo);
+  Smither.ItemType := Self.GetSelectedString(Self.ItemCombo);
+
+  WriteINI(Self.Username + AS_SETTINGS, 'Metal', Smither.MetalType, AS_SETTINGS_FILE);
+  WriteINI(Self.Username + AS_SETTINGS, 'Item', Smither.ItemType, AS_SETTINGS_FILE);
+  Self.ReadActivityChances();
+end;
+
+procedure TConfig.SyncActivityChanceEdits();
+begin
+  if Assigned(Self.DepositAllChanceEdit) and Assigned(Self.DepositAllCheck) then
+    Self.DepositAllChanceEdit.SetEnabled(Self.DepositAllCheck.IsChecked());
+  if Assigned(Self.RandomAnvilChanceEdit) and Assigned(Self.RandomAnvilCheck) then
+    Self.RandomAnvilChanceEdit.SetEnabled(Self.RandomAnvilCheck.IsChecked());
+end;
+
+procedure TConfig.ActivityAntibanCheckChanged({$H-}sender: TObject); {$H+}
+begin
+  if sender = nil then;
+  Self.SyncActivityChanceEdits();
+end;
+
+procedure TConfig.ReadActivityChances();
+begin
+  Smither.DepositAllChance := 0;
+  Smither.RandomAnvilChance := 0;
+  Smither.UseSpaceBar := Assigned(Self.SpaceBarCheck) and Self.SpaceBarCheck.IsChecked();
+  if Assigned(Self.DepositAllCheck) and Self.DepositAllCheck.IsChecked() and Assigned(Self.DepositAllChanceEdit) then
+    Smither.DepositAllChance := EnsureRange(StrToIntDef(Self.DepositAllChanceEdit.GetText(), 0), 0, 100);
+  if Assigned(Self.RandomAnvilCheck) and Self.RandomAnvilCheck.IsChecked() and Assigned(Self.RandomAnvilChanceEdit) then
+    Smither.RandomAnvilChance := EnsureRange(StrToIntDef(Self.RandomAnvilChanceEdit.GetText(), 0), 0, 100);
+end;
+
+procedure TConfig.BuildAntibanExtras(var nextY: Int32); override;
+var
+  y: Int32;
+begin
+  y := nextY;
+
+  Self.AddCheck(Self.AntibanExtrasPanel, Self.DepositAllCheck, 'cb_free_as_deposit_all', 'Deposit all', 16, y + 16,
+    StrToBoolDef(Self.ReadScriptAntibanINI('DepositAllEnabled', 'false'), False));
+  Self.DepositAllCheck.CheckBox.SetOnChange(@Self.ActivityAntibanCheckChanged);
+  Self.DepositAllCheck.SetTooltip('Sometimes press Deposit inventory instead of clicking each item.');
+  Self.AddEdit(Self.AntibanExtrasPanel, Self.DepositAllChanceEdit, 'le_free_as_deposit_all',
+    'Chance %', Self.ReadScriptAntibanINI('DepositAllChance', '5'), 280, y, 160);
+  Self.DepositAllChanceEdit.Edit.SetOnKeyPress(@Self.DepositAllChanceEdit.Edit.NumberField);
+  Self.DepositAllChanceEdit.SetTooltip('Chance this deposit uses Deposit inventory. Randomise and BioHash set a low value.');
+
+  y += 59;
+
+  Self.AddCheck(Self.AntibanExtrasPanel, Self.RandomAnvilCheck, 'cb_free_as_random_anvil', 'Random anvil', 16, y + 16,
+    StrToBoolDef(Self.ReadScriptAntibanINI('RandomAnvilEnabled', 'false'), False));
+  Self.RandomAnvilCheck.CheckBox.SetOnChange(@Self.ActivityAntibanCheckChanged);
+  Self.RandomAnvilCheck.SetTooltip('Sometimes smith at a random anvil instead of the closest one.');
+  Self.AddEdit(Self.AntibanExtrasPanel, Self.RandomAnvilChanceEdit, 'le_free_as_random_anvil',
+    'Chance %', Self.ReadScriptAntibanINI('RandomAnvilChance', '6'), 280, y, 160);
+  Self.RandomAnvilChanceEdit.Edit.SetOnKeyPress(@Self.RandomAnvilChanceEdit.Edit.NumberField);
+  Self.RandomAnvilChanceEdit.SetTooltip('Chance the next anvil is a random one. Randomise and BioHash set a low value.');
+
+  y += 59;
+
+  Self.AddCheck(Self.AntibanExtrasPanel, Self.SpaceBarCheck, 'cb_free_as_space_bar', 'Space bar', 16, y + 16,
+    StrToBoolDef(Self.ReadScriptAntibanINI('SpaceBarEnabled', 'false'), False));
+  Self.SpaceBarCheck.SetTooltip('After this item is selected once this run, later anvil screens press space instead of clicking it.');
+
+  y += 44;
+  nextY := y;
+  Self.SyncActivityChanceEdits();
+end;
+
+procedure TConfig.SaveScriptAntiban(); override;
+begin
+  if not Assigned(Self.DepositAllChanceEdit) then
+    Exit;
+  Self.ReadActivityChances();
+  Self.WriteScriptAntibanINI('DepositAllEnabled', BoolToStr(Assigned(Self.DepositAllCheck) and Self.DepositAllCheck.IsChecked(), 'true', 'false'));
+  Self.WriteScriptAntibanINI('RandomAnvilEnabled', BoolToStr(Assigned(Self.RandomAnvilCheck) and Self.RandomAnvilCheck.IsChecked(), 'true', 'false'));
+  Self.WriteScriptAntibanINI('SpaceBarEnabled', BoolToStr(Assigned(Self.SpaceBarCheck) and Self.SpaceBarCheck.IsChecked(), 'true', 'false'));
+  Self.WriteScriptAntibanINI('DepositAllChance', IntToStr(EnsureRange(StrToIntDef(Self.DepositAllChanceEdit.GetText(), 0), 0, 100)));
+  Self.WriteScriptAntibanINI('RandomAnvilChance', IntToStr(EnsureRange(StrToIntDef(Self.RandomAnvilChanceEdit.GetText(), 0), 0, 100)));
+end;
+
+procedure TConfig.LoadScriptAntiban(); override;
+begin
+  if not Assigned(Self.DepositAllChanceEdit) then
+    Exit;
+  if Assigned(Self.DepositAllCheck) then
+    Self.DepositAllCheck.CheckBox.SetChecked(StrToBoolDef(Self.ReadScriptAntibanINI('DepositAllEnabled', 'false'), False));
+  if Assigned(Self.RandomAnvilCheck) then
+    Self.RandomAnvilCheck.CheckBox.SetChecked(StrToBoolDef(Self.ReadScriptAntibanINI('RandomAnvilEnabled', 'false'), False));
+  if Assigned(Self.SpaceBarCheck) then
+    Self.SpaceBarCheck.CheckBox.SetChecked(StrToBoolDef(Self.ReadScriptAntibanINI('SpaceBarEnabled', 'false'), False));
+  Self.DepositAllChanceEdit.SetText(Self.ReadScriptAntibanINI('DepositAllChance', '5'));
+  Self.RandomAnvilChanceEdit.SetText(Self.ReadScriptAntibanINI('RandomAnvilChance', '6'));
+  Self.SyncActivityChanceEdits();
+end;
+
+procedure TConfig.StartScript(Sender: TObject); override;
+var
+  metal, item: String;
+begin
+  if Sender = nil then;
+
+  metal := Self.GetSelectedString(Self.MetalCombo);
+  item := Self.GetSelectedString(Self.ItemCombo);
+  if not ProductIsAvailable(metal, item) then
+  begin
+    ShowMessage(item + ' can only be made from Bronze bars. Pick a different metal or item.');
+    Exit;
+  end;
+
+  inherited;
+end;
+
+{$I BashLib/optional/handlers/bashgui_host_scriptgui.simba}
+{$ENDIF}
+
+function UpdateXPTracker(): Boolean;
+var
+  t: Int32 := XPBar.Read() - Smither.StartXP;
+begin
+  if t > 0 then
+  begin
+    Result := t > Smither.GainedXP;
+
+    if Result then
+      Smither.GainedXP := t;
+  end;
+end;
+
+function AIOAnvilSmither.ProfitSoFar(): Int64;
+begin
+  Result := Int64(Self.ItemsMade) * Self.ProductValue - Int64(Self.BarsUsed) * Self.BarValue;
+end;
+
+procedure AIOAnvilSmither.Report();
+var
+  RunTime: Int64;
+  Hours: Double;
+begin
+  if (GetTickCount() - Self.LastReportTime) < 10000 then
+    Exit;
+  Self.LastReportTime := GetTickCount();
+
+  UpdateXPTracker();
+  RunTime := GetTimeRunning();
+  Hours := Max(RunTime / 3600000, 0.0001);
+
+  WriteLn('========================================');
+  WriteLn('      B.A.S.H Free Anvil Smither      ');
+  WriteLn('========================================');
+  WriteLn('   Runtime: ', SRL.MsToTime(RunTime, Time_Short));
+  WriteLn('   Location: ', AS_LOCATION_NAME);
+  WriteLn('   Product: ', ToStr(Self.Product), ' (', Self.BarAmount, ' x ', ToStr(Self.Bar), ')');
+  WriteLn('   Items made: ', FormatRoundedNumber(Self.ItemsMade));
+  WriteLn('   Items/Hr: ', FormatRoundedNumber(Round(Self.ItemsMade / Hours)));
+  WriteLn('   Bars used: ', FormatRoundedNumber(Self.BarsUsed));
+  WriteLn('   XP Gained: ', FormatRoundedNumber(Self.GainedXP));
+  WriteLn('   XP/Hour: ', FormatRoundedNumber(Round(Self.GainedXP / Hours)));
+  WriteLn('   Profit: ', FormatRoundedNumber(Self.ProfitSoFar()));
+  WriteLn('   ', Antiban.BreakScheduleText());
+  WriteLn('   ', Antiban.SleepScheduleText());
+  WriteLn('========================================');
+  WriteLn('    Revision: ' + {$MACRO SCRIPT_REVISION});
+  WriteLn('========================================');
+
+  StopAtLevel.WriteReport();
+end;
+
+procedure SetupWorldHopping();
+begin
+  WorldHopper.SetupTimedHopping(ENABLEWORLDHOPPING, WORLDHOPINTERVAL, WORLDHOPVARIATION);
+end;
+
+function ShouldHopWorld(): Boolean;
+begin
+  Result := WorldHopper.ShouldTimedHop();
+end;
+
+procedure DoWorldHop();
+begin
+  WorldHopper.DoTimedHop();
+end;
+
+procedure CheckSystemUpdate();
+begin
+  if (GetTickCount() - Smither.LastSystemUpdateCheck) < 30000 then
+    Exit;
+
+  Smither.LastSystemUpdateCheck := GetTickCount();
+
+  if Chat.CheckSystemUpdate(15) then
+  begin
+    WriteLn('SYSTEM UPDATE DETECTED! Server going down in 15 minutes or less!');
+    WriteLn('Logging out safely for system update');
+    Logout.ClickLogout();
+    TerminateScript('System update - safe logout completed');
+  end;
+end;
+
+procedure AIOAnvilSmither.StopWithMessage(reason: String);
+begin
+  WriteLn('[STOP] ', reason);
+  if Bank.IsOpen() then
+    Bank.Close();
+  Logout.ClickLogout();
+  TerminateScript(reason);
+end;
+
+procedure AIOAnvilSmither.ResolveAnvil();
+var
+  objs: TRSObjectV2Array;
+  i, j: Int32;
+  found: Boolean;
+begin
+  found := False;
+  objs := Objects.GetAll('Anvil');
+  for i := 0 to High(objs) do
+  begin
+    for j := High(objs[i].Coordinates) downto 0 do
+      if objs[i].Coordinates[j].DistanceTo(AS_ANVIL_ANCHOR) > AS_ANVIL_ANCHOR_RADIUS then
+      begin
+        Delete(objs[i].Coordinates, j, 1);
+        if j <= High(objs[i].Rotations) then
+          Delete(objs[i].Rotations, j, 1);
+      end;
+
+    if Length(objs[i].Coordinates) = 0 then
+      Continue;
+
+    if not found then
+    begin
+      Self.AnvilObj := objs[i];
+      found := True;
+    end
+    else
+    begin
+      Self.AnvilObj.Coordinates += objs[i].Coordinates;
+      Self.AnvilObj.Rotations += objs[i].Rotations;
+    end;
+  end;
+
+  if not found then
+  begin
+    WriteLn('[SETUP] No mapped anvil near anchor, using manual anvil at ', ToStr(AS_ANVIL_ANCHOR));
+    Self.AnvilObj := TRSObjectV2.Setup(1, 2, [AS_ANVIL_ANCHOR]);
+    Self.AnvilObj.Walker := @Map.Walker;
+    Self.AnvilObj.SetupUpText(['Anvil', 'Smith']);
+    Self.AnvilObj.Filter.Finder := False;
+  end;
+
+  Self.AnvilObj.Finder.Colors := [CTS2(5000529, 14, 0.24, 0.11)];
+  Self.AnvilObj.Walker := @Map.Walker;
+  Self.AnvilObj.Filter.Walker := True;
+  WriteLn('[SETUP] Anvil tiles: ', ToStr(Self.AnvilObj.Coordinates));
+end;
+
+procedure AIOAnvilSmither.SetupManualBank();
+begin
+  Self.BankObj := TRSObjectV2.Setup(2, 4, [AS_BANK_ANCHOR]);
+  Self.BankObj.Walker := @Map.Walker;
+  Self.BankObj.SetupUpText(['ank c', 'ches', 'Bank', 'ank t']);
+  Self.BankObj.Filter.Finder := False;
+  Self.BankObj.Filter.Walker := True;
+
+  Banks.MapObjects := [];
+  Banks.ObjectsCache := [];
+  Banks.NPCsCache := [];
+  Banks._AddObject(Self.BankObj);
+  Self.UsingManualBank := True;
+  WriteLn('[SETUP] Using manual bank at ', ToStr(AS_BANK_ANCHOR));
+end;
+
+procedure AIOAnvilSmither.BindBanks();
+begin
+  Self.UsingManualBank := False;
+  BASHBindLocalBanks(AS_BANK_BIND_RADIUS, 3);
+  if Length(Banks.MapObjects) > 0 then
+    Banks._FilterLocation([8650, 36688, 8], False);
+
+  if Length(Banks.MapObjects) = 0 then
+    Self.SetupManualBank();
+end;
+
+procedure AIOAnvilSmither.SetupMap();
+var
+  extra: array of TRSMapChunk;
+begin
+  SetLength(extra, 0);
+  BASHSetupMap([ERSChunk.VARROCK.Get()], extra);
+  BASHRebindMap(False);
+  Map.Loader.Graph.BlockInside([8638, 36690, 8650, 36698]);
+  Self.ResolveAnvil();
+  Self.BindBanks();
+  Map.Walker.ScreenWalk := False;
+  Map.Walker.AdaptiveWalk := False;
+end;
+
+function AIOAnvilSmither.WalkToBankIfFar(): Boolean;
+var
+  me: TPoint;
+begin
+  Result := True;
+  me := Map.Position();
+  if (me = [0, 0]) then
+    Exit(False);
+  if me.DistanceTo(AS_BANK_ANCHOR) <= AS_BANK_WALK_DISTANCE then
+    Exit(True);
+
+  WriteLn('[BANK] Walking to bank (', Round(me.DistanceTo(AS_BANK_ANCHOR) / AS_TILE), ' tiles away)');
+  Map.Walker._DoorHandler.Enabled := True;
+  try
+    Result := Map.Walker.WebWalk(AS_BANK_ANCHOR, 12, 0.15);
+  except
+    WriteLn('[BANK] WebWalk failed: ', GetExceptionMessage());
+    Result := False;
+  end;
+  WaitUntil(not Minimap.IsPlayerMoving(), 100, 10000);
+end;
+
+function AIOAnvilSmither.OpenBank(): Boolean;
+begin
+  if Bank.IsOpen() or BankPin.IsOpen() then
+    Exit(WaitUntil(Bank.IsOpen(), 300, 8000));
+
+  if RSInterface.IsOpen() then
+    RSInterface.Close(True);
+
+  if Length(Banks.MapObjects) = 0 then
+    Self.BindBanks();
+  if Length(Banks.MapObjects) = 0 then
+  begin
+    Self.WalkToBankIfFar();
+    Self.BindBanks();
+  end;
+  if Length(Banks.MapObjects) = 0 then
+    Exit(False);
+
+  if Self.UsingManualBank then
+    Banks.WalkOpen(Banks.MapObjects[0])
+  else
+    BASHOpenLocalBank();
+
+  Result := WaitUntil(Bank.IsOpen(), 300, 12000);
+end;
+
+procedure AIOAnvilSmither.SetupItems();
+begin
+  Self.Product := BuildProductName(Self.MetalType, Self.ItemType);
+  Self.Bar := BuildBarName(Self.MetalType);
+  Self.BarAmount := GetBarsPerItem(Self.ItemType);
+  Self.Multiplier := GetOutputMultiplier(Self.ItemType);
+
+  Self.ProductValue := ItemData.GetAverage(Self.Product);
+  Self.BarValue := ItemData.GetAverage(Self.Bar);
+  Self.ActionProfit := (Self.ProductValue * Self.Multiplier) - (Self.BarValue * Self.BarAmount);
+
+  WriteLn('[SETUP] Product: ', ToStr(Self.Product), ' | Bar: ', ToStr(Self.Bar),
+    ' x', Self.BarAmount, ' | Output x', Self.Multiplier);
+end;
+
+procedure AIOAnvilSmither.CheckHammerNeed();
+begin
+  Self.NeedsHammer := True;
+  if Equipment.Open() and Equipment.ContainsAny(AS_IMCANDO_HAMMERS) then
+  begin
+    Self.NeedsHammer := False;
+    WriteLn('[SETUP] Imcando hammer is equipped.');
+  end;
+  Inventory.Open();
+end;
+
+function AIOAnvilSmither.HasHammer(): Boolean;
+begin
+  if not Self.NeedsHammer then
+    Exit(True);
+  Result := Inventory.ContainsAny(AS_IMCANDO_HAMMERS + ['Hammer']);
+end;
+
+function AIOAnvilSmither.KeepItems(): TRSItemArray;
+begin
+  Result := AS_IMCANDO_HAMMERS + ['Hammer', Self.Bar];
+end;
+
+function AIOAnvilSmither.BarCount(): Int32;
+begin
+  Result := Inventory.CountItem(Self.Bar);
+end;
+
+function AIOAnvilSmither.HasBars(): Boolean;
+begin
+  Result := Self.BarCount() >= Self.BarAmount;
+end;
+
+function AIOAnvilSmither.HasProduct(): Boolean;
+begin
+  Result := Inventory.ContainsItem(Self.Product);
+end;
+
+function AIOAnvilSmither.DepositSlot(slot: Int32): Boolean;
+var
+  box: TBox;
+begin
+  box := Inventory.GetSlotBox(slot);
+  if not Inventory.IsSlotUsed(box) then
+    Exit(True);
+
+  if not Bank.DepositHelper(box, Bank.QUANTITY_ALL, True) then
+    Exit(False);
+
+  Result := WaitUntil(not Inventory.IsSlotUsed(box), 50, 3000);
+end;
+
+function AIOAnvilSmither.RolledChance(base: Int32; field: String): Double;
+var
+  hash: Double;
+begin
+  if base <= 0 then
+    Exit(0);
+  hash := BASHFieldHash(BASHPremiumCurrentUser(), field);
+  Result := base * (0.8 + hash * 0.4);
+end;
+
+function AIOAnvilSmither.DepositProduct(): Boolean;
+var
+  slots: TIntegerArray;
+  before, gone, slot: Int32;
+begin
+  before := BASHInventoryQty(Self.Product);
+  if before <= 0 then
+    Exit(True);
+
+  if SRL.Dice(Self.RolledChance(Self.DepositAllChance, 'anvildepositall')) then
+  begin
+    WriteLn('[BANK] Deposit all');
+    if Bank.DepositAll() then
+      WaitUntil(Inventory.Count() = 0, 50, 4000);
+    gone := before - BASHInventoryQty(Self.Product);
+    if gone > 0 then
+    begin
+      Self.ItemsMade += gone;
+      Self.TotalActions := Self.ItemsMade;
+      Self.TotalProfit := Self.ProfitSoFar();
+    end;
+    Exit(not Inventory.ContainsItem(Self.Product));
+  end;
+
+  if not Inventory.FindItem(Self.Product, slots) then
+    Exit(True);
+
+  for slot in slots do
+  begin
+    if not Inventory.IsSlotUsed(slot) then
+      Continue;
+    if not Self.DepositSlot(slot) then
+      Break;
+  end;
+
+  gone := before - BASHInventoryQty(Self.Product);
+  if gone > 0 then
+  begin
+    Self.ItemsMade += gone;
+    Self.TotalActions := Self.ItemsMade;
+    Self.TotalProfit := Self.ProfitSoFar();
+  end;
+
+  Result := not Inventory.ContainsItem(Self.Product);
+end;
+
+function AIOAnvilSmither.DepositJunk(): Boolean;
+var
+  slots: TIntegerArray;
+  guard: Int32;
+begin
+  Result := True;
+  guard := 0;
+  slots := Inventory.FindRandomItems(Self.KeepItems());
+  while (slots <> []) and (guard < 40) do
+  begin
+    Inc(guard);
+    if not Self.DepositSlot(slots[0]) then
+      Exit(False);
+    slots := Inventory.FindRandomItems(Self.KeepItems());
+  end;
+end;
+
+function AIOAnvilSmither.WithdrawTool(): Boolean;
+begin
+  if not Self.NeedsHammer then
+    Exit(True);
+
+  if Inventory.ContainsAny(AS_IMCANDO_HAMMERS + ['Hammer']) then
+    Exit(True);
+
+  if Bank.ContainsAny(AS_IMCANDO_HAMMERS) then
+  begin
+    Result := False;
+    if Bank.WithdrawItem(TRSBankItem.Setup('Imcando hammer', 1, False), True) then
+      Result := WaitUntil(Inventory.ContainsItem('Imcando hammer'), 100, 3000);
+    if not Result and Bank.WithdrawItem(TRSBankItem.Setup('Imcando hammer (off-hand)', 1, False), True) then
+      Result := WaitUntil(Inventory.ContainsItem('Imcando hammer (off-hand)'), 100, 3000);
+    if Result then
+      Exit(True);
+  end;
+
+  Result := Bank.WithdrawItem(TRSBankItem.Setup('Hammer', 1, False), True) and
+    WaitUntil(Inventory.ContainsItem('Hammer'), 100, 3000);
+
+  if not Result then
+    Self.StopWithMessage('No Hammer or Imcando hammer found. Equip an Imcando hammer, or keep a Hammer in the bank.');
+end;
+
+function AIOAnvilSmither.WithdrawBars(): Boolean;
+var
+  before: Int32;
+begin
+  before := Self.BarCount();
+  Bank.WithdrawItem(TRSBankItem.Setup(Self.Bar, Bank.QUANTITY_ALL, False), True);
+  Result := WaitUntil(Self.BarCount() > before, 100, 3000);
+
+  if Self.HasBars() then
+  begin
+    Self.WithdrawFails := 0;
+    Exit(True);
+  end;
+
+  Inc(Self.WithdrawFails);
+  WriteLn('[BANK] Not enough bars after withdraw (attempt ', Self.WithdrawFails, ')');
+  if ((Self.WithdrawFails >= 2) and (not Bank.ContainsItem(Self.Bar))) or (Self.WithdrawFails >= 5) then
+    Self.OutOfBars := True;
+  Result := False;
+end;
+
+function AIOAnvilSmither.OpenAnvil(): Boolean;
+var
+  attempt: Int32;
+  clicked: Boolean;
+  tile: TPoint;
+  rect: TRectangle;
+  savedCoords: TPointArray;
+begin
+  Result := False;
+
+  if Bank.IsOpen() then
+  begin
+    Bank.Close();
+    WaitUntil(not Bank.IsOpen(), 100, 3000);
+  end;
+
+  if Anvil.IsOpen() then
+    Exit(True);
+
+  clicked := False;
+  savedCoords := Self.AnvilObj.Coordinates;
+  if Length(savedCoords) > 0 then
+  begin
+    if (Length(savedCoords) > 1) and SRL.Dice(Self.RolledChance(Self.RandomAnvilChance, 'anvilrandomanvil')) then
+    begin
+      tile := savedCoords[Random(0, High(savedCoords))];
+      WriteLn('[ANVIL] Random anvil at ', ToStr(tile));
+      Self.AnvilObj.Coordinates := [tile];
+    end
+    else
+      tile := savedCoords.NearestPoint(Map.Position());
+  end
+  else
+    tile := AS_ANVIL_ANCHOR;
+
+  WriteLn('[ANVIL] Click attempt 1/3 with colour');
+  Self.AnvilObj.Filter.Walker := False;
+  clicked := Self.AnvilObj.WalkClick(True, 0);
+  Self.AnvilObj.Filter.Walker := True;
+  Self.AnvilObj.Coordinates := savedCoords;
+
+  if not clicked then
+  begin
+    for attempt := 2 to 3 do
+    begin
+      WriteLn('[ANVIL] Click attempt ', attempt, '/3 at ', ToStr(tile));
+      try
+        rect := Map.GetTileMS(tile);
+      except
+        WriteLn('[ANVIL] Tile is not on screen');
+        Break;
+      end;
+
+      if not rect.Bounds().Overlap(MainScreen.Bounds) then
+      begin
+        WriteLn('[ANVIL] Tile is not on screen');
+        Break;
+      end;
+
+      Mouse.Move(rect);
+      if MainScreen.IsUpText(['Anvil', 'Smith'], 500) then
+      begin
+        Mouse.Click(MOUSE_LEFT);
+        clicked := True;
+        Break;
+      end;
+
+      WriteLn('[ANVIL] Uptext was not the anvil');
+    end;
+  end;
+
+  if not clicked then
+  begin
+    WriteLn('[ANVIL] Walking closer');
+    clicked := Self.AnvilObj.WalkClick();
+  end;
+
+  if not clicked then
+  begin
+    Inc(Self.AnvilFails);
+    WriteLn('[ANVIL] Could not click anvil (attempt ', Self.AnvilFails, ')');
+    Antiban.RandomRotate();
+    if Self.AnvilFails >= 6 then
+      Self.StopWithMessage('Could not find the anvil after several attempts.');
+    Exit(False);
+  end;
+
+  Minimap.WaitPlayerMoving(300, 10000);
+  Result := Anvil.IsOpen(8000);
+
+  if Result then
+    Self.AnvilFails := 0
+  else
+  begin
+    Inc(Self.AnvilFails);
+    if Chat.LeveledUp() then
+      Exit(False);
+    if Self.AnvilFails >= 6 then
+      Self.StopWithMessage('Anvil interface did not open after several attempts.');
+  end;
+end;
+
+function AIOAnvilSmither.SmithItem(): Boolean;
+var
+  before: Int32;
+  started: Boolean;
+begin
+  Result := False;
+  if not Anvil.IsOpen() then
+    Exit;
+
+  before := Self.BarCount();
+  started := False;
+
+  if Self.UseSpaceBar and Self.SpaceBarPrimed then
+  begin
+    WriteLn('[ANVIL] Pressing space');
+    Keyboard.PressKey(VK_SPACE);
+    started := WaitUntil(not Anvil.IsOpen(), 100, 2500);
+    if not started then
+      WriteLn('[ANVIL] Space did not start smithing, clicking the item');
+  end;
+
+  if not started then
+  begin
+    if not Anvil.SmithItem(Self.Product, ERSAnvilButton.QUANTITY_ALL) then
+    begin
+      Inc(Self.SmithFails);
+      WriteLn('[ANVIL] Could not select ', ToStr(Self.Product), ' (attempt ', Self.SmithFails, ')');
+      RSInterface.Close(True);
+      if Self.SmithFails >= 3 then
+        Self.StopWithMessage('Could not select ' + ToStr(Self.Product) + ' in the anvil interface. Check your Smithing level and bar type.');
+      Exit(False);
+    end;
+  end;
+
+  Self.SmithFails := 0;
+  Result := WaitUntil(Self.BarCount() < before, 200, 6000);
+  Self.Smithing := Result;
+  if Result then
+  begin
+    Self.SpaceBarPrimed := True;
+    Self.BarsUsed += Max(0, before - Self.BarCount());
+    WL.Activity.Restart();
+  end;
+end;
+
+function AIOAnvilSmither.WaitSmith(): Boolean;
+var
+  startCount: Int32;
+  timeout: TCountDown;
+begin
+  Result := False;
+  startCount := Self.BarCount();
+  timeout.Init(7000);
+
+  while not timeout.IsFinished() do
+  begin
+    if Chat.LeveledUp() then
+    begin
+      Self.Smithing := False;
+      Exit(False);
+    end;
+
+    if Self.BarCount() < startCount then
+    begin
+      Self.BarsUsed += startCount - Self.BarCount();
+      WL.Activity.Restart();
+      Exit(True);
+    end;
+
+    Self.Report();
+    Wait(150);
+  end;
+
+  WriteLn('[ANVIL] Smithing stalled, re-opening anvil');
+  Self.Smithing := False;
+end;
+
+function AIOAnvilSmither.GetState(): EAnvilState;
+begin
+  if not RSClient.IsLoggedIn() then
+    Exit(EAnvilState.ST_HANDLE_LOGIN);
+
+  if Chat.LeveledUp() then
+    Exit(EAnvilState.ST_LEVEL_UP);
+
+  if Self.OutOfBars then
+    Exit(EAnvilState.ST_OUT_OF_BARS);
+
+  if Bank.IsOpen() then
+  begin
+    Self.Smithing := False;
+    if Self.HasProduct() then
+      Exit(EAnvilState.ST_DEPOSIT_PRODUCT);
+    if Inventory.ContainsRandomItems(Self.KeepItems()) then
+      Exit(EAnvilState.ST_DEPOSIT_JUNK);
+    if not Self.HasHammer() then
+      Exit(EAnvilState.ST_WITHDRAW_TOOL);
+    if not Self.HasBars() then
+      Exit(EAnvilState.ST_WITHDRAW_BARS);
+    Exit(EAnvilState.ST_CLOSE_INTERFACE);
+  end;
+
+  if Anvil.IsOpen() then
+  begin
+    if Self.HasHammer() and Self.HasBars() then
+      Exit(EAnvilState.ST_SMITH_ITEM);
+    Exit(EAnvilState.ST_CLOSE_INTERFACE);
+  end;
+
+  if RSInterface.IsOpen() then
+    Exit(EAnvilState.ST_CLOSE_INTERFACE);
+
+  if ShouldHopWorld() then
+    Exit(EAnvilState.ST_HOP_WORLDS);
+
+  if Self.HasHammer() and Self.HasBars() then
+  begin
+    if Self.Smithing then
+      Exit(EAnvilState.ST_WAIT_SMITH);
+    Exit(EAnvilState.ST_OPEN_ANVIL);
+  end;
+
+  Self.Smithing := False;
+  Exit(EAnvilState.ST_OPEN_BANK);
+end;
+
+procedure AIOAnvilSmither.RunCycle();
+begin
+  RSClient.Image.Clear();
+  CheckSystemUpdate();
+  Self.Report();
+
+  Self.State := Self.GetState();
+
+  case Self.State of
+    EAnvilState.ST_HANDLE_LOGIN: Login.LoginPlayer();
+    EAnvilState.ST_LEVEL_UP:
+      begin
+        Chat.HandleLevelUp();
+        Self.Smithing := False;
+      end;
+    EAnvilState.ST_CLOSE_INTERFACE: RSInterface.Close(True);
+    EAnvilState.ST_HOP_WORLDS: DoWorldHop();
+    EAnvilState.ST_OPEN_BANK:
+      begin
+        if not Self.OpenBank() then
+        begin
+          Self.WalkToBankIfFar();
+          Self.BindBanks();
+        end;
+      end;
+    EAnvilState.ST_DEPOSIT_PRODUCT: Self.DepositProduct();
+    EAnvilState.ST_DEPOSIT_JUNK: Self.DepositJunk();
+    EAnvilState.ST_WITHDRAW_TOOL: Self.WithdrawTool();
+    EAnvilState.ST_WITHDRAW_BARS: Self.WithdrawBars();
+    EAnvilState.ST_OPEN_ANVIL: Self.OpenAnvil();
+    EAnvilState.ST_SMITH_ITEM: Self.SmithItem();
+    EAnvilState.ST_WAIT_SMITH: Self.WaitSmith();
+    EAnvilState.ST_OUT_OF_BARS:
+      Self.StopWithMessage('Out of ' + ToStr(Self.Bar) + '. Made ' + IntToStr(Self.ItemsMade) + ' x ' + ToStr(Self.Product) + '.');
+  end;
+
+  if SRL.Dice(Self.AntiBanChance) then
+    Self.DoAntiban(True, True);
+end;
+
+procedure AIOAnvilSmither.Init(MaxActions: UInt32; MaxTime: UInt64); override;
+begin
+  inherited;
+
+  if (RSClient.Mode <> ERSClientMode.FIXED) then
+  begin
+    WriteLn('[FAILSAFE] ERROR: You are not using the FIXED CLASSIC screen mode. FIXED CLASSIC mode is the only supported mode for this script.');
+    TerminateScript('Screen mode not supported');
+  end;
+
+  if (Self.MetalType = '') then
+    Self.MetalType := 'Steel';
+  if (Self.ItemType = '') then
+    Self.ItemType := 'Platebody';
+
+  Self.LastSystemUpdateCheck := 0;
+  Self.AntiBanChance := 70;
+  Self.Smithing := False;
+  Self.SpaceBarPrimed := False;
+  Self.OutOfBars := False;
+  Self.SmithFails := 0;
+  Self.WithdrawFails := 0;
+  Self.AnvilFails := 0;
+  Self.ItemsMade := 0;
+  Self.BarsUsed := 0;
+
+  WriteLn('Location: ' + AS_LOCATION_NAME);
+  WriteLn('Metal: ' + Self.MetalType + ' | Item: ' + Self.ItemType);
+
+  if not RSClient.IsLoggedIn() then
+    Login.LoginPlayer();
+
+  if WaitUntil(RSClient.IsLoggedIn(), 250, 12000) then
+    Self.StartXP := XPBar.Read();
+
+  if RSInterface.IsOpen() then
+    RSInterface.Close(50);
+
+  Self.SetupItems();
+
+  Antiban.Setup();
+  SetupWorldHopping();
+  StopAtLevel.SetAvailableSkills(AS_STOP_AT_LEVEL_SKILLS);
+
+  Mouse.Speed := Random(16, 20);
+  ItemFinder.Similarity := 0.998;
+  Map.Walker.ScreenWalk := False;
+  Map.Walker.AdaptiveWalk := False;
+
+  Self.SetupMap();
+  Self.NeedsHammer := True;
+  Self.CheckHammerNeed();
+end;
+
+procedure AIOAnvilSmither.Run(MaxActions: UInt32; MaxTime: UInt64);
+var
+  goalSkill: ERSSkill;
+  curLvl, goalLvl: Int32;
+begin
+  Self.Init(MaxActions, MaxTime);
+
+  repeat
+    Self.RunCycle();
+    Self.TotalActions := Self.ItemsMade;
+
+    if StopAtLevel.ShouldStop(goalSkill, curLvl, goalLvl) then
+      Self.StopWithMessage('Level reached: ' + SKILLNAMES[goalSkill] + ' ' + ToStr(curLvl) + '/' + ToStr(goalLvl));
+  until Self.ShouldStop();
+
+  Self.LastReportTime := 0;
+  Self.Report();
+end;
+
+{$IFDEF SCRIPT_GUI}
+var
+  Config: TConfig;
+{$ENDIF}
+
+begin
+  SettingsHandler.CheckBashProfileRequired();
+  {$IFDEF SCRIPT_GUI}
+    Sync(@Config.Run);
+  {$ENDIF}
+  Smither.Run(WLSettings.MaxActions, WLSettings.MaxTime);
+end.

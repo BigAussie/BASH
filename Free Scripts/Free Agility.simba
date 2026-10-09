@@ -12,7 +12,7 @@
 {
 ----------------------------------------------------------------------------------
 Free Agility
-This is the free version. It runs the Draynor Village and Varrock rooftop courses.
+This is the free version. It runs the Draynor Village, Varrock, and Falador rooftop courses.
 For every course, plus farm runs, birdhouse runs, and Discord reports, use AIO Agility.
 ----------------------------------------------------------------------------------
 ~~~ Need Support? Contact Me ~~~
@@ -94,6 +94,7 @@ const
   AGILITY_WALK_PX = 68;
   AGILITY_WALK_STOP_PX = 48;
   AGILITY_CLICK_SETTLE_MS = 400;
+  AGILITY_LAP_LAND_MS = 800;
   AGILITY_ON_OBSTACLE_PX = 12;
   AGILITY_STANDING_PX = 24;
   AGILITY_MARKS_PER_AMYLASE_PACK = 10;
@@ -329,6 +330,27 @@ begin
   obs[5].MarkTiles := [[47952, 36826]];
   obs[6].MarkTiles := [[48024, 36806]];
   AppendCourse('Varrock Rooftop', 30, obs, [8916, 36750]);
+
+  obs := [];
+  obs += MakeMappedObs('Rough wall', 8048, 37066, ['imb', 'ough', 'wall'], 11, 6500);
+  obs += MakeMappedObs('Tightrope', 47228, 37058, ['oss', 'ight'], 22, 10000);
+  obs += MakeMappedObs('Hand holds', 47272, 37034, ['oss', 'and', 'olds'], 61, 12000);
+  obs += MakeMappedObs('Gap', 47264, 36998, ['ump', 'Gap'], 27, 5000);
+  obs += MakeMappedObs('Gap 2', 47252, 36982, ['ump', 'Gap'], 26, 6000);
+  obs += MakeMappedObs('Tightrope 2', 47212, 36982, ['oss', 'ight'], 61, 10000);
+  obs += MakeMappedObs('Tightrope 3', 47180, 37018, ['oss', 'ight'], 53, 7000);
+  obs += MakeMappedObs('Gap 3', 47140, 37022, ['ump', 'Gap'], 30, 5000);
+  obs += MakeMappedObs('Ledge', 47140, 37050, ['ump', 'edge'], 14, 6000);
+  obs += MakeMappedObs('Ledge 2', 47120, 37054, ['ump', 'edge'], 13, 5000);
+  obs += MakeMappedObs('Ledge 3', 47120, 37090, ['ump', 'edge'], 13, 7000);
+  obs += MakeMappedObs('Ledge 4', 47140, 37098, ['ump', 'edge'], 14, 5000);
+  obs += MakeMappedObs('Edge', 47164, 37098, ['ump', 'Edge'], 241, 7000);
+  obs[1].MarkTiles := [[47252, 37050]];
+  obs[2].MarkTiles := [[47268, 37002]];
+  obs[7].MarkTiles := [[47148, 37050]];
+  obs[8].MarkTiles := [[47124, 37050]];
+  obs[10].MarkTiles := [[47132, 37098]];
+  AppendCourse('Falador Rooftop', 50, obs, [7956, 37010]);
 
   SortAgilityCatalog();
 
@@ -2497,6 +2519,7 @@ var
   TRes: ResultEx;
   Obs: TAgilityObstacleDef;
   newIdx: Int32;
+  landedAt: UInt64;
 begin
   if Length(Self.Obstacles) = 0 then
   begin
@@ -2536,6 +2559,13 @@ begin
           Inc(Self.LapCount);
           Self.Index := 0;
           WriteLn('[AGILITY] Lap ', Self.LapCount, ' complete');
+          if SameText(Self.CurrentCourse().Name, 'Falador Rooftop') then
+          begin
+            landedAt := GetTickCount();
+            while Minimap.IsPlayerMoving() and (GetTickCount() - landedAt < 2000) do
+              Wait(50);
+            Wait(AGILITY_LAP_LAND_MS);
+          end;
           if RandomEvents.Enabled and RandomEvents.Handle() then
             WriteLn('[AGILITY] handled a random event');
           Self.OfferCourseBreak();
