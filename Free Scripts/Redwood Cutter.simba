@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'd4b8e2a7-9c31-4f6b-8a15-7e2c9d04f6b8'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '3'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '4'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -108,14 +108,12 @@ const
   RW_TILE_TRIES = 3;
   RW_TILE_PASSES = 3;
   RW_TREE_TILES: TPointArray = [
-    [15240, 36510],
-    [15244, 36510],
-    [15252, 36498],
-    [15252, 36502],
-    [15240, 36490],
-    [15244, 36490],
-    [15232, 36498],
-    [15232, 36502]
+    [15232, 36502], [15232, 36498],
+    [15240, 36510], [15244, 36510],
+    [15248, 36502], [15248, 36498],
+    [15232, 36462], [15232, 36458],
+    [15240, 36454], [15244, 36454],
+    [15248, 36462], [15248, 36458]
   ];
 
   RW_BANK_TILE: TPoint = [2272, 36530];
@@ -528,24 +526,39 @@ end;
 
 function RedwoodCutter.FindRedwoodIconBoxes(): TBoxArray;
 var
+  tiles: TPointArray;
   atpa: T2DPointArray;
   boxes: TBoxArray;
-  i: Int32;
-  b: TBox;
+  i, j: Int32;
+  rect: TRectangle;
+  search, b: TBox;
 begin
   Result := [];
-  atpa := MainScreen.FindObject(RedwoodIconFinder());
-  if Length(atpa) = 0 then
-    Exit;
+  tiles := RW_TREE_TILES;
+  tiles := tiles.SortFrom(Map.Position());
 
-  atpa := atpa.SortFrom(MainScreen.GetPlayerBox().Center());
-  boxes := atpa.ToTBA();
-  for i := 0 to High(boxes) do
+  for i := 0 to High(tiles) do
   begin
-    b := boxes[i];
-    if Self.HasPluginBox and Self.PluginBox.Contains(b.Center()) then
+    try
+      rect := Map.GetTileMS(tiles[i], 2);
+    except
       Continue;
-    Result += b;
+    end;
+    if not MainScreen.Bounds.Contains(rect.Mean()) then
+      Continue;
+    search := rect.Expand(12).Bounds();
+    search.LimitTo(MainScreen.Bounds);
+    atpa := MainScreen.FindObject(RedwoodIconFinder(), search);
+    if Length(atpa) = 0 then
+      Continue;
+    boxes := atpa.ToTBA();
+    for j := 0 to High(boxes) do
+    begin
+      b := boxes[j];
+      if Self.HasPluginBox and Self.PluginBox.Contains(b.Center()) then
+        Continue;
+      Result += b;
+    end;
   end;
 end;
 
