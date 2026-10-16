@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'd4b8e2a7-9c31-4f6b-8a15-7e2c9d04f6b8'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '4'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '6'}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
 {$I BashLib/osr.simba}
@@ -280,6 +280,53 @@ begin
   for i := 0 to High(needles) do
     if text.Contains(LowerCase(needles[i])) then
       Exit(True);
+end;
+
+function RedwoodClickUpText(upText: String): String;
+var
+  p: Int32;
+begin
+  Result := Trim(upText);
+  p := Pos(' / ', Result);
+  if p > 0 then
+    Result := Trim(Copy(Result, 1, p - 1));
+end;
+
+function RedwoodUpTextSafe(upText: String; needles: TStringArray): Boolean;
+begin
+  Result := False;
+  if UpTextContains(upText, ['carved', 'enter']) then
+    Exit;
+  Result := UpTextContains(RedwoodClickUpText(upText), needles);
+end;
+
+function ConfirmRedwoodClick(needles: TStringArray): Boolean;
+var
+  upText: String;
+begin
+  Result := False;
+  if ChooseOption.IsOpen() then
+  begin
+    ChooseOption.Close();
+    Exit;
+  end;
+
+  upText := MainScreen.GetUpText();
+  if not RedwoodUpTextSafe(upText, needles) then
+    Exit;
+
+  Wait(50, 80);
+  upText := MainScreen.GetUpText();
+  if not RedwoodUpTextSafe(upText, needles) then
+    Exit;
+
+  if ChooseOption.IsOpen() then
+  begin
+    ChooseOption.Close();
+    Exit;
+  end;
+
+  Result := True;
 end;
 
 function PluginStatNumber(box: TBox): Int32;
@@ -620,7 +667,9 @@ begin
     Mouse.Move(SRL.RandomPoint(b));
     WaitUntil(MainScreen.GetUpText() <> '', 40, 250);
     upText := MainScreen.GetUpText();
-    if UpTextContains(upText, ['Cut redwood tree', 'Cut Redwood tree']) then
+    if (not UpTextContains(upText, ['carved', 'enter'])) and
+       UpTextContains(upText, ['Cut redwood tree', 'Cut Redwood tree']) and
+       ConfirmRedwoodClick(['Cut redwood tree', 'Cut Redwood tree']) then
     begin
       Mouse.Click(MOUSE_LEFT);
       Minimap.WaitMoving();
@@ -700,6 +749,8 @@ begin
       Continue;
     if not MainScreen.IsUpText(RW_LADDER_DOWNTEXT, 500) then
       Continue;
+    if not ConfirmRedwoodClick(RW_LADDER_DOWNTEXT) then
+      Continue;
     Mouse.Click(MOUSE_LEFT);
     Self.Ladder.Coordinates := savedCoords;
     Self.Ladder.Rotations := savedRotations;
@@ -726,6 +777,8 @@ begin
     Mouse.Move(rect);
     if MainScreen.IsUpText(RW_LADDER_DOWNTEXT, 500) then
     begin
+      if not ConfirmRedwoodClick(RW_LADDER_DOWNTEXT) then
+        Continue;
       Mouse.Click(MOUSE_LEFT);
       Self.Ladder.Coordinates := savedCoords;
       Self.Ladder.Rotations := savedRotations;
@@ -843,7 +896,8 @@ begin
     Mouse.Move(SRL.RandomPoint(b));
     WaitUntil(MainScreen.GetUpText() <> '', 40, 250);
     upText := MainScreen.GetUpText();
-    if UpTextContains(upText, RW_CUT_UPTEXT) then
+    if (not UpTextContains(upText, ['carved', 'enter'])) and
+       UpTextContains(upText, RW_CUT_UPTEXT) and ConfirmRedwoodClick(RW_CUT_UPTEXT) then
     begin
       Mouse.Click(MOUSE_LEFT);
       Minimap.WaitMoving();
