@@ -673,11 +673,21 @@ begin
   end;
 end;
 
+function ReadCalcSetting(user, key: String; default: Boolean): Boolean;
+var
+  saved: String;
+begin
+  saved := ReadINI(user + ' Calcified Mining Settings', key, BASH_GUI_SETTINGS_FILE);
+  if saved = '' then
+    saved := ReadINI('Calcified Mining Settings', key, BASH_GUI_SETTINGS_FILE);
+  Result := StrToBoolDef(saved, default);
+end;
+
 procedure TConfig.LoadActionSettings(); override;
 begin
   Self.MigrateLegacyWebhook();
-  Self.SavedPowerMining := StrToBoolDef(ReadINI('Calcified Mining Settings', 'PowerMining', BASH_GUI_SETTINGS_FILE), POWERMINING);
-  Self.SavedIgnoreWaterfalls := StrToBoolDef(ReadINI('Calcified Mining Settings', 'IgnoreWaterfalls', BASH_GUI_SETTINGS_FILE), IGNOREWATERFALLS);
+  Self.SavedPowerMining := ReadCalcSetting(Self.Username, 'PowerMining', POWERMINING);
+  Self.SavedIgnoreWaterfalls := ReadCalcSetting(Self.Username, 'IgnoreWaterfalls', IGNOREWATERFALLS);
 end;
 
 procedure TConfig.BuildActionSection(); override;
@@ -743,8 +753,8 @@ procedure TConfig.ApplyActionSettings(); override;
 begin
   POWERMINING := Self.PowerMineCheckbox.IsChecked();
   IGNOREWATERFALLS := Self.IgnoreWaterfallsCheckBox.IsChecked();
-  WriteINI('Calcified Mining Settings', 'PowerMining', BoolToStr(POWERMINING, 'true', 'false'), BASH_GUI_SETTINGS_FILE);
-  WriteINI('Calcified Mining Settings', 'IgnoreWaterfalls', BoolToStr(IGNOREWATERFALLS, 'true', 'false'), BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + ' Calcified Mining Settings', 'PowerMining', BoolToStr(POWERMINING, 'true', 'false'), BASH_GUI_SETTINGS_FILE);
+  WriteINI(Self.Username + ' Calcified Mining Settings', 'IgnoreWaterfalls', BoolToStr(IGNOREWATERFALLS, 'true', 'false'), BASH_GUI_SETTINGS_FILE);
   if Assigned(Self.PingOnTerminatedCheckBox) then
     PINGONTERMINATED := Self.PingOnTerminatedCheckBox.IsChecked();
   if Assigned(Self.DiscordUIDInput) then
@@ -773,30 +783,30 @@ end;
 var
   Config: TConfig;
 {$ENDIF}
-
-{$IFDEF SCRIPT_GUI}
-procedure ApplySavedActionSettings();
-begin
-  BASHUseLauncherAccount();
-  Config.InitGUI();
-  Config.Username := BASHPremiumCurrentUser();
-  Config.LoadActionSettings();
-  POWERMINING := Config.SavedPowerMining;
-  IGNOREWATERFALLS := Config.SavedIgnoreWaterfalls;
-  BASHApplyStoredAntiban(Config.Username);
-  WriteLn('[LAUNCHER] Using the saved settings for ', Config.Username);
-end;
-{$ENDIF}
-
-begin
-  {$IFDEF SCRIPT_GUI}
-  if GetEnvironmentVariable('BASH_LAUNCHER') = '1' then
-  begin
-    ApplySavedActionSettings();
-    BASHSetupLauncherRemoteInput();
-  end
-  else
-    Sync(@Config.Run);
-  {$ENDIF}
-  Script.Run(WLSettings.MaxActions, WLSettings.MaxTime);
-end.
+
+{$IFDEF SCRIPT_GUI}
+procedure ApplySavedActionSettings();
+begin
+  BASHUseLauncherAccount();
+  Config.InitGUI();
+  Config.Username := BASHPremiumCurrentUser();
+  Config.LoadActionSettings();
+  POWERMINING := Config.SavedPowerMining;
+  IGNOREWATERFALLS := Config.SavedIgnoreWaterfalls;
+  BASHApplyStoredAntiban(Config.Username);
+  WriteLn('[LAUNCHER] Using the saved settings for ', Config.Username);
+end;
+{$ENDIF}
+
+begin
+  {$IFDEF SCRIPT_GUI}
+  if GetEnvironmentVariable('BASH_LAUNCHER') = '1' then
+  begin
+    ApplySavedActionSettings();
+    BASHSetupLauncherRemoteInput();
+  end
+  else
+    Sync(@Config.Run);
+  {$ENDIF}
+  Script.Run(WLSettings.MaxActions, WLSettings.MaxTime);
+end.

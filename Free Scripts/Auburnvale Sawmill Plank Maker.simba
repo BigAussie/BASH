@@ -52,6 +52,7 @@ type
     BirdhouseRunInProgress: Boolean;
     LastSystemUpdateCheck: UInt64;
     LastReportAt: UInt64;
+    WornGear: TBASHWornGear;
   end;
 
   TConfig = record(TBASHPremiumGUI)
@@ -836,13 +837,17 @@ begin
 
   if SameText(BANKRETURNMETHOD, 'Runes') then
   begin
-    if not (Bank.WithdrawItem(['Fire rune', 1, False], False) and
+    if Self.WornGear.CoversRune('Fire rune') then
+      WriteLn('[BIRDHOUSE] Fire rune covered by equipment')
+    else if not (Bank.WithdrawItem(['Fire rune', 1, False], False) and
             WaitUntil(Inventory.CountItemStack('Fire rune') >= 1, 65, 3000)) then
     begin
       Self.IsDisabled := True;
       Exit(False);
     end;
-    if not (Bank.WithdrawItem(['Earth rune', 1, False], False) and
+    if Self.WornGear.CoversRune('Earth rune') then
+      WriteLn('[BIRDHOUSE] Earth rune covered by equipment')
+    else if not (Bank.WithdrawItem(['Earth rune', 1, False], False) and
             WaitUntil(Inventory.CountItemStack('Earth rune') >= 1, 65, 3000)) then
     begin
       Self.IsDisabled := True;
@@ -1314,6 +1319,8 @@ begin
   if not RSClient.IsLoggedIn() then
     Login.LoginPlayer();
 
+  BASHAssignWornGear(Self.WornGear);
+
   Self.LastSystemUpdateCheck := 0;
   Self.LastReportAt := GetTickCount();
   Self.PlanksMade := 0;
@@ -1403,34 +1410,34 @@ begin
   until Self.ShouldStop();
 end;
 
-{$IFDEF SCRIPT_GUI}
-procedure ApplySavedActionSettings();
-begin
-  BASHUseLauncherAccount();
-  Config.InitGUI();
-  Config.Username := BASHPremiumCurrentUser();
-  Config.LoadActionSettings();
-  if (Config.SavedLogsIndex < 0) or (Config.SavedLogsIndex > High(ASP_LOG_CHOICES)) then
-  Config.SavedLogsIndex := 1;
-  ApplyChosenProduct(ASP_LOG_CHOICES[Config.SavedLogsIndex]);
-  if SCRIPTMODE = '' then
-  SCRIPTMODE := 'Fast';
-  BASHApplyStoredAntiban(Config.Username);
-  WriteLn('[LAUNCHER] Using the saved settings for ', Config.Username);
-end;
-{$ENDIF}
-
-begin
-  SettingsHandler.CheckBashProfileRequired();
-  Discord.Setup();
-  {$IFDEF SCRIPT_GUI}
-  if GetEnvironmentVariable('BASH_LAUNCHER') = '1' then
-  begin
-    ApplySavedActionSettings();
-    BASHSetupLauncherRemoteInput();
-  end
-  else
-    Sync(@Config.Run);
-  {$ENDIF}
-  MillRun.Run(WLSettings.MaxActions, WLSettings.MaxTime);
+{$IFDEF SCRIPT_GUI}
+procedure ApplySavedActionSettings();
+begin
+  BASHUseLauncherAccount();
+  Config.InitGUI();
+  Config.Username := BASHPremiumCurrentUser();
+  Config.LoadActionSettings();
+  if (Config.SavedLogsIndex < 0) or (Config.SavedLogsIndex > High(ASP_LOG_CHOICES)) then
+  Config.SavedLogsIndex := 1;
+  ApplyChosenProduct(ASP_LOG_CHOICES[Config.SavedLogsIndex]);
+  if SCRIPTMODE = '' then
+  SCRIPTMODE := 'Fast';
+  BASHApplyStoredAntiban(Config.Username);
+  WriteLn('[LAUNCHER] Using the saved settings for ', Config.Username);
+end;
+{$ENDIF}
+
+begin
+  SettingsHandler.CheckBashProfileRequired();
+  Discord.Setup();
+  {$IFDEF SCRIPT_GUI}
+  if GetEnvironmentVariable('BASH_LAUNCHER') = '1' then
+  begin
+    ApplySavedActionSettings();
+    BASHSetupLauncherRemoteInput();
+  end
+  else
+    Sync(@Config.Run);
+  {$ENDIF}
+  MillRun.Run(WLSettings.MaxActions, WLSettings.MaxTime);
 end.

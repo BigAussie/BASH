@@ -1,5 +1,5 @@
 {$UNDEF SCRIPT_ID}{$DEFINE SCRIPT_ID := 'cba5ca58-c6d2-48bc-b625-f54e300b4760'}
-{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '10'}
+{$UNDEF SCRIPT_REVISION}{$DEFINE SCRIPT_REVISION := '12'}
 {$DEFINE BASH_FARM_WITH_BIRDHOUSE}
 {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
 {$I SRL-B/osr.simba}
@@ -33,6 +33,7 @@ type
     StartingLocationIdx: Int32;
     StartingChunksLoaded: Boolean;
     Form: TBASHFarmGUI;
+    WornGear: TBASHWornGear;
   end;
 
 var
@@ -175,12 +176,16 @@ begin
 
         WriteLn('[BASH Farm+BH] Withdrawing Grand Exchange teleport runes');
 
-        if not BASHFarmRunner.FarmWithdrawHelper('Fire rune', fireNeed) then
+        if BASHFarmRunner.WornGear.CoversRune('Fire rune') then
+          WriteLn('[BASH Farm+BH] Fire rune covered by equipment')
+        else if not BASHFarmRunner.FarmWithdrawHelper('Fire rune', fireNeed) then
         begin
           WriteLn('[BASH Farm+BH] Failed to withdraw Fire rune');
           Exit(False);
         end;
-        if not BASHFarmRunner.FarmWithdrawHelper('Air rune', airNeed) then
+        if BASHFarmRunner.WornGear.CoversRune('Air rune') then
+          WriteLn('[BASH Farm+BH] Air rune covered by equipment')
+        else if not BASHFarmRunner.FarmWithdrawHelper('Air rune', airNeed) then
         begin
           WriteLn('[BASH Farm+BH] Failed to withdraw Air rune');
           Exit(False);
@@ -257,6 +262,9 @@ function TBASHFarmRunner.OnStart(): Boolean; override;
 begin
   Bot.EnsureStartingLocationChunks();
 
+  if not Bot.WornGear.Scanned then
+    BASHAssignWornGear(Bot.WornGear);
+
   if not Bot.OpenStartingBank() then
   begin
     WriteLn('[BASH Farm+BH] Farm OnStart: failed to open starting bank');
@@ -294,6 +302,9 @@ end;
 function TBASHBirdHouseRunner.OnStart(): Boolean; override;
 begin
   Bot.EnsureStartingLocationChunks();
+
+  if not Bot.WornGear.Scanned then
+    BASHAssignWornGear(Bot.WornGear);
 
   if not Bot.OpenStartingBank() then
   begin
@@ -437,12 +448,39 @@ end;
 
 procedure TScript.Setup();
 begin
-  WriteLn('[BASH Farm+BH] Opening dashboard');
-  Self.Form.Run();
+  if BASHRunningFromLauncher() then
+  begin
+    BASHFarmConfig.Read();
+    BASHBirdHouseConfig.Read();
+    Self.DoFarmRuns := BASHFarmConfig.EnablePatches or BASHFarmConfig.EnableTrees;
+    Self.DoBHRuns := BASHFarmConfig.EnableBirdhouse;
+    WriteLn('[LAUNCHER] Using the saved farm and birdhouse settings for ', Login.Players[Login.PlayerIndex].User);
+  end
+  else
+  begin
+    WriteLn('[BASH Farm+BH] Opening dashboard');
+    Self.Form.Run();
+    Self.DoFarmRuns := Self.Form.DoPatches or Self.Form.DoTrees;
+    Self.DoBHRuns := Self.Form.DoBirdhouse;
+  end;
 
-  Self.DoFarmRuns := Self.Form.DoPatches or Self.Form.DoTrees;
-  Self.DoBHRuns := Self.Form.DoBirdhouse;
-  Self.StartingLocationIdx := Self.Form.StartingLocationIdx;
+  Self.StartingLocationIdx := 0;
+  BASHFarmConfig.StartingLocationIdx := 0;
+
+  if Self.DoFarmRuns then
+  begin
+    BASHFarmRunner.BuildFromConfig(BASHFarmConfig);
+    BASHFarmRunner.Init();
+  end;
+
+  if Self.DoBHRuns then
+  begin
+    BASHBirdHouseRunner.ApplyConfig(BASHBirdHouseConfig);
+    BASHBirdHouseRunner.IsDisabled := False;
+    BASHBirdHouseRunner.Init();
+  end
+  else
+    BASHBirdHouseRunner.IsDisabled := True;
 
   WriteLn('[BASH Farm+BH] Starting location: ', BASH_HOST_START_LOCATIONS[Self.StartingLocationIdx]);
 
